@@ -27,11 +27,9 @@ same on both machines and in CI.
 | `npm run build` | Production bundle into `dist/` |
 | `npm run preview` | Serve the built bundle locally (still no CSP headers) |
 | `npm run check` | `svelte-check` + TypeScript |
-| `npm test` | Vitest unit tests |
+| `npm test` | Unit tests. Placeholder until Phase 2 adds Vitest — exits 0. |
 | `npm run docker:up` | `build` + rebuild and start the Caddy container on :8080 |
 | `npm run changelog` | Regenerate `CHANGELOG.md` from commits (git-cliff) |
-
-Exact definitions land in Phase 1 — see [PLAN.md](../PLAN.md).
 
 ## Cross-platform rules
 

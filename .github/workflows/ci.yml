@@ -22,39 +22,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # TEMPORARY: the Vite app is created in Phase 1. Until package.json exists
-      # there is nothing to install, so the steps below are skipped instead of
-      # failing. Delete this step and the `if:` lines it guards during Phase 1.
-      - name: Is the app scaffolded yet?
-        id: guard
-        run: |
-          if [ -f package.json ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No package.json yet — skipping until Phase 1 lands the Vite app."
-          fi
-
       - uses: actions/setup-node@v4
-        if: steps.guard.outputs.ready == 'true'
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
-        if: steps.guard.outputs.ready == 'true'
         run: npm ci
 
       - name: Type & template check
-        if: steps.guard.outputs.ready == 'true'
         run: npm run check
 
       - name: Test
-        if: steps.guard.outputs.ready == 'true'
         run: npm test
 
       - name: Build
-        if: steps.guard.outputs.ready == 'true'
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
         run: npm run build

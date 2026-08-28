@@ -7,7 +7,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 
 | Phase | Name                        | Status  | Completed |
 |-------|-----------------------------|---------|-----------|
-| 1     | Scaffold & Docker           | pending | —         |
+| 1     | Scaffold & Docker           | done    | 2026-08-28 |
 | 2     | Local data layer            | pending | —         |
 | 3     | Nutrition DB & autocomplete | pending | —         |
 | 4     | Recipes                     | pending | —         |
@@ -45,6 +45,30 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
    does not exist, so CI is green before Phase 1. Phase 1 removes the guard (task 7).
 8. **Cross-platform checkout (Windows + Linux)** is a hard constraint: LF via `.gitattributes`,
    no absolute paths, no platform-only scripts in the build path. See docs/DEVELOPMENT.md.
+
+### 2026-08-28 — Phase 1
+
+9.  **`connect-src` also allows `'self'`.** PLAN.md lists only the three Google hosts. The app
+    must fetch its own bundled assets (the nutrition JSON in Phase 3, the service worker in
+    Phase 8) over the same origin, so `'self'` is part of the policy from the start. The three
+    Google hosts remain the only external ones.
+10. **Vite's module-preload polyfill is disabled** (`build.modulePreload.polyfill: false`).
+    Vite otherwise injects an inline `<script>` into `index.html`, which a CSP without
+    `unsafe-inline` blocks. All target browsers support `<link rel="modulepreload">` natively.
+11. **`npm test` is a no-op placeholder in Phase 1.** PLAN.md schedules real tests for Phase 2;
+    Vitest is not installed yet so the dependency list stays minimal. CI runs the script and it
+    exits 0.
+12. **Bits UI is exercised, not just installed.** The desktop sidebar renders a Bits UI
+    `Separator` so that the "no `unsafe-inline`" verification actually covers the library.
+
+13. **CSP verified headlessly, Linux checkout not verified.** The `npm run docker:up`
+    container was loaded with headless Chrome on all seven routes plus an unknown path: every
+    screen rendered its Polish title and the browser reported zero CSP violations, so the app
+    genuinely runs under `script-src 'self'; style-src 'self'`. The one acceptance criterion
+    that could not be checked from this machine is the *Linux* half of "clean checkout on both
+    platforms" — the structural guarantees (LF endings via `git ls-files --eol`, no absolute
+    paths, no `.ps1`/`.sh` in the build path, `npm ci` from a wiped `node_modules`) all hold,
+    and CI on `ubuntu-latest` is the actual proof.
 
 ## Open questions
 
