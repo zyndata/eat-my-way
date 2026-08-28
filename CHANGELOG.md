@@ -8,6 +8,13 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Features
+
+- Phase 1 — scaffold, app shell and Caddy container
+
 ### Miscellaneous
 
-- Scaffold project docs, repo conventions and release pipeline
+- Scaffold project docs and workflow (PLAN, STATE, CHANGELOG, /phase command)
+- Set up public repo, cross-platform conventions and release pipeline
+
+
