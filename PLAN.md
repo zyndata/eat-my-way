@@ -15,8 +15,11 @@ always exactly one person per account).
 ## Architecture
 
 - Pure client-side SPA. No application backend. The only server is **Caddy** in Docker serving
-  static files with automatic HTTPS (host machine is weak — irrelevant, nothing computes
-  server-side).
+  static files (host machine is weak — irrelevant, nothing computes server-side).
+- **TLS is terminated by nginx** on the deploy host, which already owns 80/443 for another site;
+  Caddy listens on plain HTTP `:8080`, published on `127.0.0.1` only, and remains the single
+  source of the security headers. The production bundle is built in CI and shipped as a
+  prebuilt `dist/` — the VM never runs a bundler. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 - **IndexedDB is the source of truth.** Google Drive (`appDataFolder`) is a sync layer behind a
   `StorageBackend` interface: `read`, `write`, `getRemoteVersion`, `authenticate`. Drive is the
   first implementation; others may come later.
@@ -267,19 +270,29 @@ Progress is tracked in [STATE.md](STATE.md).
    with its Polish title.
 4. Responsive layout shell: mobile bottom nav (Kalendarz / Przepisy / Ustawienia), desktop
    narrow sidebar; same route components in both containers.
-5. Caddy Dockerfile (multi-stage: Node build → Caddy serve) + `docker-compose.yml` + `Caddyfile`
-   with automatic HTTPS and CSP headers: no `unsafe-inline`/`unsafe-eval`, `connect-src`
-   limited to `generativelanguage.googleapis.com`, `www.googleapis.com`, `accounts.google.com`.
+5. `Dockerfile` (`FROM caddy:2-alpine`, copying the prebuilt `dist/` — no bundler on the
+   server) + `docker-compose.yml` (container `eatmyway-dev`, published on `127.0.0.1:8080`) +
+   `Caddyfile` listening on `:8080` (plain HTTP; nginx terminates TLS in production) with
+   security headers: CSP without `unsafe-inline`/`unsafe-eval`, `connect-src` limited to
+   `generativelanguage.googleapis.com`, `www.googleapis.com`, `accounts.google.com`, plus
+   `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`.
 6. npm scripts: `dev`, `build`, `preview`, `check` (svelte-check), `test` (placeholder until
-   Phase 2).
+   Phase 2), `docker:up` (`build` + `docker compose up --build -d`), `changelog` (git-cliff).
+   Add `git-cliff` as a devDependency so the changelog is reproducible on both machines.
+7. Remove the temporary "is the app scaffolded yet?" guard from
+   `.github/workflows/ci.yml` — from this phase on, CI has a real project to check.
 
 ### Acceptance criteria
 
 - [ ] `npm run dev` serves the shell; all 7 routes render their placeholder with Polish titles.
 - [ ] Resizing the browser switches bottom nav (narrow) ↔ sidebar (wide) without reload.
 - [ ] `npm run build` succeeds with zero TS/svelte-check errors.
-- [ ] `docker compose up` serves the built shell; response headers include the CSP exactly as
-      specified, and the app functions under it (no CSP violations in the console).
+- [ ] `npm run docker:up` serves the built shell on http://localhost:8080; response headers
+      include the CSP exactly as specified, and the app functions under it (zero CSP
+      violations in the console on every route).
+- [ ] CI is green on `dev` with the guard removed (install → check → test → build).
+- [ ] Works from a clean checkout on both Windows and Linux (no absolute paths, LF endings,
+      no platform-only scripts).
 - [ ] No dependency outside the stack list without a STATE.md decision entry.
 
 ## Phase 2 — Local data layer
@@ -448,7 +461,10 @@ Progress is tracked in [STATE.md](STATE.md).
 - [ ] Calendar and recipes fully usable with the vault locked.
 - [ ] Foreign `sub` and revoked-token flows behave per spec (manual test script recorded in
       STATE.md).
-- [ ] CSP unchanged; no new `connect-src` entries beyond the three allowed hosts.
+- [ ] `connect-src` still lists only the three allowed hosts. Google Identity Services also
+      needs `script-src https://accounts.google.com` and `frame-src https://accounts.google.com`
+      — add exactly those, record the widening in STATE.md, and verify zero CSP violations
+      through the whole OAuth flow under `npm run docker:up`.
 
 ## Phase 7 — Gemini import
 
@@ -494,11 +510,13 @@ Progress is tracked in [STATE.md](STATE.md).
 5. Mifflin-St Jeor calculator in settings goals (sex, age, height, weight, activity factor),
    result overridable.
 6. Data export in settings (single JSON download of all local data).
-7. Final security pass: CSP re-verified in the Docker deployment, dependency audit, confirm the
-   Gemini key and decrypted vault key never persist outside intended storage; USDA attribution
-   in credits.
-8. Docs: README (setup, deploy via `docker compose up`, restore-on-new-device flow), final
-   sweep of STATE.md/CHANGELOG.md.
+7. Final security pass: CSP re-verified in the Docker deployment (including the Google Identity
+   Services sources added in Phase 6), `npm audit`, confirm the Gemini key and decrypted vault
+   key never persist outside intended storage (grep for logging paths); USDA attribution in
+   credits; review SECURITY.md against what the finished app actually does.
+8. Docs: README screenshots and status, restore-on-new-device flow, final sweep of
+   STATE.md; verify docs/DEVELOPMENT.md and docs/DEPLOYMENT.md still match reality.
+9. First real release: tag `v1.0.0` via the `/release` skill and verify the deployed site.
 
 ### Acceptance criteria
 
@@ -507,6 +525,8 @@ Progress is tracked in [STATE.md](STATE.md).
       Polish messages and recover when back online.
 - [ ] Calculator matches Mifflin-St Jeor reference values for test cases (unit test).
 - [ ] Export file re-imports cleanly into a fresh profile (manual test recorded).
-- [ ] `docker compose up` on a clean machine serves the final app with the exact CSP; zero
+- [ ] `npm run docker:up` on a clean machine serves the final app with the exact CSP; zero
       console CSP violations across all screens.
 - [ ] README covers install, deploy, and disaster recovery (new device, lost password).
+- [ ] A `v1.0.0` tag runs the release workflow green and https://eatmyway.gorny.dev serves the
+      new version.

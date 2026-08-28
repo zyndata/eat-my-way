@@ -1,0 +1,152 @@
+name: Release & Deploy to eatmyway.gorny.dev
+
+# A release is a deliberate act: tag a commit on main with a SemVer tag
+# (e.g. v1.3.0) and push it. Pushing a plain commit to main does NOT deploy —
+# only a v* tag does. This gives every production deploy a name and a rollback
+# point (each release keeps a version-tagged Docker image on the server).
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write # git-cliff commits the regenerated CHANGELOG + creates the GitHub Release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Check, test & build the artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+
+      # The production bundle is built here, once, and shipped as an artifact.
+      # The deploy target is a small VM — it should never have to run a bundler.
+      - name: Build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    name: Changelog & GitHub Release
+    needs: build # never cut a release off a red build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # git-cliff needs full history + tags
+
+      # Regenerate the full CHANGELOG.md from Conventional Commits and commit it
+      # back to main so the in-repo file stays current.
+      - name: Update CHANGELOG.md
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag ${{ github.ref_name }} -o CHANGELOG.md
+
+      - name: Commit CHANGELOG.md to main
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet CHANGELOG.md; then
+            git add CHANGELOG.md
+            git commit -m "chore(release): update CHANGELOG for ${{ github.ref_name }}"
+            git push origin HEAD:main
+          fi
+
+      # Extract just this release's section for the GitHub Release body.
+      - name: Generate release notes
+        id: notes
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --tag ${{ github.ref_name }} --latest --strip all
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.notes.outputs.content }}
+
+  deploy:
+    name: Deploy to the server
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.ref_name }} # e.g. v1.3.0
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download the built bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+
+      # Only what the image needs: the built static site plus the two files that
+      # define how Caddy serves it. No sources, no docs, no CI config.
+      - name: Sync files
+        run: |
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./dist/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/eatmyway/dist/
+          rsync -avz \
+            -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no" \
+            ./Dockerfile ./Caddyfile ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/eatmyway/
+
+      # Build a version-tagged image AND :latest, so a bad release can be rolled
+      # back on the server with `docker run ... eat-my-way:<previous-tag>`.
+      # Caddy serves plain HTTP on 127.0.0.1:8080; nginx terminates TLS for
+      # eatmyway.gorny.dev and proxies to it.
+      - name: Build and restart Docker
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=no \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd /var/www/eatmyway && \
+             docker build -t eat-my-way:${IMAGE_TAG} -t eat-my-way:latest . && \
+             docker stop eat-my-way 2>/dev/null || true && \
+             docker rm   eat-my-way 2>/dev/null || true && \
+             docker run -d \
+               --name eat-my-way \
+               --restart unless-stopped \
+               --memory=256m \
+               --memory-swap=256m \
+               --cpus=0.5 \
+               -p 127.0.0.1:8080:8080 \
+               eat-my-way:${IMAGE_TAG}"
+
+      - name: Verify the site responds
+        run: |
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://eatmyway.gorny.dev/ || true)
+            if [ "$code" = "200" ]; then echo "OK: HTTP 200"; exit 0; fi
+            echo "attempt $i: HTTP $code — retrying"; sleep 5
+          done
+          echo "::error::eatmyway.gorny.dev did not return 200 after the deploy"
+          exit 1

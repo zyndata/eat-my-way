@@ -34,3 +34,6 @@ coverage/
 
 # PWA generated files
 dev-dist/
+
+# Claude Code local overrides (machine-specific; the shared settings.json is committed)
+.claude/settings.local.json

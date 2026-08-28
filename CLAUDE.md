@@ -2,11 +2,14 @@
 
 Personal meal-planning calendar PWA (Polish UI). Pure client-side SPA (Vite + Svelte 5 + TS),
 IndexedDB as source of truth, Google Drive `appDataFolder` as sync layer, BYO Gemini key for
-recipe import, served as static files by Caddy in Docker. No application backend.
+recipe import, served as static files by Caddy in Docker behind nginx at
+https://eatmyway.gorny.dev. No application backend.
 
 - Full specification and phase breakdown: [PLAN.md](PLAN.md)
 - Progress, decisions, open questions: [STATE.md](STATE.md)
-- Release notes: [CHANGELOG.md](CHANGELOG.md)
+- Release notes: [CHANGELOG.md](CHANGELOG.md) (generated — never hand-edited)
+- Local setup and cross-platform rules: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)
+- Server, secrets, rollback: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 ## Workflow rules
 
@@ -16,7 +19,23 @@ recipe import, served as static files by Caddy in Docker. No application backend
   after every phase.
 - Any **deviation from PLAN.md must be recorded in STATE.md** before proceeding.
 - **Conventional commits**; push after each phase.
-- **End-of-phase ritual:** update STATE.md → CHANGELOG.md entry → commit → push →
-  plain-language summary → go/no-go statement for the next phase.
+- **End-of-phase ritual:** update STATE.md → regenerate CHANGELOG.md (`npm run changelog`) →
+  commit → push → plain-language summary → go/no-go statement for the next phase.
 - **Code and comments in English. All user-facing UI text in Polish.**
 - **Minimal dependencies** — every package must justify itself; this app holds user credentials.
+
+## Repository conventions
+
+- **Branches:** work on `dev`, merge to `main`, release by pushing a `vX.Y.Z` tag. A plain push
+  to `main` does not deploy — only the tag does. Ship with the `/release` skill.
+- **CHANGELOG.md is generated** by git-cliff from Conventional Commit messages. The commit
+  message *is* the release note; edit messages, not the file.
+- **Two machines (Windows + Linux)** share this checkout. LF line endings are enforced by
+  `.gitattributes`; no absolute paths, no drive letters, no platform-only scripts in the build
+  path; file names are case-sensitive on the server. Details in
+  [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+- **Public repository.** Never commit a credential — no Gemini key, no OAuth client secret, no
+  `.env`. Only `.env.example`. Everything under `VITE_*` ends up in the public bundle by design.
+- `npm run dev` does **not** apply the production CSP. Anything that adds a script, style, font,
+  image source or outbound request must be verified with `npm run docker:up` on
+  http://localhost:8080 before release.

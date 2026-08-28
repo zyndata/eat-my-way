@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in the app behaves incorrectly.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown in Ustawienia. The released tag, e.g. v1.2.0.
+      placeholder: "v1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: "Chrome 141 on Android 15 / Firefox 145 on Windows 11"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is it running?
+      options:
+        - Installed PWA
+        - Browser tab
+        - Local dev server
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console output
+      description: >
+        Relevant errors from the developer console (F12).
+        Never paste your Gemini API key, master password, OAuth tokens or Google
+        account details — issues are public.
+      render: text
+  - type: checkboxes
+    id: scrubbed
+    attributes:
+      label: Confirmation
+      options:
+        - label: I removed all credentials and personal data from everything above.
+          required: true

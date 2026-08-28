@@ -8,6 +8,8 @@ Implement **Phase $ARGUMENTS** of this project. Follow this procedure exactly:
 
 - Read CLAUDE.md (workflow rules), STATE.md (current progress and decisions), and the
   "Phase $ARGUMENTS" section of PLAN.md (tasks + acceptance criteria).
+- `git fetch origin && git status -sb` — this project is developed from two machines, so make
+  sure the branch is not behind before writing anything. Work on `dev`.
 
 ## 2. Verify preconditions
 
@@ -24,6 +26,9 @@ Implement **Phase $ARGUMENTS** of this project. Follow this procedure exactly:
 - Code and comments in English; all user-facing UI text in Polish.
 - Minimal dependencies: adding any package not named in PLAN.md requires a STATE.md decision
   entry justifying it.
+- Cross-platform: no absolute paths or drive letters, LF line endings, no PowerShell- or
+  bash-only scripts in the build path — the same checkout is used on Windows and Linux.
+- Never commit a credential. This is a public repository.
 
 ## 4. Verify
 
@@ -34,11 +39,16 @@ Implement **Phase $ARGUMENTS** of this project. Follow this procedure exactly:
 ## 5. End-of-phase ritual (in this order)
 
 1. Update STATE.md: phase status → `done` (with date), plus any decisions/open questions.
-2. Add a CHANGELOG.md entry under [Unreleased] describing what the phase delivered.
-3. Conventional commit (e.g. `feat: phase $ARGUMENTS — <short name>`).
-4. Push.
+2. Commit with a **Conventional Commit** message (e.g. `feat: phase $ARGUMENTS — <short name>`).
+   The message is the changelog entry — CHANGELOG.md is generated from it, never hand-edited.
+3. Regenerate the changelog (`npm run changelog`, once that script exists) and amend or add a
+   `chore: update CHANGELOG` commit. Skip if git-cliff is not available yet — the release
+   workflow regenerates it anyway.
+4. Push to `dev`.
 5. Give the user a plain-language summary of what was built and how it was verified.
 6. End with an explicit **go / no-go** statement for the next phase.
+
+Releasing is a separate act: `/release` merges to `main` and tags. A phase does not deploy.
 
 ## Hard rule
 

@@ -1,0 +1,23 @@
+# Normalize line endings: LF in the repository, native in the working copy.
+# Keeps the Windows and Linux checkouts of this project byte-identical in git.
+* text=auto eol=lf
+
+# Shell scripts must stay LF even on Windows (they run inside Docker/CI).
+*.sh text eol=lf
+Caddyfile text eol=lf
+Dockerfile text eol=lf
+
+# Windows-only scripts keep CRLF.
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary assets.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.wasm binary
