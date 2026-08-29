@@ -6,6 +6,12 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Features
+
+- Phase 2 - local data layer over IndexedDB
+
 ## [0.1.0] - 2026-08-29
 
 ### CI/CD
