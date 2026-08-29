@@ -25,12 +25,45 @@ same on both machines and in CI.
 |---|---|
 | `npm run dev` | Vite dev server with HMR. **Does not apply the production CSP.** |
 | `npm run build` | Production bundle into `dist/` |
+| `npm run build:nutrition` | Regenerate the bundled USDA subset (see below). Dev-time only. |
+| `npm run check:nutrition` | Assert the committed subset matches the mapping, without downloading. |
 | `npm run preview` | Serve the built bundle locally (still no CSP headers) |
 | `npm run check` | `svelte-check` + TypeScript |
 | `npm test` | Vitest, one pass. Data-layer unit tests (`src/**/*.test.ts`). |
 | `npm run test:watch` | The same suite in watch mode. |
 | `npm run docker:up` | `build` + rebuild and start the Caddy container on :8080 |
 | `npm run changelog` | Regenerate `CHANGELOG.md` from commits (git-cliff) |
+
+## The bundled nutrition database
+
+`src/lib/nutrition/ingredients.json` is **generated and committed**. It is the curated USDA
+FoodData Central subset the app imports into IndexedDB on first run; nothing fetches FoodData
+Central at runtime.
+
+```
+data/pl-ingredients.tsv          hand-curated: Polish name -> fdcId, aliases, raw/cooked
+        +  two pinned USDA releases (downloaded to data/usda/, gitignored, SHA-256 checked)
+        |
+        v  npm run build:nutrition
+src/lib/nutrition/ingredients.json   the bundle the browser fetches
+src/lib/nutrition/meta.ts            version, source ids and attribution, for the UI
+```
+
+- **`data/pl-ingredients.tsv` is the file you edit.** It decides both which USDA entries are
+  bundled and what they are called in the Polish UI. Four tab-separated columns:
+  `fdcId`, `name`, `aliases` (`|` separated), `state` (`raw` or `cooked`).
+- **Never reuse or renumber an `fdcId`.** It becomes the ingredient's permanent id
+  (`usda:<fdcId>`), and planned meals reference it forever.
+- The generated files are **regenerated, never hand-edited**, exactly like `CHANGELOG.md`.
+  `npm run check:nutrition` fails if they drift from the mapping.
+- The build is reproducible: the releases are pinned by URL *and* SHA-256, rows are written in
+  `fdcId` order and every macro is rounded the same way, so the same inputs give byte-identical
+  output on both machines.
+- The first run downloads ~10 MB into `data/usda/`. Later runs reuse it; `--offline` refuses to
+  download at all.
+- Bumping to a newer Foundation Foods release means changing the URL, the digest, the release id
+  and `DATA_VERSION` in `scripts/build-nutrition.mjs` together — `DATA_VERSION` is what makes
+  existing installs re-import.
 
 ## Cross-platform rules
 

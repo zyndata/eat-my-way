@@ -29,6 +29,11 @@ Thumbs.db
 .env.*
 !.env.example
 
+# USDA FoodData Central archives, cached by scripts/build-nutrition.mjs.
+# Pinned by URL and SHA-256 in that script; the generated subset is committed, the
+# multi-megabyte source archives are not.
+data/usda/
+
 # Test coverage
 coverage/
 

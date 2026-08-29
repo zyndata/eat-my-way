@@ -9,7 +9,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 |-------|-----------------------------|---------|-----------|
 | 1     | Scaffold & Docker           | done    | 2026-08-28 |
 | 2     | Local data layer            | done    | 2026-08-29 |
-| 3     | Nutrition DB & autocomplete | pending | —         |
+| 3     | Nutrition DB & autocomplete | done    | 2026-08-29 |
 | 4     | Recipes                     | pending | —         |
 | 5     | Calendar & day view         | pending | —         |
 | 6     | Drive sync & vault          | pending | —         |
@@ -169,6 +169,79 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
     the evidence that Dexie survives `script-src 'self'`, which nothing in the repository will
     otherwise demonstrate until Phase 3.
 
+### 2026-08-29 — Phase 3
+
+30. **No new runtime or dev dependency.** PLAN.md names nothing new for this phase and nothing
+    was added. The build script has to read two ZIP archives, which Node cannot do out of the
+    box; rather than pull in an unzip package for a dev-time script, `scripts/usda-zip.mjs` is
+    ~70 lines over `zlib.inflateRawSync` — the FDC archives are plain 32-bit ZIPs.
+    `scripts/csv.mjs` is a small RFC 4180 reader for the same reason: the FDC exports quote
+    fields that contain commas, so a `split(',')` would silently mis-parse them.
+31. **The Polish mapping file *is* the selection.** PLAN.md task 1 (which USDA entries to
+    bundle) and task 2 (what to call them) are one hand-curated file, `data/pl-ingredients.tsv`:
+    four tab-separated columns `fdcId / name / aliases / state`. Splitting them would have meant
+    keeping two lists in step. 1343 entries, curated section by section — dairy and eggs,
+    vegetables, fruits, grains and pasta, nuts and seeds, legumes, fats and dressings, spices,
+    poultry, pork, beef and veal, lamb and game, fish and seafood, cold cuts, bread and baked
+    goods, sweets, snacks, cereals, drinks, broths and sauces. TSV rather than CSV because
+    Polish names contain commas and would need quoting on nearly every row.
+32. **Pinned USDA releases, verified by SHA-256.** SR Legacy 2018-04 (frozen since publication)
+    and Foundation Foods 2026-04-30. The archives are downloaded into `data/usda/` (gitignored,
+    ~10 MB) and the digest is checked on every run, so "same inputs -> byte-identical JSON" is a
+    property of the script rather than a hope. Bumping a release changes the URL, the digest,
+    the release id and `DATA_VERSION` together.
+33. **Energy falls back to the Atwater values.** SR Legacy carries nutrient 1008 (Energy, kcal);
+    most Foundation entries do not and carry 2047 / 2048 (Atwater general / specific) instead.
+    The script prefers 1008 and falls back in that order. An entry with no energy value, or
+    missing protein, carbohydrate or fat, is rejected outright rather than bundled with a hole.
+34. **Macros are clamped at zero.** "Carbohydrate, by difference" is literally a subtraction and
+    goes slightly negative for very fatty cuts — USDA raw pork belly comes out at -0.7 g. Left
+    alone, a recipe's carbohydrates would *fall* when bacon was added to it. Values are rounded
+    to two decimals (enough for a per-100 g figure, identical on every machine) and floored at 0.
+35. **The bundle is fetched, not imported.** `ingredients.json` is pulled in with Vite's `?url`,
+    so it ships as a hashed asset under `/assets/` and is fetched once on first run instead of
+    inflating the entry chunk by 239 kB. This is exactly the same-origin request decision 9
+    added `'self'` to `connect-src` for, and it is the only network request nutrition data ever
+    causes — verified offline, see decision 43.
+36. **`meta.ts` is generated next to the JSON.** The app has to know the data version *before*
+    deciding whether to fetch the bundle at all, and a hand-kept constant that drifted from the
+    file it guards would silently re-import, or fail to. `scripts/build-nutrition.mjs` writes
+    both files; `npm run check:nutrition` fails if either has drifted from the mapping.
+37. **Ranking: match quality first, then usage.** PLAN.md task 5 asks for "prefix matches ranked
+    above infix, previously-used ingredients first", and the acceptance criteria list the two as
+    separate requirements, which leaves their relative order open. Implemented as: tier
+    (exact -> prefix -> word-prefix -> infix), then `useCount` descending, then the earlier
+    match, then the shorter name, then Polish collation. A heavily-used infix match therefore
+    never outranks an unused prefix match: typing „ser" puts „Ser feta" above „Deser ryżowy"
+    even when the dessert is in every recipe. Covered by a test that asserts exactly that.
+38. **All query words must match the same name.** „zolty ser" matches the alias `ser zolty`
+    (word-prefix, order-independent), but „piers filet" does not match „Pierś z kurczaka" merely
+    because one word is in the name and the other in an alias — that is not a match a user would
+    recognize.
+39. **The autocomplete reads one in-memory snapshot of the ingredient table.** ~1300 rows are
+    read from IndexedDB once and ranked in memory. Infix matching cannot use an index anyway, so
+    re-querying per keystroke would be slower for nothing. Writers must call
+    `ingredientIndex.invalidate()`; the recipe editor will do so in Phase 4 when it creates a
+    custom ingredient.
+40. **The autocomplete is mounted on the Phase 4 stub screen.** `/recipes/:id/edit` is still the
+    Phase 4 placeholder, but it now hosts the Phase 3 component on its own. Without a mount
+    point the component could only be unit-tested, and the "no runtime network calls, verified
+    offline" criterion needs a real browser. Phase 4 replaces the screen; the component stays.
+41. **New route `/about`, linked from Settings.** Holds the USDA attribution (task 6), the names
+    of the pinned releases, a note that the Polish names and synonyms are our own work, and the
+    local database status. FDC is CC0 — attribution is requested rather than required, and is
+    given.
+42. **`nutritionDataVersion` and `nutritionImportedAt` added to the meta table.** No schema
+    version bump: `meta` is an outbound-key key/value store, so new keys need no migration. The
+    version flag is written *last*, after the rows, so a crash mid-import leaves it absent and
+    the next load retries.
+43. **Phase 3 verified in a real browser under the production CSP.** `npm run docker:up` plus
+    headless Chrome on a fresh profile: the first load imported 1343 ingredients into IndexedDB
+    (one request for the bundle, `meta.nutritionDataVersion = 1`); a reload made **zero**
+    requests for it; „zolty ser" returned the „Ser żółty …" entries and „kartofle" returned
+    „Ziemniaki" and „Ziemniaki gotowane"; ArrowDown + Enter committed the highlighted option and
+    its macros rendered (77 kcal / 2.05 / 17.49 / 0.09 g); with the network emulated **offline**
+    the search still worked; and the browser reported **zero** CSP violations throughout.
 
 ## Open questions
 
@@ -187,3 +260,14 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
    surprise.
 4. **PWA + OAuth interaction** (Phase 8): the service worker must not cache the OAuth redirect
    or token responses. Verify explicitly when the service worker lands.
+5. **The nutrition bundle must be precached by the service worker** (Phase 8). It is fetched
+   once on first run, so a fresh install that happens to be offline at that moment has no
+   ingredients at all. Today the import simply fails and retries on the next load, which is
+   correct but not pleasant.
+6. **Foundation Foods moves twice a year.** Nothing watches for a new release; refreshing it is
+   a deliberate act (decision 32). Worth a reminder once the app is in daily use.
+7. **The curated mapping is a starting point, not a finished catalogue.** 1343 entries cover
+   ordinary Polish cooking, but Polish specifics with no USDA equivalent (twaróg półtłusty,
+   korzeń pietruszki) are approximated or absent. Open Food Facts is the planned second source
+   (PLAN.md, "Nutrition data") and would fill these in; user-created custom ingredients cover
+   the gap in the meantime.

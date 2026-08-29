@@ -37,6 +37,13 @@ export interface MetaValues {
   schemaVersion: number;
   /** When the local database was first created. */
   createdAt: string;
+  /**
+   * `dataVersion` of the bundled USDA subset last imported. Absent means "never imported";
+   * a value below the bundle's version means the app must re-import it (Phase 3).
+   */
+  nutritionDataVersion: number;
+  /** When that import finished. */
+  nutritionImportedAt: string;
   /** Drive `modifiedTime` seen at the last successful sync (Phase 6). */
   driveModifiedTime: string;
   /** When the last successful sync finished (Phase 6). */

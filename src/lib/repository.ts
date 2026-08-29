@@ -20,6 +20,15 @@ import {
 } from './day';
 import { newId, type IdFactory } from './ids';
 import { resolveTags } from './tags';
+import type { SearchCandidate } from './search';
+
+/**
+ * One row as the ingredient autocomplete needs it: the wire-shape ingredient plus the
+ * normalized keys IndexedDB already indexes and how many recipes refer to it.
+ */
+export interface IngredientSearchEntry extends SearchCandidate {
+  ingredient: Ingredient;
+}
 
 /**
  * Persistence. Everything here is a thin transaction around the pure functions in
@@ -52,6 +61,18 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     const rows = await database.ingredients.bulkGet(ids);
     const found = rows.filter((row): row is IngredientRecord => row !== undefined);
     return ingredientLookup(found.map(fromIngredientRecord));
+  }
+
+  /** How many recipes use each ingredient. Ingredients nobody uses are simply absent. */
+  async function ingredientUseCounts(): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    for (const recipe of await database.recipes.toArray()) {
+      // A recipe listing the same ingredient twice still counts as one user of it.
+      for (const id of new Set(recipe.items.map((item) => item.ingredientId))) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    }
+    return counts;
   }
 
   /** Move `useCount` for tags a recipe gained or lost. Unknown keys are ignored. */
@@ -120,6 +141,29 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
     async putIngredients(ingredients: readonly Ingredient[]): Promise<void> {
       await database.ingredients.bulkPut(ingredients.map(toIngredientRecord));
+    },
+
+    async countIngredients(): Promise<number> {
+      return database.ingredients.count();
+    },
+
+    ingredientUseCounts,
+
+    /**
+     * Everything the autocomplete ranks over, read once from IndexedDB. The normalized
+     * keys come straight off the indexed columns, so nothing is recomputed here.
+     */
+    async ingredientSearchIndex(): Promise<IngredientSearchEntry[]> {
+      const [rows, useCounts] = await Promise.all([
+        database.ingredients.toArray(),
+        ingredientUseCounts()
+      ]);
+      return rows.map((row) => ({
+        ingredient: fromIngredientRecord(row),
+        nameKey: row.nameKey,
+        aliasKeys: row.aliasKeys,
+        useCount: useCounts.get(row.id) ?? 0
+      }));
     },
 
     // ---- tags ----------------------------------------------------------------------
