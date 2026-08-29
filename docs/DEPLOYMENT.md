@@ -23,6 +23,39 @@ szok.gorny.dev. Caddy therefore listens on plain HTTP on `:8080` inside the cont
 only on `127.0.0.1`. (This is a deliberate deviation from the original plan, which assumed Caddy
 would hold 443 with automatic HTTPS — see [STATE.md](../STATE.md).)
 
+## Cloudflare sits in front
+
+Every name in the `gorny.dev` zone is **proxied by Cloudflare** (orange cloud), so the certificate
+a browser sees is Cloudflare's, not ours. The Let's Encrypt certificate secures only the
+Cloudflare → origin hop. Two consequences that are easy to trip over:
+
+- **Inbound port 80 is closed** at the Google Cloud VPC firewall (the VM has no host firewall —
+  `ufw` is not installed and the `iptables` INPUT policy is `ACCEPT`). HTTP-01 validation
+  therefore cannot work: Cloudflare cannot reach the origin on `:80` and answers `522`.
+  Certificates use **DNS-01** instead (see below).
+- **Cloudflare's WAF challenges non-browser clients**, answering `403` with a
+  `cf-mitigated: challenge` header. A plain `curl` — including one from CI — can get this
+  instead of the app. When debugging, bypass the edge entirely from the server itself:
+  ```bash
+  curl -I --resolve eatmyway.gorny.dev:443:127.0.0.1 https://eatmyway.gorny.dev/
+  ```
+
+Three Cloudflare rules make this workable, and all three matter:
+
+- **WAF custom rule `Deploy health check`** — skips every protection for requests carrying the
+  `X-Deploy-Check` header with the `DEPLOY_CHECK_TOKEN` value, so the workflow's final assertion
+  can reach the app. Deliberately keyed on the header rather than on the path `/`, which would
+  have left the home page unprotected.
+- **WAF custom rule `Certbot`** — skips protections for `/.well-known/acme-challenge/`, kept as
+  a fallback should HTTP-01 ever be needed again.
+- **Cache rule `PWA shell - bypass cache`** — bypasses the edge cache for `/`, `/index.html`,
+  `/sw.js` and `/manifest.webmanifest`. Cloudflare caches `.js` by default, which would put the
+  service worker — the file that governs the app's own caching — into a second, independent
+  cache layer. Hashed assets under `/assets/` are safe to cache and are left alone.
+
+SSL/TLS mode is **Full (strict)**, which the origin can satisfy now that every certificate on the
+VM is valid and renews unattended.
+
 ## One-time server setup
 
 1. Create the deploy directory:
@@ -30,10 +63,15 @@ would hold 443 with automatic HTTPS — see [STATE.md](../STATE.md).)
    sudo mkdir -p /var/www/eatmyway
    sudo chown "$USER":"$USER" /var/www/eatmyway
    ```
-2. Point DNS: `eatmyway.gorny.dev` → the VM's public IP.
-3. nginx site (`/etc/nginx/sites-available/eatmyway`), then `certbot --nginx -d eatmyway.gorny.dev`:
+2. Point DNS: `eatmyway.gorny.dev` → the VM's public IP, as an **A record only**. Do not add an
+   `AAAA`: the VM has no global IPv6 address (`ip -6 addr show scope global` is empty), and a
+   stale `AAAA` makes Cloudflare try an origin that does not answer.
+3. Write the nginx site to `/etc/nginx/sites-available/eatmyway.gorny.dev`, symlink it into
+   `sites-enabled`, and reload. **The file must be pure ASCII** — see the warning below.
    ```nginx
    server {
+       listen 80;
+       listen [::]:80;
        server_name eatmyway.gorny.dev;
 
        location / {
@@ -48,8 +86,70 @@ would hold 443 with automatic HTTPS — see [STATE.md](../STATE.md).)
        # conflicting headers and browsers then enforce the intersection.
    }
    ```
-4. The service worker and the OAuth flow both require HTTPS — verify certbot succeeded before
-   testing anything to do with Drive or the PWA.
+4. Obtain the certificate over DNS-01 (see the next section), then confirm certbot added the
+   `listen 443 ssl` block and the `ssl_certificate` lines to that same file.
+5. The service worker and the OAuth flow both require HTTPS — verify the certificate is live
+   before testing anything to do with Drive or the PWA.
+
+> **Keep nginx config files ASCII-only.** certbot's nginx parser is Python and rejects any file
+> that is not valid UTF-8 with `Could not read file … due to invalid character`, after which it
+> reports `Could not automatically find a matching server block` and refuses to install. A
+> terminal not set to UTF-8 (PuTTY defaults to a Latin charset) turns a pasted `—` or `ą` into a
+> single invalid byte. nginx itself does not care, so `nginx -t` passes and the breakage only
+> surfaces months later, when a renewal fails. Set PuTTY to UTF-8 under
+> Window → Translation, and avoid non-ASCII characters in these files entirely.
+
+## Certificates (DNS-01 via Cloudflare)
+
+Because port 80 is unreachable from outside, certbot authenticates by writing a TXT record
+through the Cloudflare API. This is also what makes renewal unattended — the `--manual` plugin
+these certificates originally used can never renew from a timer, and silently let several
+certificates expire.
+
+```bash
+sudo apt install python3-certbot-dns-cloudflare
+sudo mkdir -p /root/.secrets/certbot
+sudo nano /root/.secrets/certbot/cloudflare.ini   # dns_cloudflare_api_token = <token>
+sudo chmod 600 /root/.secrets/certbot/cloudflare.ini
+```
+
+The API token comes from the Cloudflare *Edit zone DNS* template, scoped to the `gorny.dev` zone.
+Use an editor, not a heredoc, so the token does not land in shell history.
+
+```bash
+sudo certbot --authenticator dns-cloudflare --installer nginx \
+  --dns-cloudflare-credentials /root/.secrets/certbot/cloudflare.ini \
+  --dns-cloudflare-propagation-seconds 30 \
+  -d eatmyway.gorny.dev
+```
+
+`--installer nginx` matters: it records `installer = nginx` in the renewal config, so certbot
+edits the vhost and reloads nginx after each renewal. Verify with:
+
+```bash
+sudo grep -H "authenticator\|installer" /etc/letsencrypt/renewal/*.conf   # dns-cloudflare + nginx
+sudo certbot renew --dry-run
+systemctl status certbot.service --no-pager                               # must not be "failed"
+```
+
+A Cloudflare WAF custom rule named *Certbot* skips all WAF components for
+`/.well-known/acme-challenge/`, kept as a fallback should HTTP-01 ever be needed again.
+
+## Operating the VM
+
+The VM is a Compute Engine instance (`zyndata-one`, `us-east1-b`). Two operational rules, both
+learned the hard way:
+
+- **The public IP is a reserved static address** (`zyndata-one-ip`). It used to be ephemeral,
+  which meant stopping the instance would have released it and broken every `A` record in the
+  `gorny.dev` and `bbsliders.eu` Cloudflare zones at once. Use **Reset**, never **Stop**, if a
+  reboot is ever needed on an instance whose address is ephemeral — Reset keeps the address.
+- **Never let `needrestart` restart a network service.** After an `apt install`, its "Daemons
+  using outdated libraries" dialog pre-selects `ifup@ens4.service`. Accepting that takes the
+  interface down and does not bring it back: the instance still shows as running in the console,
+  but SSH, the Cloud Console's own SSH, and every site on the host all go dark, and the only way
+  back in is a Reset. Deselect anything network-related (`ifup@*`, `networkd-dispatcher`,
+  `systemd-networkd`) with the spacebar; the rest are safe to restart.
 
 ## GitHub repository configuration
 
@@ -60,7 +160,8 @@ would hold 443 with automatic HTTPS — see [STATE.md](../STATE.md).)
 | `SSH_PRIVATE_KEY` | Private key of a deploy user that can write `/var/www/eatmyway` and run `docker` |
 | `SSH_KNOWN_HOSTS` | Output of `ssh-keyscan <host>` — pins the server's host key |
 | `SSH_USER` | Deploy user name |
-| `SSH_HOST` | Server host or IP |
+| `SSH_HOST` | The VM's raw IP. Not a hostname — every name in the zone is Cloudflare-proxied and would never reach port 22 |
+| `DEPLOY_CHECK_TOKEN` | Shared secret sent as `X-Deploy-Check` by the health check, matched by a Cloudflare WAF skip rule |
 
 **Variables** (same page → *Variables*):
 
@@ -112,3 +213,9 @@ their browser's IndexedDB and their own Google Drive.
 | Duplicate `Content-Security-Policy` headers | Security headers were also added to the nginx block — remove them there |
 | Google login fails only in production | Origin missing from the OAuth client, or `VITE_GOOGLE_CLIENT_ID` not set as a repo variable at build time |
 | Old version still served after a deploy | Service worker cache — hard-reload; check the workflow actually reached the `deploy` job |
+| `403` with a `cf-mitigated: challenge` header | Cloudflare's WAF answered, the request never reached the VM. Bypass the edge with `curl --resolve …:443:127.0.0.1` |
+| `522` from Cloudflare | Cloudflare could not reach the origin — inbound `:80` is closed at the GCP VPC firewall, or a stale `AAAA` record points at a host that does not exist |
+| certbot: `Could not automatically find a matching server block` | A non-UTF-8 byte in an nginx config file. Find it with `LC_ALL=C.UTF-8 grep -naxv '.*' <file>` |
+| certbot: `An authentication script must be provided with --manual-auth-hook` | That certificate's renewal config still has `authenticator = manual`. Re-issue it with `--authenticator dns-cloudflare` |
+| SSH times out, Cloud Console SSH fails with IAP `4003`, and every site is down, but the instance shows as running | The guest network is down — usually `needrestart` restarting `ifup@ens4`. Fix with **Reset** in the Compute Engine console |
+| certbot: `orderNotReady` / `Order's status ("invalid")` on one certificate of a batch renew | Transient. Re-run `certbot renew`; the same certificate passes on its own and on the next batch. All five certificates on the VM were issued the same day, so they fall due together and renew in one batch — a single flake there is not a broken configuration |

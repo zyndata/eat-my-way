@@ -70,13 +70,64 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
     paths, no `.ps1`/`.sh` in the build path, `npm ci` from a wiped `node_modules`) all hold,
     and CI on `ubuntu-latest` is the actual proof.
 
+### 2026-08-28 — Server prerequisites
+
+14. **Cloudflare fronts the whole `gorny.dev` zone.** Neither PLAN.md nor DEPLOYMENT.md knew this.
+    `eatmyway.gorny.dev` is proxied (orange cloud), so the browser-facing certificate is
+    Cloudflare's and the Let's Encrypt one secures only the Cloudflare → origin hop. Recorded
+    because it changes what "TLS is terminated by nginx" means in practice, and because
+    Cloudflare's WAF answers plain `curl` with `403 cf-mitigated: challenge`.
+15. **Certificates use DNS-01, not HTTP-01.** Inbound `:80` is closed at the Google Cloud VPC
+    firewall, so Cloudflare cannot reach the origin over HTTP and ACME HTTP-01 fails with `522`.
+    All five certificates on the VM now use `--authenticator dns-cloudflare` with an API token in
+    `/root/.secrets/certbot/cloudflare.ini` (`chmod 600`), plus `--installer nginx` so renewals
+    edit the vhost and reload nginx. Port 80 stays closed deliberately: with TLS terminated at
+    the Cloudflare edge, the origin has no use for it.
+16. **Automatic renewal had never worked on this VM.** Every certificate had been issued by hand
+    with `authenticator = manual`, which cannot run from a timer, so `certbot.service` had been
+    failing on every run and four of the five certificates had silently expired — including
+    `szok.gorny.dev`. Fixed as part of decision 15. The lesson is the verification step:
+    `certbot renew --dry-run` plus a green `certbot.service`, not the presence of a valid
+    certificate.
+17. **nginx config files must be ASCII-only.** certbot's nginx parser is Python and refuses any
+    file that is not valid UTF-8, then reports the misleading `Could not automatically find a
+    matching server block`. A terminal not set to UTF-8 turns a pasted `—` or `ą` into one
+    invalid byte; nginx itself does not care, so `nginx -t` passes and the damage only surfaces
+    at the next renewal. This is what had bricked renewal for `szok.gorny.dev`.
+18. **The VM's public IP is now a reserved static address.** It was ephemeral, so any Stop of
+    the instance would have released it and simultaneously broken every `A` record in the
+    `gorny.dev` and `bbsliders.eu` Cloudflare zones — six names and five certificates. Recorded
+    because nothing in the repo would ever have revealed this dependency.
+19. **`needrestart` must not restart network services.** Accepting its pre-selected
+    `ifup@ens4.service` after an `apt install` took the guest network down completely: SSH, the
+    Cloud Console's own SSH and every site on the host went dark while the instance still showed
+    as running. Recovery was a Compute Engine **Reset**. See docs/DEPLOYMENT.md.
+20. **All five certificates fall due in the same two days** (issued 2026-08-28/29, expiring
+    around 2026-11-26), so `certbot renew` will process them as one batch rather than spread
+    over time. A batch run flaked once with `orderNotReady` on `gorny.dev` and passed on the
+    retry; a single such failure is not a broken configuration.
+21. **`eatmyway.gorny.dev` keeps the Cloudflare proxy.** The alternative was DNS-only, which
+    would have matched the documented architecture more closely. Consequences accepted and
+    configured: the deploy workflow's health check now sends an `X-Deploy-Check` header carrying
+    the `DEPLOY_CHECK_TOKEN` secret, and a Cloudflare WAF rule skips all protections for
+    requests bearing it — chosen over a Skip rule on `/`, which would have unprotected the home
+    page and defeated the point of keeping the proxy. SSL/TLS mode is now **Full (strict)**, and
+    a cache rule bypasses the edge cache for `/`, `/index.html`, `/sw.js` and
+    `/manifest.webmanifest` so Cloudflare cannot serve a stale service worker on top of the
+    service worker's own cache.
+
 ## Open questions
 
 1. **Google OAuth client ID** — needs to be created in the Cloud Console (scope `drive.appdata`,
    origins `http://localhost:5173` and `https://eatmyway.gorny.dev`) and set as the
    `VITE_GOOGLE_CLIENT_ID` repository variable. Blocks Phase 6, nothing earlier.
-2. **Server prerequisites** — `/var/www/eatmyway`, DNS record, nginx site, certbot certificate,
-   and the four `SSH_*` GitHub secrets. Blocks the first real deploy, not local development.
+2. **Server prerequisites — done.** DNS, `/var/www/eatmyway`, the nginx site
+   (`/etc/nginx/sites-available/eatmyway.gorny.dev`), the certificate with verified unattended
+   renewal, the four `SSH_*` secrets and `DEPLOY_CHECK_TOKEN` are all in place. The only
+   remaining gate on a first deploy is Phase 1 itself: `Dockerfile` and `Caddyfile` do not exist
+   yet, so the site returns 502. The deploy key's public half is in the server's
+   `~/.ssh/authorized_keys` for user `zyndata`; `SSH_HOST` is the raw IP because every name in
+   the zone is Cloudflare-proxied and would never reach port 22.
 3. **CSP will have to widen in Phase 6** for Google Identity Services (`script-src` and
    `frame-src` for `https://accounts.google.com`). Recorded now so it is a decision, not a
    surprise.
