@@ -6,7 +6,15 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [0.1.0] - 2026-08-29
+
+### CI/CD
+
+- Authenticate the deploy health check past Cloudflare
+
+### Documentation
+
+- Record the server's Cloudflare, DNS-01 and VM operating constraints
 
 ### Features
 
@@ -16,5 +24,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - Scaffold project docs and workflow (PLAN, STATE, CHANGELOG, /phase command)
 - Set up public repo, cross-platform conventions and release pipeline
+- Update CHANGELOG
+
+### Merge
+
+- Dev into main for v0.1.0
 
 
