@@ -27,7 +27,8 @@ same on both machines and in CI.
 | `npm run build` | Production bundle into `dist/` |
 | `npm run preview` | Serve the built bundle locally (still no CSP headers) |
 | `npm run check` | `svelte-check` + TypeScript |
-| `npm test` | Unit tests. Placeholder until Phase 2 adds Vitest — exits 0. |
+| `npm test` | Vitest, one pass. Data-layer unit tests (`src/**/*.test.ts`). |
+| `npm run test:watch` | The same suite in watch mode. |
 | `npm run docker:up` | `build` + rebuild and start the Caddy container on :8080 |
 | `npm run changelog` | Regenerate `CHANGELOG.md` from commits (git-cliff) |
 

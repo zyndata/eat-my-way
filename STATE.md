@@ -8,7 +8,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | Phase | Name                        | Status  | Completed |
 |-------|-----------------------------|---------|-----------|
 | 1     | Scaffold & Docker           | done    | 2026-08-28 |
-| 2     | Local data layer            | pending | —         |
+| 2     | Local data layer            | done    | 2026-08-29 |
 | 3     | Nutrition DB & autocomplete | pending | —         |
 | 4     | Recipes                     | pending | —         |
 | 5     | Calendar & day view         | pending | —         |
@@ -115,6 +115,60 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
     a cache rule bypasses the edge cache for `/`, `/index.html`, `/sw.js` and
     `/manifest.webmanifest` so Cloudflare cannot serve a stale service worker on top of the
     service worker's own cache.
+
+### 2026-08-29 — Phase 2
+
+22. **Two new dev dependencies: `vitest` and `fake-indexeddb`.** Vitest is named in PLAN.md
+    task 7. `fake-indexeddb` is not in the stack list and needs the justification: the acceptance
+    criterion "Dexie DB opens with versioned schema; a migration step is proven to run exactly
+    once" cannot be checked in Node without an IndexedDB implementation, and the alternative
+    (Vitest browser mode + Playwright) would pull a browser download into CI for one test file.
+    `fake-indexeddb` is dev-only, never reaches the bundle, and is the implementation Dexie's own
+    test suite uses. `dexie` itself is a runtime dependency and was already in the stack list.
+23. **IndexedDB rows may carry derived index fields that the spec types do not have.**
+    `src/lib/types.ts` holds the wire/Drive shapes exactly as PLAN.md specifies. The Dexie layer
+    stores `IngredientRecord = Ingredient & { nameKey, aliasKeys }` — diacritic-normalized keys
+    that exist only to be indexed. They are derived on write and stripped on read, so the Drive
+    JSON in Phase 6 stays byte-identical to the spec. Deriving them is not autocomplete (Phase 3);
+    it is the index autocomplete will later query.
+24. **The schema ships with two versions in Phase 2, not one.** Version 1 is the base set of
+    tables; version 2 adds the `nameKey` / `*aliasKeys` indexes from decision 23 and backfills
+    them in an `.upgrade()` callback. A single-version schema would make the "migration proven to
+    run exactly once" criterion unverifiable — there would be nothing to migrate. The upgrade is
+    covered by a test that opens a v1 database, reopens it at v2 and asserts the callback fired
+    exactly once across two opens.
+25. **`copyMealToDays` takes the source date.** PLAN.md writes the signature as
+    `copyMealToDays(mealId, targetDates[])`, but days are keyed by date and a `PlannedMeal` id is
+    not indexed, so that signature forces a full scan of every day in the database. The
+    implemented signature is `copyMealToDays(sourceDate, mealId, targetDates)`, matching the
+    sibling `duplicateMeal(dayDate, mealId)`. Callers always know the day they are looking at.
+26. **Unit → grams rules, and an incomplete item weighs nothing.** PLAN.md gives the units
+    (`g` / `ml` / `szt`) and `gramsPerUnit` but not the conversion. Implemented: `g` is grams;
+    `ml` defaults to 1 g/ml and `gramsPerUnit` overrides that as a density; `szt` requires
+    `gramsPerUnit`. A `szt` item with no `gramsPerUnit` contributes **0 g and 0 kcal** rather than
+    throwing — the recipe editor computes a live macro sum while the user is still typing, and a
+    throw there would blank the screen. `isRecipeItemComplete()` is the validator the editor uses
+    to flag the row instead.
+27. **`profile` and `meta` are outbound-key Dexie tables.** `Profile` in PLAN.md has no id field,
+    and inventing one would leak into the Drive JSON. Both tables are declared with an empty
+    schema string, so the key is passed to `put()` separately: the profile always under the key
+    `1`, the meta table as a plain key/value store for schema and sync bookkeeping.
+28. **Macro arithmetic keeps full float precision; rounding is a display concern.** `roundMacros()`
+    exists for the UI, but nothing in the computation or persistence path calls it, so repeated
+    copy/scale operations never accumulate rounding drift.
+29. **The data layer was verified in a real browser under the production CSP, then
+    unwired again.** Nothing in the UI imports it yet — Phase 3 is what first loads the
+    nutrition subset into IndexedDB — so the modules are tree-shaken out of the shipped
+    bundle and `npm run docker:up` would have proved nothing on its own. To check it anyway,
+    `src/main.ts` was *temporarily* pointed at the repository, the container rebuilt, and the
+    page loaded in headless Chrome against the real `Caddyfile` headers. It seeded an
+    ingredient, saved a recipe with two tags, planned it on a day, copied that day to the next
+    and read the result back: `kcal=200 copied=1 goal=2000 tag=bez glutenu` — correct on every
+    value, with no CSP violation and no `eval`-related failure from Dexie. The probe was then
+    removed; `src/main.ts` is byte-identical to what Phase 1 committed. Recorded because it is
+    the evidence that Dexie survives `script-src 'self'`, which nothing in the repository will
+    otherwise demonstrate until Phase 3.
+
 
 ## Open questions
 
