@@ -1,0 +1,14 @@
+# Local mirror of the production container. Requires a prebuilt dist/ —
+# use `npm run docker:up`, which builds first.
+services:
+  app:
+    build: .
+    image: eat-my-way:dev
+    container_name: eatmyway-dev
+    restart: unless-stopped
+    # Loopback only: nginx (in production) or the browser (locally) reaches it
+    # through 127.0.0.1, never the public interface.
+    ports:
+      - '127.0.0.1:8080:8080'
+    mem_limit: 256m
+    cpus: 0.5

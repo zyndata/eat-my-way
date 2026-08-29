@@ -1,0 +1,4 @@
+# Only the built bundle and the Caddy config belong in the image.
+*
+!dist
+!Caddyfile

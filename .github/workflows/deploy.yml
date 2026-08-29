@@ -144,7 +144,7 @@ jobs:
       - name: Verify the site responds
         run: |
           for i in 1 2 3 4 5; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" https://eatmyway.gorny.dev/ || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Deploy-Check: ${{ secrets.DEPLOY_CHECK_TOKEN }}" https://eatmyway.gorny.dev/ || true)
             if [ "$code" = "200" ]; then echo "OK: HTTP 200"; exit 0; fi
             echo "attempt $i: HTTP $code — retrying"; sleep 5
           done

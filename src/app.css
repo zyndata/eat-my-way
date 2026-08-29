@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+/* Design tokens. Kept as CSS variables so Tailwind utilities and plain CSS agree. */
+@theme {
+  --color-surface: oklch(99% 0.005 95);
+  --color-surface-raised: oklch(100% 0 0);
+  --color-border: oklch(90% 0.008 95);
+  --color-ink: oklch(25% 0.02 95);
+  --color-ink-muted: oklch(52% 0.015 95);
+  --color-accent: oklch(62% 0.16 145);
+  --color-accent-ink: oklch(99% 0.01 145);
+}
+
+@layer base {
+  html {
+    /* Avoid layout shift when a view is long enough to scroll and the next is not. */
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-ink);
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
