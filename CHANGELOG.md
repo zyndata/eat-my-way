@@ -11,6 +11,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Features
 
 - Phase 2 - local data layer over IndexedDB
+- Phase 3 - bundled USDA nutrition database and ingredient autocomplete
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [0.1.0] - 2026-08-29
 
