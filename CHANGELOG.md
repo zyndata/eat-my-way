@@ -6,7 +6,7 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [0.2.0] - 2026-08-31
 
 ### Bug Fixes
 
@@ -23,6 +23,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 3 - bundled USDA nutrition database and ingredient autocomplete
 - Phase 4 - recipe library and editor
 - Phase 5 - calendar, day view and meal view
+- Add privacy policy and terms pages
 
 ### Miscellaneous
 
@@ -30,6 +31,8 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
+- Update CHANGELOG
+- Merge dev for v0.2.0
 
 ## [0.1.0] - 2026-08-29
 
