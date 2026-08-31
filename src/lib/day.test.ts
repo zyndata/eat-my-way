@@ -10,9 +10,11 @@ import {
   emptyDay,
   findMeal,
   planMeal,
+  orderMeals,
   removeMeal,
   reorderMeals,
   resnapshotMeals,
+  updateMeal,
   withGoals
 } from './day';
 import { dayTotals, ingredientLookup, mealMacros } from './macros';
@@ -248,5 +250,75 @@ describe('countMealsFromRecipe', () => {
 
     expect(countMealsFromRecipe(day, 'r1')).toBe(2);
     expect(countMealsFromRecipe(day, 'r3')).toBe(0);
+  });
+});
+
+describe('orderMeals', () => {
+  const day: Day = { date: '2026-09-10', meals: [mealOf('a', 100), mealOf('b', 200), mealOf('c', 300)] };
+
+  it('puts the meals in the order the ids name', () => {
+    expect(orderMeals(day, ['c', 'a', 'b']).meals.map((meal) => meal.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('keeps the goal snapshot and every meal object intact', () => {
+    const planned: Day = { ...day, goalSnapshot: goals };
+    const reordered = orderMeals(planned, ['b', 'c', 'a']);
+
+    expect(reordered.goalSnapshot).toEqual(goals);
+    expect(dayTotals(reordered)).toEqual(dayTotals(planned));
+  });
+
+  it('never drops a meal the id list forgot', () => {
+    // A list that arrives stale must not silently delete what it does not mention.
+    expect(orderMeals(day, ['c']).meals.map((meal) => meal.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('ignores ids that name no meal on this day', () => {
+    expect(orderMeals(day, ['b', 'ghost', 'a', 'c']).meals.map((meal) => meal.id)).toEqual([
+      'b',
+      'a',
+      'c'
+    ]);
+  });
+});
+
+describe('updateMeal', () => {
+  const day: Day = {
+    date: '2026-09-10',
+    meals: [mealOf('a', 100), mealOf('b', 200)],
+    goalSnapshot: goals
+  };
+
+  it('changing cookingScale leaves the day totals exactly where they were', () => {
+    // PLAN.md's first invariant: cookingScale NEVER touches calories.
+    const scaled = updateMeal(day, 'a', { cookingScale: 4 });
+
+    expect(scaled.meals[0]?.cookingScale).toBe(4);
+    expect(dayTotals(scaled)).toEqual(dayTotals(day));
+  });
+
+  it('changing portionsEaten moves the totals by exactly that factor', () => {
+    const eaten = updateMeal(day, 'a', { portionsEaten: 2 });
+
+    expect(mealMacros(eaten.meals[0]!)).toEqual(macros(200, 20, 40, 10));
+    expect(dayTotals(eaten).kcal).toBe(dayTotals(day).kcal + 100);
+  });
+
+  it('leaves the untouched field, the snapshot and the other meals alone', () => {
+    const updated = updateMeal(day, 'a', { cookingScale: 3 });
+
+    expect(updated.meals[0]?.portionsEaten).toBe(1);
+    expect(updated.meals[0]?.macroSnapshot).toEqual(day.meals[0]?.macroSnapshot);
+    expect(updated.meals[1]).toEqual(day.meals[1]);
+    expect(updated.goalSnapshot).toEqual(goals);
+  });
+
+  it('copies the snapshot instead of sharing it with the source day', () => {
+    const updated = updateMeal(day, 'a', { portionsEaten: 2 });
+    expect(updated.meals[0]?.macroSnapshot).not.toBe(day.meals[0]?.macroSnapshot);
+  });
+
+  it('returns the same day when the meal is not there', () => {
+    expect(updateMeal(day, 'ghost', { portionsEaten: 5 })).toBe(day);
   });
 });

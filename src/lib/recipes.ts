@@ -80,6 +80,26 @@ export function searchRecipes(
   return rankCandidates(query, candidates, -1).map((match) => match.item.entry);
 }
 
+/**
+ * Recipes whose *single portion* fits within `remaining` kilocalories — the picker's
+ * „Zmieści się w limicie" filter. One portion, because `portionsEaten` is only chosen after
+ * the pick (STATE.md decision 64).
+ *
+ * A recipe whose per-portion macros are not in the map is kept rather than hidden: an
+ * unknown value is not evidence that it does not fit, and silently dropping a recipe from
+ * the picker is the one failure mode this filter must not have.
+ */
+export function filterByBudget(
+  entries: readonly RecipeListEntry[],
+  portionMacros: ReadonlyMap<string, Macros>,
+  remaining: number
+): RecipeListEntry[] {
+  return entries.filter((entry) => {
+    const macros = portionMacros.get(entry.recipe.id);
+    return macros === undefined || macros.kcal <= remaining;
+  });
+}
+
 // ---- editor drafts ----------------------------------------------------------------------
 
 /**

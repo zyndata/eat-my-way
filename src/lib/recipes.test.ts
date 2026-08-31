@@ -6,6 +6,7 @@ import {
   draftMacros,
   draftToRecipe,
   emptyDraftItem,
+  filterByBudget,
   filterByTags,
   incompleteDrafts,
   isDraftComplete,
@@ -232,5 +233,41 @@ describe('draftFromRecipe', () => {
 
     expect(loaded.tagLabels).toEqual(['Obiad']);
     expect(toRecipeItems(loaded.items)).toEqual(recipe.items);
+  });
+});
+
+describe('filterByBudget', () => {
+  const entries: RecipeListEntry[] = [
+    { recipe: makeRecipe({ id: 'light', name: 'Sałatka' }), usage: { plannedCount: 0 } },
+    { recipe: makeRecipe({ id: 'heavy', name: 'Zapiekanka' }), usage: { plannedCount: 0 } },
+    { recipe: makeRecipe({ id: 'unknown', name: 'Bez wartości' }), usage: { plannedCount: 0 } }
+  ];
+  const portions = new Map([
+    ['light', macros(300, 20, 10, 5)],
+    ['heavy', macros(900, 30, 80, 40)]
+  ]);
+
+  it('keeps the recipes whose single portion fits', () => {
+    const fitting = filterByBudget(entries, portions, 620);
+    expect(fitting.map((entry) => entry.recipe.id)).toEqual(['light', 'unknown']);
+  });
+
+  it('a portion exactly on the limit still fits', () => {
+    expect(filterByBudget(entries, portions, 300).map((entry) => entry.recipe.id)).toContain(
+      'light'
+    );
+  });
+
+  it('never hides a recipe whose macros are unknown', () => {
+    // Hiding it would be a guess, and a recipe silently missing from the picker is the one
+    // failure this filter must not have.
+    expect(filterByBudget(entries, portions, 10).map((entry) => entry.recipe.id)).toEqual([
+      'unknown'
+    ]);
+  });
+
+  it('leaves the ranking to searchRecipes — it only removes rows', () => {
+    const filtered = filterByBudget(entries, portions, 5000);
+    expect(filtered.map((entry) => entry.recipe.id)).toEqual(['light', 'heavy', 'unknown']);
   });
 });

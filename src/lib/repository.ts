@@ -12,13 +12,17 @@ import {
   addMeals,
   copyMealsInto,
   countMealsFromRecipe,
+  clonePlannedMeal,
   duplicateMealInDay,
   emptyDay,
   findMeal,
+  orderMeals,
   planMeal,
   removeMeal,
   resnapshotMeals,
-  type CopyMode
+  updateMeal,
+  type CopyMode,
+  type MealChanges
 } from './day';
 import { newId, type IdFactory } from './ids';
 import { resolveTags } from './tags';
@@ -237,6 +241,18 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     /**
+     * The recipes behind a set of ids, keyed by id. Ids that resolve to nothing are simply
+     * absent — a meal whose recipe was deleted is a supported state, not an error
+     * (STATE.md decisions 51 and 73).
+     */
+    async recipesByIds(ids: readonly string[]): Promise<Map<string, Recipe>> {
+      const rows = await database.recipes.bulkGet([...new Set(ids)]);
+      return new Map(
+        rows.filter((row): row is Recipe => row !== undefined).map((row) => [row.id, row])
+      );
+    },
+
+    /**
      * Store a recipe. When `labels` is given they are the user's free-typed tags: unknown
      * ones are created (keeping the spelling as typed) and the recipe stores their keys.
      * `useCount` follows the difference against what the recipe was tagged with before.
@@ -338,6 +354,23 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       return storeDay(emptyDay(date));
     },
 
+    /**
+     * Persist a new meal order. Takes ids rather than meals so nothing that has been through
+     * a Svelte `$state` proxy can reach IndexedDB - see STATE.md decisions 56 and 77.
+     */
+    async setMealOrder(date: string, mealIds: readonly string[]): Promise<Day> {
+      return database.transaction('rw', database.days, async () =>
+        storeDay(orderMeals(await loadDay(date), mealIds))
+      );
+    },
+
+    /** Change one meal's `cookingScale` or `portionsEaten`. Snapshots are never touched. */
+    async updateMeal(date: string, mealId: string, changes: MealChanges): Promise<Day> {
+      return database.transaction('rw', database.days, async () =>
+        storeDay(updateMeal(await loadDay(date), mealId, changes))
+      );
+    },
+
     // ---- copy operations -----------------------------------------------------------
 
     /** Copy one meal within its own day, inserted right after the original. */
@@ -393,6 +426,33 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           written.push(await storeDay(day));
         }
         return written;
+      });
+    },
+
+    /**
+     * PLAN.md's "cooking for 2 days": set the meal's `cookingScale` to 2 and put a copy of it
+     * on `targetDate` eating one portion. The copy carries the source `macroSnapshot` over
+     * verbatim, like every other copy, and `cookingScale` on the copy stays 1 - the second
+     * day is not cooked again, it is eaten out of the same pot.
+     */
+    async cookAlsoOn(
+      sourceDate: string,
+      mealId: string,
+      targetDate: string,
+      options: { scale?: number; nextId?: IdFactory } = {}
+    ): Promise<Day> {
+      const nextId = options.nextId ?? newId;
+      return database.transaction('rw', database.days, database.profile, async () => {
+        const source = findMeal(await loadDay(sourceDate), mealId);
+        if (source === undefined) throw new Error(`Unknown meal: ${mealId} on ${sourceDate}`);
+
+        const scaled = updateMeal(await loadDay(sourceDate), mealId, {
+          cookingScale: options.scale ?? 2
+        });
+        await storeDay(scaled);
+
+        const copy = { ...clonePlannedMeal(source, nextId()), cookingScale: 1, portionsEaten: 1 };
+        return storeDay(addMeals(await loadDay(targetDate), [copy], await currentGoals()));
       });
     },
 

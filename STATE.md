@@ -11,7 +11,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 2     | Local data layer            | done    | 2026-08-29 |
 | 3     | Nutrition DB & autocomplete | done    | 2026-08-29 |
 | 4     | Recipes                     | done    | 2026-08-31 |
-| 5     | Calendar & day view         | pending | —         |
+| 5     | Calendar & day view         | done    | 2026-08-31 |
 | 6     | Drive sync & vault          | pending | —         |
 | 7     | Gemini import               | pending | —         |
 | 8     | PWA & polish                | pending | —         |
@@ -396,6 +396,128 @@ filtered flat list). Her decisions on each point follow.
     rather than a summary or a refusal, and must fall back to „wklej treść" with a clear Polish
     message when a URL cannot be read. The nutrition rule is untouched: the model returns
     ingredients, amounts and instructions, never numbers.
+64. **The recipe picker filters by the day's remaining budget, and that lands in Phase 5.** Asked for
+    directly: with three meals planned, choosing supper should not mean opening recipes one by one to
+    see which still fits. Everything it needs already exists — the day knows its `goalSnapshot` and
+    its total, and `repository.recipeMacros()` already gives per-portion kcal for the library — so it
+    is a filter over data the picker holds anyway, and building it while the picker is being written
+    is far cheaper than retrofitting it. Phase 5 gets: „Zostało 620 kcal" in the sheet header and a
+    „Zmieści się w limicie" toggle that keeps the existing ranking inside the filter. Three cases
+    have to behave: an exhausted budget says so and leaves the full list („Limit dzienny już
+    wykorzystany") rather than showing nothing; a day with no goal at all hides the toggle; and
+    recipes are compared at **one portion**, since `portionsEaten` is chosen after the pick.
+65. **Fitting by portion size and by the other macros is Phase 9, not Phase 5.** A 800 kcal recipe
+    fits a 620 kcal gap at 0.75 portion, and the arithmetic for that already exists — but suggesting a
+    portion is a different interaction from filtering a list. So is „you still need 40 g of protein",
+    which is a ranking problem and the easy way to build something that recommends nonsense. Both are
+    deliberately held back so Phase 5 ships the plain, obviously-correct version first.
+66. **Ingredient substitution already works; what is missing is keeping both versions.** „Zmień" on a
+    filled ingredient row re-opens the autocomplete and keeps the amount and unit, and the live sum
+    recomputes — rice to buckwheat is one tap plus a pick, and decision 50's dialog then offers to
+    refresh future days. The gap the user is really describing is that the swap **overwrites** the
+    recipe: having both versions means retyping one from scratch. Phase 9 task 3 (duplicate a recipe)
+    is what closes it — „Zapisz jako kopię", swap one row, done — and its wording now says so.
+67. **Rejected: per-meal ingredient substitution.** Swapping an ingredient on one planned meal without
+    touching the recipe ("today I made it with buckwheat") has nowhere to live. `PlannedMeal` holds a
+    frozen `macroSnapshot` and a `recipeId`, deliberately: that is the entire mechanism that stops
+    history from rewriting itself. Supporting it would mean adding per-meal item overrides to the data
+    model — a change to the foundation, for convenience that a duplicated recipe covers in two taps.
+    Recorded as considered and declined, with the reason, rather than left to be re-discovered.
+
+### 2026-08-31 — Phase 5
+
+68. **One new dependency: `svelte-dnd-action` 0.9.79**, named in PLAN.md task 4, and the only
+    package added. It needed a CSP check before it went in: the production policy is
+    `style-src 'self'` with no `unsafe-inline`, so a library that positioned or animated
+    anything through a `style` *attribute* or an injected `<style>` element would be silently
+    broken in production and fine in `npm run dev`. Its bundle contains neither — every
+    visual change is a CSSOM property assignment (`element.style.transform = …`), which CSP
+    does not police. Verified again in the browser under the real headers.
+69. **`dragHandleZone` + `dragHandle`, not `dndzone`.** A drag can only begin on the card's
+    handle, so a touch that lands anywhere else scrolls the list — which is what the
+    acceptance criterion „touch scroll on the list does not start a drag" actually asks for.
+    PLAN.md's „~200 ms touch delay" is `delayTouchStart: 200` on top of that, guarding the
+    handle itself.
+70. **The drag library speaks Polish.** `setAriaStrings()` is called once at module scope in
+    `MealList.svelte` with Polish wording for all seven screen-reader messages, and
+    `setKeyboardDragTrigger('space')` leaves Enter free to open the meal. Without this the
+    only English text in the app would be the one thing a blind user hears.
+71. **Rings and bars are SVG geometry, not CSS.** A progress ring drawn with
+    `stroke-dasharray` and a bar drawn as a `<rect width=…>` are SVG *presentation
+    attributes*, not styles, so they are untouched by `style-src`. The obvious alternative —
+    `style="width: 63%"` — is exactly the pattern decisions 44 and 68 exist to avoid. Nothing
+    in this phase sets an inline style anywhere.
+72. **A meal card offers its actions two ways: swipe-left and a „⋮" button.** PLAN.md asks for
+    swipe-left, which is invisible on a desktop and unreachable from a keyboard. Both gestures
+    open the same action row (Powiel / Kopiuj do… / Usuń), and the row is `inert` while
+    closed so it never takes focus. The swipe is measured on `touchend` and never calls
+    `preventDefault`, so vertical scrolling over a card is unaffected.
+73. **A planned meal whose recipe is gone reads „Usunięty przepis"** — resolving open question 7.
+    Decision 51 keeps such meals because their `macroSnapshot` is their own; the day view
+    therefore renders the placeholder name, keeps the macros, and drops the link to the meal
+    view's recipe section rather than pretending a recipe is still there. The meal view says
+    the same and still lets the user change `portionsEaten` and delete the meal.
+74. **The week starts on Monday, and the month grid is exactly as tall as the month needs.**
+    Polish convention. The grid runs from the Monday on or before the 1st to the Sunday on or
+    after the last day, so a month occupies five or six rows rather than a fixed 42 cells with
+    a trailing empty week.
+75. **A day with no `goalSnapshot` shows the profile's current goals.** PLAN.md task 2 says the
+    header falls back to profile goals for empty days; the same fallback is used for any day
+    without a snapshot, and the snapshot wins the moment one exists. `dayGoals()` is the one
+    place this is decided.
+76. **„Dodaj też jutro" is a one-way checkbox.** PLAN.md calls for a checkbox next to
+    `cookingScale`; checking it sets the scale to 2 and appends a copy of the meal to
+    tomorrow with `portionsEaten = 1`. Unchecking it is *not* implemented as an undo: the
+    checkbox is shown checked and disabled once tomorrow already carries a meal from the same
+    recipe, next to a link to that day. Guessing which of tomorrow's meals to delete — the
+    user may have planned that recipe for tomorrow deliberately — would be the kind of silent
+    rewrite the whole snapshot design exists to prevent.
+77. **Reorder is persisted as a list of meal ids, never as the array the drag handed back.**
+    `svelte-dnd-action` returns the reordered items, but those objects came out of `$state`
+    and are proxies, which `IDBObjectStore.put` refuses (decision 56). The repository takes
+    `string[]` and rebuilds the day from the meals it already holds, so nothing that touched
+    a proxy can reach Dexie. The same rule shaped `updateMeal`, which takes a plain patch.
+78. **The replace/append question is only asked when it can change something.** „Kopiuj dzień
+    do…" prompts only if at least one chosen day already has meals; otherwise append and
+    replace are the same operation and the dialog would be noise. Append is the default, as
+    PLAN.md requires. Same rule as decision 50.
+79. **The calendar screen is one component behind two routes.** `/` and `/day/:date` both
+    render `DayScreen`; `/` passes today's date and re-reads it when the tab regains focus, so
+    an app left open overnight does not keep showing yesterday. An unparseable `:date` renders
+    a „nie ma takiej daty" message rather than a crashed screen.
+
+80. **The budget filter is off when the sheet opens, and it turns itself off when it stops
+    applying.** Decision 64 settles what the filter does; these two are the parts it left open.
+    Opening the picker shows the whole library — a sheet that silently hides recipes the moment
+    it opens is a sheet the user cannot trust — and the toggle is offered next to „Zostało
+    620 kcal". `dayBudget()` decides all three cases in one place, and the picker derives
+    „is the filter actually applying" from it rather than from the checkbox alone, so a day
+    that becomes exhausted while the sheet is open falls back to the full list instead of
+    showing nothing. A recipe whose per-portion macros could not be computed is never hidden:
+    an unknown value is not evidence that it does not fit.
+
+81. **Phase 5 verified in a real browser under the production CSP.** `npm run docker:up` plus
+    headless Chrome on a fresh profile, driving the real UI through CDP. Adding a meal from the
+    picker froze `macroSnapshot` at 300 kcal and captured `goalSnapshot` on that first meal;
+    the header read „300 / 2000 kcal" with the three bars beside it. The picker's „Zostało
+    1700 kcal" toggle dropped a 1900 kcal recipe and kept a 300 kcal one; an exhausted day said
+    „Limit dzienny już wykorzystany — 400 kcal ponad cel" with **no** toggle and the full list;
+    a profile with `kcal: 0` showed neither the line nor the toggle. In the meal view, „+" on
+    the cooking scale moved the displayed amount 300 g → 600 g while the day total stayed at
+    300 kcal, and `portionsEaten` 1 → 1.5 moved it to 450 kcal. A keyboard drag on the handle
+    reordered the list, the new order reached IndexedDB and survived a reload. A touch dragged
+    120 px up the **card body** started no drag (`#dnd-action-dragged-el` absent); the same
+    gesture on the **handle** did — which is the „touch scroll does not start a drag" criterion,
+    checked rather than assumed. Copying a day onto a non-empty one raised „Te dni już mają
+    posiłki" with Dopisz as the accented default, and appending left the target's own meal in
+    place; editing the source recipe afterwards left both copies at their frozen 500 and 200
+    kcal. After the profile goal dropped to 1500, the planned day still showed „/ 2000 kcal"
+    and an unplanned day showed „/ 1500 kcal". The week strip's rings read 0.1 and 0.35 of a
+    turn for 200/2000 and 700/2000. Deleting a recipe left its meal on the day as „Usunięty
+    przepis" with the day total unchanged at 700 kcal. With the network emulated **offline**
+    the day view still rendered. Zero CSP violations and zero page errors across both runs; the
+    only four requests the app ever made were the document, the CSS, the JS and the nutrition
+    bundle.
 
 ## Open questions
 
@@ -420,10 +542,9 @@ filtered flat list). Her decisions on each point follow.
    correct but not pleasant.
 6. **Foundation Foods moves twice a year.** Nothing watches for a new release; refreshing it is
    a deliberate act (decision 32). Worth a reminder once the app is in daily use.
-7. **A planned meal whose recipe was deleted has no name to show** (Phase 5). Decision 51 keeps
-   such meals — their macros are their own — but `PlannedMeal` carries no name, and PLAN.md's
-   data model is fixed, so the day view will have to render something like „Usunięty przepis"
-   from the fact that `recipeId` no longer resolves. Decide it when the meal card is built.
+7. **A planned meal whose recipe was deleted — answered.** Decision 73: the day view and the
+   meal view render „Usunięty przepis" when `recipeId` no longer resolves, keep the frozen
+   macros, and drop the recipe section rather than pretending it is still there.
 8. **Ingredient rows cannot be reordered, and a recipe cannot be duplicated.** Neither is in
    PLAN.md Phase 4 and neither was built. Both are obvious wants once the app is in daily use;
    `reorderMeals` in `day.ts` is the pattern to copy if rows ever need it.
@@ -440,3 +561,12 @@ filtered flat list). Her decisions on each point follow.
     library by recent activity. Grouping by tag has to decide what happens inside a section (the same
     ranking, presumably), what happens to untagged recipes (an „Bez tagu" section), and whether a
     recipe with three tags appears three times or once. Not decided.
+12. **The swipe-left gesture is only checked by hand.** The drag/scroll boundary is verified in
+    the browser (decision 81), but the card's own swipe is not — synthesizing a horizontal drag
+    that a browser turns into a click is the part the CDP run does not cover. The „⋮" button is
+    the path that *is* covered, and it reaches the same actions (decision 72).
+13. **The day screen re-reads the whole month grid after every write.** ~42 rows and one
+    `getDays` call, which is nothing today. It becomes worth revisiting if Phase 6 makes a read
+    cost a sync round trip; it is written so that only `load()` would have to change.
+14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
+    built here — decision 64's filter compares whole portions against kcal only.

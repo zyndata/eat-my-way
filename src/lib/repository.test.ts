@@ -425,3 +425,126 @@ describe('deleting a recipe', () => {
     expect(dayTotals(day)).toEqual(macros(300, 45, 1, 9));
   });
 });
+
+describe('recipesByIds', () => {
+  it('resolves the recipes a day refers to, skipping the ones that are gone', async () => {
+    const recipe = await seedRecipe();
+    const found = await repo.recipesByIds([recipe.id, 'nie-ma']);
+
+    expect(found.get(recipe.id)?.name).toBe(recipe.name);
+    expect(found.has('nie-ma')).toBe(false);
+  });
+});
+
+describe('setMealOrder', () => {
+  it('persists a new order across a re-read', async () => {
+    const recipe = await seedRecipe();
+    const first = await repo.addRecipeToDay(MONDAY, recipe.id);
+    const second = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.setMealOrder(MONDAY, [second.id, first.id]);
+
+    const day = await repo.getDay(MONDAY);
+    expect(day.meals.map((meal) => meal.id)).toEqual([second.id, first.id]);
+  });
+
+  it('leaves the totals and the goal snapshot untouched', async () => {
+    const recipe = await seedRecipe();
+    const first = await repo.addRecipeToDay(MONDAY, recipe.id);
+    const second = await repo.addRecipeToDay(MONDAY, recipe.id);
+    const before = await repo.getDay(MONDAY);
+
+    await repo.setMealOrder(MONDAY, [second.id, first.id]);
+
+    const after = await repo.getDay(MONDAY);
+    expect(dayTotals(after)).toEqual(dayTotals(before));
+    expect(after.goalSnapshot).toEqual(before.goalSnapshot);
+  });
+});
+
+describe('updateMeal', () => {
+  it('cookingScale changes nothing about the day totals', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+    const before = dayTotals(await repo.getDay(MONDAY));
+
+    await repo.updateMeal(MONDAY, meal.id, { cookingScale: 3 });
+
+    const day = await repo.getDay(MONDAY);
+    expect(day.meals[0]?.cookingScale).toBe(3);
+    expect(dayTotals(day)).toEqual(before);
+  });
+
+  it('portionsEaten scales the day totals', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.updateMeal(MONDAY, meal.id, { portionsEaten: 2 });
+
+    expect(dayTotals(await repo.getDay(MONDAY))).toEqual(macros(600, 90, 2, 18));
+  });
+});
+
+describe('cookAlsoOn', () => {
+  it('scales the source and lands a one-portion copy on the target day', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.cookAlsoOn(MONDAY, meal.id, TUESDAY, { nextId: seqIds('copy') });
+
+    const source = await repo.getDay(MONDAY);
+    const target = await repo.getDay(TUESDAY);
+
+    expect(source.meals[0]?.cookingScale).toBe(2);
+    // Cooking twice as much does not mean eating twice as much.
+    expect(dayTotals(source)).toEqual(macros(300, 45, 1, 9));
+    expect(target.meals).toHaveLength(1);
+    expect(target.meals[0]?.id).toBe('copy-1');
+    expect(target.meals[0]?.cookingScale).toBe(1);
+    expect(target.meals[0]?.portionsEaten).toBe(1);
+    expect(target.meals[0]?.macroSnapshot).toEqual(meal.macroSnapshot);
+  });
+
+  it('appends to a target day that already has meals, and captures its goals', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(TUESDAY, recipe.id);
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.cookAlsoOn(MONDAY, meal.id, TUESDAY);
+
+    const target = await repo.getDay(TUESDAY);
+    expect(target.meals).toHaveLength(2);
+    expect(target.goalSnapshot).toEqual(DEFAULT_PROFILE.goals);
+  });
+
+  it('refuses a meal that is not on the source day', async () => {
+    await expect(repo.cookAlsoOn(MONDAY, 'nie-ma', TUESDAY)).rejects.toThrow('Unknown meal');
+  });
+});
+
+describe('a copy is independent of later recipe edits', () => {
+  it('copyDay leaves the copies frozen when the source recipe is refreshed', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.copyDay(MONDAY, [WEDNESDAY], 'append', seqIds('copy'));
+
+    // Halve the recipe, then carry the change into every day from Monday onwards.
+    await repo.saveRecipe({ ...recipe, items: [item(chicken.id, 100)] });
+    await repo.refreshFutureSnapshots(recipe.id, MONDAY);
+
+    // Both days were in the future, so both followed — the point is that the *copy* is a
+    // meal in its own right, with its own id and its own snapshot object.
+    const copied = await repo.getDay(WEDNESDAY);
+    expect(copied.meals[0]?.id).toBe('copy-1');
+    expect(copied.meals[0]?.macroSnapshot).toEqual(macros(100, 20, 0, 2));
+
+    // A copy made onto a past day is never touched by a refresh.
+    await repo.copyDay(MONDAY, ['2026-01-01'], 'append', seqIds('old'));
+    await repo.saveRecipe({ ...recipe, items: [item(chicken.id, 500)] });
+    await repo.refreshFutureSnapshots(recipe.id, MONDAY);
+    expect((await repo.getDay('2026-01-01')).meals[0]?.macroSnapshot).toEqual(
+      macros(100, 20, 0, 2)
+    );
+  });
+});
