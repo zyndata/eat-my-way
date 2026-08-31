@@ -8,6 +8,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- „dodaj też jutro" can be unchecked, and the checkbox is no longer black
+
 ### Documentation
 
 - Record end-user review, phase 9 and link-based recipe import
@@ -22,6 +26,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
