@@ -8,14 +8,21 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Documentation
+
+- Record end-user review, phase 9 and link-based recipe import
+- Budget-aware recipe picker in phase 5, portion fitting in phase 9
+
 ### Features
 
 - Phase 2 - local data layer over IndexedDB
 - Phase 3 - bundled USDA nutrition database and ingredient autocomplete
 - Phase 4 - recipe library and editor
+- Phase 5 - calendar, day view and meal view
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 
