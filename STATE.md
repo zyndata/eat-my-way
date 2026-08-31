@@ -566,10 +566,11 @@ filtered flat list). Her decisions on each point follow.
 
 ## Open questions
 
-1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216` and written to
-   the local `.env.local`; see decision 83. Still open: setting the same value as the
-   `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a secret) in GitHub, without which a
-   production build ships an empty client ID. Phase 6 is otherwise unblocked.
+1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
+   local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
+   secret — `deploy.yml` reads it as `vars.`); see decision 83. Note that the v0.2.0 bundle
+   already on production was built before the variable existed and therefore carries an empty
+   client ID; the next tag fixes that. Phase 6 is unblocked.
 2. **Server prerequisites — done.** DNS, `/var/www/eatmyway`, the nginx site
    (`/etc/nginx/sites-available/eatmyway.gorny.dev`), the certificate with verified unattended
    renewal, the four `SSH_*` secrets and `DEPLOY_CHECK_TOKEN` are all in place. The only
