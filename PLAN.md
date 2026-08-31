@@ -398,6 +398,10 @@ Progress is tracked in [STATE.md](STATE.md).
 3. Add-meal bottom sheet (recipe picker): search + tag chips, sorted by recently/frequently
    used, „Nowy przepis" at the bottom; adding creates `PlannedMeal` with frozen
    `macroSnapshot` and triggers `goalSnapshot` capture on first meal.
+   The sheet header shows what is left of the day („Zostało 620 kcal") and a „Zmieści się w limicie"
+   toggle filters the list to recipes at or below that, at one portion, keeping the ranking inside
+   the filter (STATE.md decision 64). An exhausted budget says „Limit dzienny już wykorzystany" and
+   leaves the full list; a day with no goal hides the toggle.
 4. Drag & drop reorder with svelte-dnd-action, ~200 ms touch delay; array order is the display
    order.
 5. Swipe-left on meal card → Powiel / Kopiuj do... / Usuń; day header ⋮ → Kopiuj dzień do... /
@@ -418,6 +422,9 @@ Progress is tracked in [STATE.md](STATE.md).
       unchanged after editing the source recipe.
 - [ ] `goalSnapshot` is captured on first meal add and shown in the header even after profile
       goals change later.
+- [ ] With meals already planned, the picker's remaining-budget toggle shows exactly the recipes
+      whose per-portion kcal fit what is left, and behaves as specified with no goal and with an
+      exhausted budget.
 - [ ] Week strip rings reflect day totals vs goals; today is reachable from anywhere in ≤2
       taps.
 - [ ] Fully offline-capable; app remains usable with no vault and no Drive connection.
@@ -556,12 +563,17 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
    recipes are rewritten), delete (removed from every recipe), merge two tags into one. `useCount`
    is recomputed after each operation, never patched.
 3. **Duplicate a recipe** from the library and from the editor („Zapisz jako kopię") — a deep copy
-   with a new id and „ (kopia)" appended to the name.
+   with a new id and „ (kopia)" appended to the name. This is the variant workflow (STATE.md
+   decision 66): swapping rice for buckwheat already works through „Zmień" on the row, but it
+   overwrites the recipe; a copy is what lets both versions exist.
 4. **Sort options in the library**: recent activity (today's default), name, kcal per portion.
    The chosen order persists in the meta table.
 5. **Reorder ingredient rows** in the recipe editor, following the `reorderMeals` pattern in
    `day.ts` (drag & drop, ~200 ms touch delay).
-6. **Shopping-list export** next to the `cookingScale` control in the meal view (decision 62):
+6. **Smarter fitting to the day's budget** (STATE.md decision 65): suggest a portion size when a
+   recipe fits the remaining kcal only below one portion („zmieści się przy 0,75 porcji"), and rank
+   by the remaining protein / carbs / fat rather than kcal alone. Both build on the Phase 5 filter.
+7. **Shopping-list export** next to the `cookingScale` control in the meal view (decision 62):
    the scaled ingredient list, with the same ingredient summed when the scope covers more than one
    meal. Decide and record before writing code: the scope (meal / day / week), the transport
    (share sheet, clipboard, plain-text download, or an authenticated call to the user's own Home
@@ -576,6 +588,8 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
       tags leaves one tag whose `useCount` equals the number of recipes that now carry it (test).
 - [ ] A duplicated recipe is independent: editing the copy provably leaves the original and every
       existing `macroSnapshot` untouched.
+- [ ] A recipe that exceeds the remaining budget at one portion is offered with the portion that
+      fits, and never with a portion that does not.
 - [ ] The shopping list sums the same ingredient across meals in the chosen scope and reflects
       `cookingScale`, not `portionsEaten`.
 - [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero console
