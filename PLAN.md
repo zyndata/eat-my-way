@@ -474,9 +474,12 @@ Progress is tracked in [STATE.md](STATE.md).
    never hardcoded elsewhere); key never logged or included in error reports.
 2. Key test call (used by wizard step 4 and settings): clear Polish success/error messages,
    including a specific message for rejected old "Standard" keys.
-3. „Wklej przepis z internetu": paste text → Gemini returns structured JSON
-   `{ingredients:[{name, amount, unit, state}], instructions}` — prompt explicitly forbids
-   nutrition numbers and requires quantified fats (no „odrobina oliwy").
+3. „Wklej przepis z internetu": the input is **a link or pasted text** (STATE.md decision 63).
+   A URL is retrieved on Gemini's side — the browser never fetches a third-party page, so the CSP
+   does not change; unreachable URLs fall back to „wklej treść" with a clear Polish message. Either
+   way Gemini returns structured JSON `{ingredients:[{name, amount, unit, state}], instructions}` —
+   the prompt explicitly forbids nutrition numbers and requires quantified fats (no
+   „odrobina oliwy").
 4. Controlled-vocabulary matching: app selects candidate ingredient ids for each parsed name
    and asks Gemini to pick a `fdcId` from that list (or none); unmatched rows fall back to
    manual autocomplete in the editor.
@@ -489,6 +492,9 @@ Progress is tracked in [STATE.md](STATE.md).
 
 - [ ] Pasting a known Polish recipe produces a draft with matched ingredients, amounts, units,
       and quantified fat; nutrition values come only from the local DB.
+- [ ] A link to that same recipe produces the same draft as its pasted text; a URL the model cannot
+      read fails with a Polish message that points at pasting the text, and `connect-src` is
+      unchanged.
 - [ ] Importing the same text twice yields identical drafts (determinism).
 - [ ] Correcting a mismatch once makes the next import of that name match automatically.
 - [ ] Invalid/revoked key → clear Polish error; the key string appears in no console output,
@@ -505,8 +511,12 @@ Progress is tracked in [STATE.md](STATE.md).
 2. Verify full offline behavior: everything except sync and Gemini works with network off;
    graceful Polish messaging on the two online-only actions.
 3. Install prompt UX (Android + desktop) and installability check.
-4. Empty states for all screens (empty library, empty day with „Skopiuj z innego dnia" hint,
-   first-ever run).
+4. Empty states for all screens, carrying the copy from STATE.md decision 61: the empty library
+   offers both ways to fill it („Nowy przepis" and „Wklej przepis z internetu") and draws the line at
+   *no recipe search and no guessed calories* — never at "no recipes from the internet"; the empty day
+   hints „Skopiuj z innego dnia"; the recipe picker offers „Nowy przepis" when the library is
+   empty; `/about` gains a „Jak to działa" section stating that Drive is a backup, not a source of
+   recipes, and that the app cannot see the rest of the user's Drive.
 5. Mifflin-St Jeor calculator in settings goals (sex, age, height, weight, activity factor),
    result overridable.
 6. Data export in settings (single JSON download of all local data).
@@ -530,3 +540,44 @@ Progress is tracked in [STATE.md](STATE.md).
 - [ ] README covers install, deploy, and disaster recovery (new device, lost password).
 - [ ] A `v1.0.0` tag runs the release workflow green and https://eatmyway.gorny.dev serves the
       new version.
+
+## Phase 9 — Daily-use comfort
+
+Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE.md decisions
+58–62; none of it blocks daily use, and none of it may delay the first release.
+
+### Tasks
+
+1. **Grouped library view** `/recipes`: a toggle between the current flat, activity-ranked list
+   (decision 46) and a view grouped by tag with section headers and counts („Śniadanie (7)").
+   Inside a section the existing ranking applies. Settle open question 11 first: untagged recipes
+   get their own section, and a recipe carrying three tags appears under each of them.
+2. **Tag management in Settings**: rename (the `label` changes, the `key` is recomputed and
+   recipes are rewritten), delete (removed from every recipe), merge two tags into one. `useCount`
+   is recomputed after each operation, never patched.
+3. **Duplicate a recipe** from the library and from the editor („Zapisz jako kopię") — a deep copy
+   with a new id and „ (kopia)" appended to the name.
+4. **Sort options in the library**: recent activity (today's default), name, kcal per portion.
+   The chosen order persists in the meta table.
+5. **Reorder ingredient rows** in the recipe editor, following the `reorderMeals` pattern in
+   `day.ts` (drag & drop, ~200 ms touch delay).
+6. **Shopping-list export** next to the `cookingScale` control in the meal view (decision 62):
+   the scaled ingredient list, with the same ingredient summed when the scope covers more than one
+   meal. Decide and record before writing code: the scope (meal / day / week), the transport
+   (share sheet, clipboard, plain-text download, or an authenticated call to the user's own Home
+   Assistant `todo.add_item`), and — if anything talks to a host directly — the `connect-src`
+   consequence, which a header baked into the image cannot express for a per-user URL.
+
+### Acceptance criteria
+
+- [ ] The grouped view lists every recipe at least once; a recipe with several tags appears in
+      each of its sections and untagged recipes are not lost.
+- [ ] Renaming a tag updates every recipe carrying it and leaves no orphaned `key`; merging two
+      tags leaves one tag whose `useCount` equals the number of recipes that now carry it (test).
+- [ ] A duplicated recipe is independent: editing the copy provably leaves the original and every
+      existing `macroSnapshot` untouched.
+- [ ] The shopping list sums the same ingredient across meals in the chosen scope and reflects
+      `cookingScale`, not `portionsEaten`.
+- [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero console
+      violations under `npm run docker:up`.
+- [ ] All UI text in Polish; code/comments in English.

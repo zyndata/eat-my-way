@@ -15,6 +15,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 6     | Drive sync & vault          | pending | —         |
 | 7     | Gemini import               | pending | —         |
 | 8     | PWA & polish                | pending | —         |
+| 9     | Daily-use comfort           | pending | —         |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
@@ -337,6 +338,65 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
     throughout; the only request the app ever made was the one for the nutrition bundle, and the
     only offline failure was Chrome's own `/favicon.ico` (there is no icon until Phase 8).
 
+### 2026-08-31 — End-user review (before Phase 5)
+
+The person who will actually use the app read the plan and asked three questions: whether every
+recipe has to be typed in by hand or comes from somewhere external, whether a recipe can be saved
+as *breakfast* on a given day and show up that way in the calendar, and whether the library can be
+browsed and **grouped** by tag. The answers exposed a gap between her mental model (a day has named
+meal times; a library has section dividers) and the plan (a day is an ordered list; a library is a
+filtered flat list). Her decisions on each point follow.
+
+58. **The day view stays a flat, ordered list — no meal-type slots.** The question was raised
+    deliberately before Phase 5, because adding a meal time to `PlannedMeal` afterwards would be a
+    rewrite of the screens Phase 5 builds. Decided: no. Drag & drop ordering is the answer — the
+    first meal on the list *is* breakfast because it was put there. `PlannedMeal` keeps its exact
+    PLAN.md shape and Phase 5 is unchanged. Recipe tags („Śniadanie") remain a filtering aid in the
+    picker, not a label on the meal card.
+59. **A tag-grouped view of the library is wanted, and lands post-1.0 as Phase 9.** Today's chips
+    filter (AND, combined with the search box, decision 47) — they do not group. Wanted: section
+    headers with counts. The mechanism exists; only the view is missing. It is not a blocker for
+    daily use, so it must not delay v1.0.0.
+60. **Tag management belongs in Settings, also Phase 9.** Rename, delete and merge. Today a typo in
+    a tag can only be fixed recipe by recipe. Explicitly accepted by the user as "not a problem to
+    iterate over every recipe" — recorded so the low priority is a decision rather than an
+    oversight. Settings is still the Phase 1 placeholder; Phases 6 and 8 fill it, Phase 9 adds this.
+61. **Empty states must explain ownership of the library, and Phase 8 task 4 carries the copy.**
+    The user did not assume the recipe library was hers to build — she expected recipes to come from
+    somewhere. The first draft of the copy said "the app does not fetch recipes from the internet",
+    which she corrected on the spot: it *can*, that is exactly what Phase 7 is for. The line to draw
+    is **"no recipe search"**, not "no recipes from the internet" — the app never searches the web for
+    a dish, but a recipe found on a blog is pasted in and parsed into ingredients, and only the
+    nutrition numbers are strictly local. Getting this backwards would talk the user out of the
+    import feature. Three places, no new screens: the empty library offers both routes („Nowy
+    przepis" and „Wklej przepis z internetu"), then says the app does not search for recipes and does
+    not guess calories, because the same meal must always compute the same; the empty day points at
+    „Skopiuj z innego dnia"
+    and „Dodaj posiłek"; `/about` (decision 41) gains a „Jak to działa" section stating that Drive
+    is a **backup, not a source of recipes**, and that the app cannot see the rest of the user's
+    Drive. The recipe picker adds a one-line empty state with a „Nowy przepis" button so a first-time
+    user never has to navigate away to start. The Drive sentence matters most: the "external folder"
+    question came from not knowing what the app does with Drive.
+62. **Shopping-list export is a real feature, filed into Phase 9.** Requested next to the
+    `cookingScale` control ("cooking for how many people") in the meal view: export the scaled
+    ingredient list to a shopping app — **Listonic** preferred, **Home Assistant's shopping list** as
+    the alternative. Three things to settle while building it, not now: (a) scope — one meal, a whole
+    day or a week, with the same ingredient summed across meals; (b) transport — a share sheet /
+    clipboard / text export needs nothing from the server, whereas Home Assistant's `todo.add_item`
+    is an authenticated call to the user's own instance; (c) the CSP consequence of (b): `connect-src`
+    is a static list of three Google hosts, and a per-user Home Assistant URL cannot be added to a
+    header baked into the image. A share-sheet export costs no policy widening; anything talking to
+    an HA instance directly does, and would need its own decision entry.
+63. **„Wklej przepis z internetu" accepts a link, not only pasted text.** PLAN.md's Phase 7 wording is
+    pasted text; the user asked for a URL and it is settled: a link is the primary input, pasted text
+    stays as the fallback for sites a fetch cannot reach (paywalls, logins, an app with no share
+    link). The browser itself must not fetch the page — `connect-src` allows three Google hosts and
+    recipe sites send no CORS headers anyway — so retrieval happens on Gemini's side and the CSP is
+    unchanged. Phase 7 has to verify that the configured model really returns the page contents
+    rather than a summary or a refusal, and must fall back to „wklej treść" with a clear Polish
+    message when a URL cannot be read. The nutrition rule is untouched: the model returns
+    ingredients, amounts and instructions, never numbers.
+
 ## Open questions
 
 1. **Google OAuth client ID** — needs to be created in the Cloud Console (scope `drive.appdata`,
@@ -372,3 +432,11 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
    korzeń pietruszki) are approximated or absent. Open Food Facts is the planned second source
    (PLAN.md, "Nutrition data") and would fill these in; user-created custom ingredients cover
    the gap in the meantime.
+10. **Shopping-list export target and transport** (Phase 9, decision 62). Listonic has no documented
+    public import API; a share sheet / plain-text export may be the only thing that reaches it.
+    Home Assistant is reachable but only at a URL the app cannot know at build time. Resolve when
+    Phase 9 starts, and record the CSP consequence before writing any code.
+11. **Grouped library view vs. the existing ranking** (Phase 9, decision 59). Decision 46 orders the
+    library by recent activity. Grouping by tag has to decide what happens inside a section (the same
+    ranking, presumably), what happens to untagged recipes (an „Bez tagu" section), and whether a
+    recipe with three tags appears three times or once. Not decided.
