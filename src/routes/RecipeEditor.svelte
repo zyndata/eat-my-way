@@ -18,6 +18,7 @@
   } from '../lib/recipes';
   import type { RecipeReferences } from '../lib/repository';
   import { repository } from '../lib/repository';
+  import { scheduleSync } from '../lib/sync/state.svelte';
   import { ingredientIndex } from '../lib/ingredients';
   import { newId } from '../lib/ids';
   import { todayDate } from '../lib/dates';
@@ -127,6 +128,7 @@
 
   async function saveCustomIngredient(key: string, ingredient: Ingredient): Promise<void> {
     await repository.putIngredient(ingredient);
+    scheduleSync();
     // The autocomplete keeps an in-memory snapshot — see STATE.md decision 39.
     ingredientIndex.invalidate();
     pick(key, ingredient);
@@ -141,6 +143,7 @@
       if (updateFuture) await repository.refreshFutureSnapshots(recipe.id, todayDate());
       // `useCount` in the ingredient autocomplete is derived from the recipes.
       ingredientIndex.invalidate();
+      scheduleSync();
       push('#/recipes');
     } finally {
       saving = false;
@@ -184,6 +187,7 @@
     if (existing === undefined) return;
     await repository.deleteRecipe(existing.id);
     ingredientIndex.invalidate();
+    scheduleSync();
     push('#/recipes');
   }
 </script>

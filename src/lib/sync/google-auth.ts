@@ -1,0 +1,184 @@
+import { NotAuthenticatedError } from './backend';
+
+/**
+ * Google Identity Services, token flow.
+ *
+ * The app is a static bundle with no backend, so there is no place to keep a client secret
+ * and no authorization-code exchange: GIS hands the page a short-lived access token directly.
+ * That has one consequence worth stating plainly — **there is no refresh token in the
+ * browser**, so "revoked or expired refresh token" (PLAN.md) is here simply "the next silent
+ * token request fails", and the answer is the same: ask again, interactively, touching
+ * nothing in IndexedDB. See STATE.md decision 90.
+ *
+ * The token itself is held in memory only. It is never written to `localStorage`, IndexedDB
+ * or Drive, so closing the tab ends the session; the silent renewal makes that cheap.
+ */
+
+export const DRIVE_APPDATA_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+
+const GIS_SCRIPT_URL = 'https://accounts.google.com/gsi/client';
+
+/** Renew this many seconds before the token actually expires. */
+const EXPIRY_MARGIN_SECONDS = 60;
+
+interface TokenResponse {
+  access_token?: string;
+  expires_in?: number;
+  scope?: string;
+  error?: string;
+  error_description?: string;
+}
+
+interface TokenClient {
+  requestAccessToken(overrides?: { prompt?: string }): void;
+}
+
+interface GoogleIdentityServices {
+  accounts: {
+    oauth2: {
+      initTokenClient(config: {
+        client_id: string;
+        scope: string;
+        prompt?: string;
+        callback: (response: TokenResponse) => void;
+        error_callback?: (error: { type?: string; message?: string }) => void;
+      }): TokenClient;
+      revoke(token: string, done?: () => void): void;
+    };
+  };
+}
+
+declare global {
+  interface Window {
+    google?: GoogleIdentityServices;
+  }
+}
+
+export const GOOGLE_CLIENT_ID: string = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '';
+
+/** True when the build carries an OAuth client id at all. */
+export function isDriveConfigured(): boolean {
+  return GOOGLE_CLIENT_ID.trim().length > 0;
+}
+
+let scriptPromise: Promise<GoogleIdentityServices> | null = null;
+
+/**
+ * Load `gsi/client` on demand rather than from `index.html`: a user who never connects Drive
+ * makes no request to Google at all, and the app keeps working offline until they do.
+ */
+function loadGis(): Promise<GoogleIdentityServices> {
+  scriptPromise ??= new Promise<GoogleIdentityServices>((resolve, reject) => {
+    if (window.google?.accounts?.oauth2) {
+      resolve(window.google);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = GIS_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => {
+      if (window.google?.accounts?.oauth2) resolve(window.google);
+      else reject(new Error('Google Identity Services loaded without an OAuth client'));
+    };
+    script.onerror = () => {
+      // Let a later attempt retry from scratch — this one may simply have been offline.
+      scriptPromise = null;
+      reject(new Error('Google Identity Services could not be loaded'));
+    };
+    document.head.append(script);
+  });
+  return scriptPromise;
+}
+
+interface Token {
+  value: string;
+  /** Epoch milliseconds. */
+  expiresAt: number;
+}
+
+let token: Token | null = null;
+let client: TokenClient | null = null;
+/** Set while a request is in flight, so two callers share one popup. */
+let pending: Promise<string> | null = null;
+/** Resolvers for the in-flight request; GIS answers through a single client callback. */
+let settle: { resolve: (value: string) => void; reject: (error: Error) => void } | null = null;
+
+function valid(now: number): boolean {
+  return token !== null && token.expiresAt > now;
+}
+
+/** Whether a token is in hand right now. Never triggers a request. */
+export function hasAccessToken(): boolean {
+  return valid(Date.now());
+}
+
+export function forgetAccessToken(): void {
+  token = null;
+}
+
+/** Drop the token and tell Google the grant is finished. */
+export async function revokeAccess(): Promise<void> {
+  const current = token?.value;
+  token = null;
+  if (current === undefined) return;
+  const gis = await loadGis().catch(() => null);
+  gis?.accounts.oauth2.revoke(current);
+}
+
+async function ensureClient(): Promise<TokenClient> {
+  if (client !== null) return client;
+  if (!isDriveConfigured()) {
+    throw new NotAuthenticatedError('This build has no Google OAuth client id');
+  }
+
+  const gis = await loadGis();
+  client = gis.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_APPDATA_SCOPE,
+    callback: (response) => {
+      const done = settle;
+      settle = null;
+      if (done === null) return;
+      if (typeof response.access_token !== 'string' || response.error !== undefined) {
+        done.reject(new NotAuthenticatedError(response.error_description ?? response.error ?? 'No token'));
+        return;
+      }
+      const lifetime = (response.expires_in ?? 3600) - EXPIRY_MARGIN_SECONDS;
+      token = { value: response.access_token, expiresAt: Date.now() + Math.max(lifetime, 0) * 1000 };
+      done.resolve(response.access_token);
+    },
+    error_callback: (error) => {
+      const done = settle;
+      settle = null;
+      done?.reject(new NotAuthenticatedError(error.message ?? 'The Google sign-in was dismissed'));
+    }
+  });
+  return client;
+}
+
+/**
+ * A usable access token.
+ *
+ * `interactive: false` asks GIS for a silent grant (`prompt: ''`): it succeeds when the user
+ * is signed in to Google and has already consented, and fails without ever showing a window.
+ * That is what runs on page load. `interactive: true` opens the consent popup and is only
+ * ever reached from a click.
+ */
+export function getAccessToken(options: { interactive?: boolean } = {}): Promise<string> {
+  const now = Date.now();
+  if (valid(now) && token !== null) return Promise.resolve(token.value);
+  if (pending !== null) return pending;
+
+  pending = (async () => {
+    const tokenClient = await ensureClient();
+    return new Promise<string>((resolve, reject) => {
+      settle = { resolve, reject };
+      // '' lets Google skip the dialog when it already has an answer; 'consent' forces it.
+      tokenClient.requestAccessToken({ prompt: options.interactive === true ? 'consent' : '' });
+    });
+  })();
+
+  return pending.finally(() => {
+    pending = null;
+  });
+}

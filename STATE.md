@@ -12,7 +12,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 3     | Nutrition DB & autocomplete | done    | 2026-08-29 |
 | 4     | Recipes                     | done    | 2026-08-31 |
 | 5     | Calendar & day view         | done    | 2026-08-31 |
-| 6     | Drive sync & vault          | pending | —         |
+| 6     | Drive sync & vault          | done    | 2026-08-31 |
 | 7     | Gemini import               | pending | —         |
 | 8     | PWA & polish                | pending | —         |
 | 9     | Daily-use comfort           | pending | —         |
@@ -564,6 +564,188 @@ filtered flat list). Her decisions on each point follow.
     both pages and the stylesheet return 200 with no inline style or script. `public/` did not
     exist before this change.
 
+### 2026-08-31 — Phase 6
+
+85. **One new dependency: `hash-wasm` 4.12.0**, named in PLAN.md's stack, and the only package
+    added. AES-GCM comes from native WebCrypto; nothing else was needed.
+
+86. **CSP and COOP widened in exactly the three places open question 3 predicted.**
+    `script-src` and `frame-src` now allow `https://accounts.google.com` (Google Identity
+    Services and its frames), and `Cross-Origin-Opener-Policy` moved from `same-origin` to
+    `same-origin-allow-popups`. Verified in the browser: with the stricter COOP a popup's
+    `opener` reference is severed, and GIS hands the token back through exactly that
+    reference. `connect-src` is **unchanged** — still `'self'` plus the same three Google
+    hosts.
+
+87. **`script-src 'wasm-unsafe-eval'` — a fourth widening PLAN.md did not anticipate.**
+    Chrome refuses to compile *any* WebAssembly under a CSP whose `script-src` lacks either
+    `'wasm-unsafe-eval'` or `'unsafe-eval'`, and PLAN.md's Argon2id (hash-wasm) is
+    WebAssembly. The alternative was dropping Argon2id for PBKDF2, which would have been a
+    real weakening of the vault to avoid a token that permits WebAssembly compilation and
+    nothing else — not `eval()`, not inline script. Checked that the cost is only that: the
+    built worker contains no `fetch`, no `importScripts` and no network reference, because
+    hash-wasm carries its wasm inline as base64. Recorded in SECURITY.md so it is not
+    mistaken for an `unsafe-eval` regression.
+
+88. **One CSP violation remains, and it is Google's, inside Google's own frame.** After the
+    user clicks „Połącz Dysk Google", `gsi/client` applies an inline style that
+    `style-src 'self'` blocks. It is not our code: hooking `setAttribute('style')` and the
+    `cssText` setter in the main frame caught nothing, so GIS is doing it inside the transient
+    iframe it creates, which inherits our policy. Four seconds later there is no such element
+    in the DOM and the page's scroll size is unchanged, and the sign-in popup opens and reaches
+    `accounts.google.com/v3/signin/identifier` regardless. The fixes available were
+    `style-src 'unsafe-inline'` (giving up the property this project has protected since Phase
+    1, for a warning with no observed effect) or `'unsafe-hashes'` plus a hash of a minified
+    string Google can change without telling us. Neither is worth it. **`style-src 'self'`
+    stays**, the warning is documented in docs/DEVELOPMENT.md so the next person does not read
+    it as a regression, and it is worth rechecking whenever GIS is updated.
+
+89. **`Profile.googleSub` holds the Drive `permissionId`, not an OpenID `sub`.** PLAN.md asks
+    for the Google `sub`, but there is no path to one: `drive.appdata` yields an access token
+    and no ID token, and asking for `openid`/`profile` would widen the scope past what PLAN.md
+    allows. `about.get(fields=user)` is inside the appdata grant and returns a stable
+    per-account `permissionId`, which answers the only question that matters — "is this the
+    account this data belongs to". The field keeps its name so the wire format does not churn;
+    the account's e-mail, when Drive returns one, is display-only and lives in the local
+    `driveAccountLabel` meta key, never in the synced profile.
+
+90. **There is no refresh token in the browser, so "revoked or expired refresh token" is
+    simply "the next silent request fails".** A static bundle has nowhere to keep a client
+    secret, so the app uses the GIS *token* flow: a one-hour access token, held in memory
+    only, never in `localStorage` or IndexedDB. Every load re-requests it silently
+    (`prompt: ''`), which succeeds when the user's Google session is alive and their consent
+    stands, and fails invisibly when it does not. A 401 from Drive drops the token and
+    surfaces as `NotAuthenticatedError`, which the UI turns into „Połącz konto ponownie" —
+    and, as PLAN.md requires, that path touches no IndexedDB row.
+
+91. **`days/2026-09.json` is a literal file name containing a slash.** `appDataFolder` is
+    flat and Drive names are arbitrary strings, so a real subfolder would only add a round
+    trip and an id to keep in step. The layout on Drive reads exactly as PLAN.md writes it.
+
+92. **The merge is three-way, against a baseline of content hashes.** "The two sides differ"
+    cannot say *which* side moved, and without that the merge is guessing. Every entity's
+    content hash as of the last successful sync is kept in a `syncBaseline` table (schema v3),
+    so `only local moved -> take local`, `only remote moved -> take remote`, `both moved ->
+    the caller decides`. Deletions fall out of the same rule at no extra cost: an entity that
+    was in the baseline and is now absent has changed like any other, so clearing a day on one
+    device does not get resurrected by the other device that still has the row. Hashes rather
+    than a stored copy of the last-synced data: FNV-1a over a canonical JSON rendering, 16 hex
+    digits per entity instead of a second copy of the database. It is a change detector, not a
+    security primitive, and both sides of every comparison are the user's own data.
+
+93. **Only *days* raise the conflict prompt. Everything else has a rule.** PLAN.md reserves
+    "never guess" for the same day, and that is where the loss would be a day's plan.
+    Recipes carry `updatedAt`, so the newer edit wins. Custom ingredients and name corrections
+    are effectively additive; local wins. The profile is six re-enterable values; local wins.
+    `vault.json` is opaque ciphertext with nothing to merge, so the copy on Drive wins and the
+    user is told in Polish that it replaced the local one — a silent swap of the file holding
+    the Gemini key is not something to discover later.
+
+94. **Tag `useCount` is recomputed from the merged recipes rather than merged.** It is derived
+    data; merging it lets two devices drift apart and then makes every sync look like a
+    change. Recomputing means both devices always arrive at the same number.
+
+95. **The bundled USDA rows never travel.** `ingredients.json` on Drive carries only
+    `source: 'custom'` entries and the Polish-name corrections. The 1343-entry subset ships in
+    the build and is identical on every device; uploading it would be a few hundred kB of
+    redundant public data per account.
+
+96. **A missing `days/*.json` means "no days that month"; a missing `profile.json`,
+    `recipes.json` or `ingredients.json` means "Drive has no opinion".** The engine deletes a
+    month file when the month empties, so it has to be able to read that deletion back. It
+    never deletes the other three, so their absence is unexpected, and the safe reading is to
+    keep the local side and recreate the file rather than wipe the device. This was found by a
+    failing test, not by inspection: the first version treated every absent file as "did not
+    move", and a day cleared on one device came straight back on the other.
+
+97. **`StorageBackend` has `list`, `isAuthenticated`, `signOut` and `remove` beyond PLAN.md's
+    four.** `list` is unavoidable — the engine has to discover which months exist on Drive and
+    the wizard has to ask whether the folder is empty. The other three are the session and
+    deletion the four-method sketch left implicit.
+
+98. **The app makes no request to Google until the user connects Drive, on any code path.**
+    The GIS script is loaded on demand rather than from `index.html`, and every silent sync
+    path — the resume on load, the visibility handler, the periodic timer — is gated on the
+    device having connected at least once (`Profile.googleSub`). This was a real bug first:
+    the browser check showed `accounts.google.com/gsi/client` being fetched on a fresh profile
+    that had never seen a Google account, because the visibility handler called `syncNow`
+    without that check.
+
+99. **Sync runs on a debounce after an edit, on focus, on `online`, and every five minutes.**
+    Drive offers no push channel, so those are the only cheap approximations of "something may
+    have changed elsewhere". A successful sync is silent; the indicator in the shell appears
+    only while syncing, on an error, or on a foreign account, because a badge that is always
+    lit is a badge nobody reads.
+
+100. **The unlock screen is a modal, not a route.** PLAN.md lists it under "Screens" but the
+     routes table has no entry for it, and it interrupts something — Phase 7's recipe import —
+     that must be handed control straight back. A route would lose the half-filled editor
+     behind it. `requestUnlock()` returns a promise that resolves `true` when the vault opens
+     and `false` when the user answers „Nie teraz", which is a first-class answer.
+
+101. **The vault file format carries `iv` and `verifier` on top of PLAN.md's sketch.** AES-GCM
+     needs a nonce per ciphertext, and PLAN.md separately requires an encrypted known verifier;
+     both are stored beside the parameters. A password change draws a fresh salt, so the old
+     file's ciphertext is unrelated to the new one — checked in the browser: after re-encrypting
+     with a second password the first one is rejected as wrong, and the Gemini key is still
+     there.
+
+102. **„Nie pamiętam hasła" discards the vault and shows the creation form again — it does not
+     invent a replacement.** An earlier version created the new vault immediately, which meant
+     creating an *encrypted* vault with an empty password whenever the reset was reached from
+     the locked or corrupted state, since those screens have no password field. It also does
+     not trigger a sync while the device has no vault: that would fetch the old one back from
+     Drive. Creating the replacement uploads it and overwrites the old.
+
+103. **Adopting a vault from Drive drops the key held in memory.** `loadVault` compares the
+     stored text against what it last parsed; a different file is a different key, and keeping
+     the old one would leave the vault reading as "open" while nothing in it could be decrypted.
+
+104. **The Gemini key travels in `x-goog-api-key`, never in a URL.** A query string ends up in
+     history, in referrers and in every error message that quotes a URL. Nothing in
+     `key-test.ts` logs, throws or returns the key, the caught network error is deliberately
+     *not* included in the message (it can quote the request), and a test asserts the key
+     appears in no message across four failure modes. Confirmed in the browser too: the request
+     the app actually made was `https://generativelanguage.googleapis.com/v1beta/models` with
+     the key in the header.
+
+105. **Phase 6 verified in a real browser under the production CSP, and the two-browser
+     criterion against an in-memory Drive.** `npm run docker:up` plus headless Chrome on a
+     fresh profile, driving the real UI through CDP.
+
+     *The vault, end to end:* creating an encrypted vault ran Argon2id in the Web Worker in
+     503 ms and wrote `{"v":1,"kdf":"argon2id","params":{"memorySize":65536,"iterations":3,
+     "parallelism":1,"hashLength":32},…}` to IndexedDB — the parameters are in the file, as
+     PLAN.md requires. A key saved through the form did not appear in plaintext on disk. After
+     a real reload the vault came back **locked** while the calendar and the recipe library
+     both still rendered. A wrong password said „Nieprawidłowe hasło"; the third wrong attempt
+     added the explanation that the password cannot be recovered and that only the vault's
+     contents are lost. Disabling encryption asked twice and only then wrote the plain file,
+     which still held the key; re-encrypting with a second password rejected the first and kept
+     the key. A `vault.json` with malformed base64 produced „Plik sejfu jest uszkodzony" and
+     *not* a wrong-password message. „Nie pamiętam hasła" left the calendar and recipes intact.
+     Zero CSP violations and zero external requests across that whole run.
+
+     *OAuth:* before any click, the app made **no** request to Google at all. After clicking
+     „Połącz Dysk Google" on `http://localhost:8080`, GIS loaded with no `script-src`
+     violation and the real consent popup opened at
+     `accounts.google.com/v3/signin/identifier` within two seconds; a popup opened from the
+     page kept `opener === window`, which is the COOP change doing its job. The one violation
+     is decision 88.
+
+     *What could not be verified here:* completing a real Google sign-in, and therefore the
+     live Drive round trip and the foreign-account and revoked-token paths against Google
+     itself — this environment has no Google credentials. Those are covered by tests against an
+     in-memory `appDataFolder` (`src/test/fake-drive.ts`), which is also where the two-browser
+     acceptance criterion is checked: two repositories over one fake folder, edits to different
+     days merging with a resolver that *fails the test if it is ever called*, edits to the same
+     day raising the prompt with both versions attached and honouring either answer, a
+     dismissed prompt leaving both sides byte-for-byte unchanged, and a foreign account
+     refusing to sync before anything is read or written. The Drive client's own promise — a
+     `files.get` immediately before every write, and a refusal rather than an overwrite when
+     the version moved — is checked against a scripted `fetch` that asserts the metadata read
+     happens *before* the upload.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -578,11 +760,11 @@ filtered flat list). Her decisions on each point follow.
    yet, so the site returns 502. The deploy key's public half is in the server's
    `~/.ssh/authorized_keys` for user `zyndata`; `SSH_HOST` is the raw IP because every name in
    the zone is Cloudflare-proxied and would never reach port 22.
-3. **CSP *and* COOP will have to widen in Phase 6** for Google Identity Services: `script-src`
-   and `frame-src` for `https://accounts.google.com`, and `Cross-Origin-Opener-Policy` relaxed
-   from `same-origin` to `same-origin-allow-popups` — GIS hands the token back through a popup,
-   and the stricter value severs that window reference. Both live in the Caddyfile header
-   block. Recorded now so they are decisions, not surprises.
+3. **CSP and COOP widening — done.** Both landed exactly as predicted (decision 86), plus one
+   that was not: `script-src 'wasm-unsafe-eval'`, without which Chrome refuses to compile the
+   vault's Argon2id WebAssembly at all (decision 87). `connect-src` is unchanged. One
+   violation remains and it is Google's own, inside GIS's transient iframe — decision 88, and
+   worth rechecking whenever GIS is updated.
 4. **PWA + OAuth interaction** (Phase 8): the service worker must not cache the OAuth redirect
    or token responses. Verify explicitly when the service worker lands.
 5. **The nutrition bundle must be precached by the service worker** (Phase 8). It is fetched
@@ -615,7 +797,26 @@ filtered flat list). Her decisions on each point follow.
     that a browser turns into a click is the part the CDP run does not cover. The „⋮" button is
     the path that *is* covered, and it reaches the same actions (decision 72).
 13. **The day screen re-reads the whole month grid after every write.** ~42 rows and one
-    `getDays` call, which is nothing today. It becomes worth revisiting if Phase 6 makes a read
-    cost a sync round trip; it is written so that only `load()` would have to change.
+    `getDays` call, which is nothing today. Phase 6 did not make this worse: a read never costs
+    a sync round trip, because IndexedDB stayed the source of truth and sync is a debounced
+    background job on top of it.
 14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
     built here — decision 64's filter compares whole portions against kcal only.
+15. **The live Drive round trip has never run against Google.** Everything is verified against
+    an in-memory `appDataFolder` and, for the client itself, a scripted `fetch` (decision 105).
+    The first real sign-in on `eatmyway.gorny.dev` is therefore also the first real test of the
+    upload path, the `about.get` identity read and the foreign-account message. Worth doing
+    deliberately, on a throwaway day of data, before trusting it with a month of planning.
+16. **Data export is in PLAN.md's settings screen and is not built.** No phase claims it —
+    Phase 6 owns the vault, Drive and goals, and Phase 9 is comfort features. Drive sync makes
+    it less urgent (the JSON is in the user's own account), but a user without Drive has no way
+    to get their data out. Pick a phase for it.
+17. **A vault changed on two devices at once resolves in Drive's favour, silently apart from a
+    sentence in Settings** (decision 93). Ciphertext cannot be merged, so something has to win;
+    the case where it costs anything is narrow — the key would have to have been set differently
+    on both devices while one was offline. If it ever bites, the fix is to keep the losing file
+    under a second name rather than to try to merge it.
+18. **Nothing re-tries a sync that failed while the app was closed.** The triggers are a
+    debounce after an edit, focus, `online`, and a five-minute timer (decision 99) — all of
+    which need the tab to be open. Phase 8's service worker could add a background sync;
+    whether that is worth the complexity for a single-user planner is not decided.

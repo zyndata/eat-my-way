@@ -54,7 +54,7 @@ describe('a database created from scratch', () => {
   });
 });
 
-describe('the version 2 migration', () => {
+describe('the upgrade path from version 1', () => {
   /** A database as version 1 left it: ingredients with no normalized index keys. */
   async function createLegacyDatabase(name: string): Promise<void> {
     const legacy = new Dexie(name);
@@ -70,14 +70,16 @@ describe('the version 2 migration', () => {
 
     const upgraded = new EatMyWayDb(name);
     await upgraded.open();
-    expect(upgraded.verno).toBe(2);
+    expect(upgraded.verno).toBe(SCHEMA_VERSION);
     expect(upgradesRun.get(2)).toBe(1);
+    expect(upgradesRun.get(3)).toBe(1);
     upgraded.close();
 
     const reopened = new EatMyWayDb(name);
     await reopened.open();
-    expect(reopened.verno).toBe(2);
+    expect(reopened.verno).toBe(SCHEMA_VERSION);
     expect(upgradesRun.get(2)).toBe(1);
+    expect(upgradesRun.get(3)).toBe(1);
 
     const thirdOpen = new EatMyWayDb(name);
     await thirdOpen.open();
@@ -97,7 +99,20 @@ describe('the version 2 migration', () => {
 
     expect(row?.nameKey).toBe('losos wedzony');
     expect(row?.aliasKeys).toEqual(['ryba wedzona']);
-    expect(await db.meta.get('schemaVersion')).toBe(2);
+    expect(await db.meta.get('schemaVersion')).toBe(SCHEMA_VERSION);
+    await db.delete();
+  });
+
+  it('adds the empty sync tables, so an unsynced device simply has no baseline', async () => {
+    const name = `test-${crypto.randomUUID()}`;
+    await createLegacyDatabase(name);
+
+    const db = new EatMyWayDb(name);
+    await db.open();
+
+    expect(await db.syncBaseline.count()).toBe(0);
+    expect(await db.driveFiles.count()).toBe(0);
+    expect(await db.corrections.count()).toBe(0);
     await db.delete();
   });
 

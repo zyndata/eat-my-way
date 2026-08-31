@@ -117,3 +117,11 @@ npm run docker:up
 
 then open http://localhost:8080 and confirm the console shows **zero** CSP violations. Widening
 the policy is a deliberate decision that must be recorded in [STATE.md](../STATE.md).
+
+Use `http://localhost:8080`, not `http://127.0.0.1:8080`: only the former is an authorized
+JavaScript origin on the Google OAuth client, and to Google the two are different origins.
+
+There is **one known violation**, and only after the user clicks *Połącz Dysk Google*: Google
+Identity Services applies an inline style inside its own transient iframe, which
+`style-src 'self'` blocks. It leaves nothing in the DOM and does not affect the sign-in popup —
+see STATE.md decision 88. Any violation from our own code is a real regression.

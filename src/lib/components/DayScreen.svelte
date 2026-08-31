@@ -6,6 +6,7 @@
   import { emptyDay } from '../day';
   import { dayTotals } from '../macros';
   import { repository } from '../repository';
+  import { scheduleSync } from '../sync/state.svelte';
   import BottomSheet from './BottomSheet.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DateMultiSelect from './DateMultiSelect.svelte';
@@ -104,6 +105,8 @@
   /** Every write goes through here, so the strip and the header follow the list. */
   async function refresh(): Promise<void> {
     await load(date, monthAnchor, monthShown);
+    // Debounced, and silent unless it fails — see `sync/state.svelte.ts`.
+    scheduleSync();
   }
 
   function closeMenu(): void {

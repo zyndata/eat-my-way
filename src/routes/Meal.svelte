@@ -11,6 +11,7 @@
   import { findMeal } from '../lib/day';
   import { addDays, formatDayLong, isDateKey, relativeDayLabel, todayDate } from '../lib/dates';
   import { repository } from '../lib/repository';
+  import { scheduleSync } from '../lib/sync/state.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
 
@@ -120,12 +121,14 @@
     scale = clampScale(value);
     if (meal === undefined) return;
     await repository.updateMeal(date, mealId, { cookingScale: scale });
+    scheduleSync();
   }
 
   async function setPortions(value: number): Promise<void> {
     portions = clampPortions(value);
     if (meal === undefined) return;
     await repository.updateMeal(date, mealId, { portionsEaten: portions });
+    scheduleSync();
   }
 
   /** „Gotuję na 2 dni": scale to 2 and drop a one-portion copy on tomorrow. */
@@ -133,6 +136,7 @@
     if (meal === undefined || alreadyTomorrow) return;
     await repository.cookAlsoOn(date, mealId, tomorrow, { scale: Math.max(2, scale) });
     await load(date, mealId);
+    scheduleSync();
   }
 
   /**
@@ -150,6 +154,7 @@
     await repository.removeMealFromDay(tomorrow, last);
     if (scale === 2) await repository.updateMeal(date, mealId, { cookingScale: 1 });
     await load(date, mealId);
+    scheduleSync();
   }
 </script>
 

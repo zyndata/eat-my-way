@@ -38,7 +38,11 @@ Security-relevant problems are most likely to look like:
   unencrypted mode without explicit user consent;
 - a **Content-Security-Policy regression** — anything that reintroduces `unsafe-inline` or
   `unsafe-eval`, or widens `connect-src` beyond `generativelanguage.googleapis.com`,
-  `www.googleapis.com` and `accounts.google.com`;
+  `www.googleapis.com` and `accounts.google.com`. The policy does carry
+  `script-src 'wasm-unsafe-eval'`, which is *not* `unsafe-eval`: it permits WebAssembly
+  compilation and nothing else, and exists because the vault's Argon2id (hash-wasm, in a Web
+  Worker) is WebAssembly. `script-src` and `frame-src` also allow
+  `https://accounts.google.com` for Google Identity Services;
 - **OAuth handling** that requests a broader scope than `drive.appdata`, leaks a token, or
   silently binds one Google account's data to another account's `sub`;
 - **untrusted input treated as markup or code**: recipe text pasted by the user, JSON returned

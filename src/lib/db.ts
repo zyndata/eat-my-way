@@ -1,5 +1,6 @@
 import Dexie, { type Table, type Transaction } from 'dexie';
 import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
+import type { IngredientCorrection } from './sync/documents';
 import { normalizeKey } from './text';
 
 /**
@@ -13,7 +14,7 @@ import { normalizeKey } from './text';
 export const DB_NAME = 'eat-my-way';
 
 /** Latest schema version. Bump together with a new `version(n)` block below. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** The profile is a single row under a fixed outbound key. */
 export const PROFILE_KEY = 1;
@@ -48,6 +49,14 @@ export interface MetaValues {
   driveModifiedTime: string;
   /** When the last successful sync finished (Phase 6). */
   lastSyncedAt: string;
+  /**
+   * The raw text of `vault.json` as this device last saw it. The vault is opaque to the rest
+   * of the app and must be readable offline, so it is cached here verbatim rather than being
+   * unpacked into rows.
+   */
+  vaultFile: string;
+  /** Display name of the connected Drive account. Identity itself lives in `Profile.googleSub`. */
+  driveAccountLabel: string;
 }
 
 export type MetaKey = keyof MetaValues;
@@ -74,6 +83,32 @@ export const SCHEMA_V1: Record<string, string> = {
 export const SCHEMA_V2: Record<string, string> = {
   ingredients: 'id, name, source, nameKey, *aliasKeys'
 };
+
+/**
+ * Version 3 adds what sync needs (Phase 6): the per-entity baseline hashes the three-way
+ * merge compares against, the Drive version of each file, and the Polish-name corrections
+ * that travel in `ingredients.json`.
+ */
+export const SCHEMA_V3: Record<string, string> = {
+  syncBaseline: 'key',
+  driveFiles: 'name',
+  corrections: 'nameKey'
+};
+
+/** One entity's content hash as of the last successful sync. See `sync/merge.ts`. */
+export interface SyncBaselineRow {
+  /** Namespaced: `day:2026-09-03`, `recipe:<id>`, `profile`, … */
+  key: string;
+  hash: string;
+}
+
+/** The Drive identity and version of one logical file. */
+export interface DriveFileRow {
+  /** Logical name, e.g. `days/2026-09.json`. */
+  name: string;
+  fileId: string;
+  modifiedTime: string;
+}
 
 /**
  * How many times each schema upgrade has run in this process. Exists so the migration test
@@ -122,6 +157,12 @@ export class EatMyWayDb extends Dexie {
   profile!: Table<Profile, number>;
   /** Key/value bookkeeping, outbound keys from `MetaKey`. */
   meta!: Table<unknown, MetaKey>;
+  /** Content hashes at the last successful sync — the baseline of the three-way merge. */
+  syncBaseline!: Table<SyncBaselineRow, string>;
+  /** Drive file ids and `modifiedTime`s, so a sync knows what it last saw. */
+  driveFiles!: Table<DriveFileRow, string>;
+  /** Polish name -> ingredient id, taught by the user (Phase 7, synced from Phase 6). */
+  corrections!: Table<IngredientCorrection, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -140,6 +181,15 @@ export class EatMyWayDb extends Dexie {
             Object.assign(row, ingredientIndexKeys(row));
           });
         await tx.table('meta').put(2, 'schemaVersion' satisfies MetaKey);
+      });
+
+    this.version(3)
+      .stores(SCHEMA_V3)
+      .upgrade(async (tx) => {
+        recordUpgrade(3);
+        // The new tables start empty: an unsynced device has no baseline, which is exactly
+        // "nothing has ever been synced" and makes the first merge take both sides.
+        await tx.table('meta').put(3, 'schemaVersion' satisfies MetaKey);
       });
 
     // Runs only for a database created from scratch — never on an upgrade.
