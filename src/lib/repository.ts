@@ -7,20 +7,40 @@ import {
   fromIngredientRecord,
   toIngredientRecord
 } from './db';
-import { ingredientLookup, type IngredientLookup } from './macros';
+import { ingredientLookup, recipePortionMacros, type IngredientLookup } from './macros';
 import {
   addMeals,
   copyMealsInto,
+  countMealsFromRecipe,
   duplicateMealInDay,
   emptyDay,
   findMeal,
   planMeal,
   removeMeal,
+  resnapshotMeals,
   type CopyMode
 } from './day';
 import { newId, type IdFactory } from './ids';
 import { resolveTags } from './tags';
+import { NO_USAGE, type RecipeListEntry, type RecipeUsage } from './recipes';
 import type { SearchCandidate } from './search';
+
+/** Planned meals referring to one recipe, split at "today" (STATE.md decision 49). */
+export interface RecipeReferences {
+  /** Meals on days strictly before `today`. Never rewritten by anything.  */
+  past: number;
+  /** Meals on days from `today` onwards — what "update future days" would touch. */
+  future: number;
+  total: number;
+}
+
+/** What one "update future days" run changed. */
+export interface SnapshotRefresh {
+  days: number;
+  meals: number;
+  /** The per-portion macros written into those meals. */
+  macros: Macros;
+}
 
 /**
  * One row as the ingredient autocomplete needs it: the wire-shape ingredient plus the
@@ -94,6 +114,30 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     }
   }
 
+  /**
+   * How much each recipe is used, gathered in one pass over the days table. `recipeId`
+   * lives inside a meal array, so IndexedDB cannot index it - see STATE.md decision 48.
+   */
+  async function recipeUsage(): Promise<Map<string, RecipeUsage>> {
+    const usage = new Map<string, RecipeUsage>();
+
+    for (const day of await database.days.toArray()) {
+      for (const meal of day.meals) {
+        const current = usage.get(meal.recipeId);
+        if (current === undefined) {
+          usage.set(meal.recipeId, { plannedCount: 1, lastPlannedDate: day.date });
+          continue;
+        }
+        current.plannedCount += 1;
+        if (current.lastPlannedDate === undefined || day.date > current.lastPlannedDate) {
+          current.lastPlannedDate = day.date;
+        }
+      }
+    }
+
+    return usage;
+  }
+
   return {
     // ---- profile -------------------------------------------------------------------
 
@@ -145,6 +189,14 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
     async countIngredients(): Promise<number> {
       return database.ingredients.count();
+    },
+
+    /** The ingredients behind a set of ids, in one round trip. Unknown ids are skipped. */
+    async ingredientsByIds(ids: readonly string[]): Promise<Ingredient[]> {
+      const rows = await database.ingredients.bulkGet([...new Set(ids)]);
+      return rows
+        .filter((row): row is IngredientRecord => row !== undefined)
+        .map(fromIngredientRecord);
     },
 
     ingredientUseCounts,
@@ -204,6 +256,21 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         await database.recipes.put(stored);
         return stored;
       });
+    },
+
+    /**
+     * Per-portion macros for a list of recipes, over one read of the ingredients they
+     * mention. Used by the library, which would otherwise do a lookup per card.
+     */
+    async recipeMacros(recipes: readonly Recipe[]): Promise<Map<string, Macros>> {
+      const ids = recipes.flatMap((recipe) => recipe.items.map((item) => item.ingredientId));
+      const rows = await database.ingredients.bulkGet([...new Set(ids)]);
+      const lookup = ingredientLookup(
+        rows
+          .filter((row): row is IngredientRecord => row !== undefined)
+          .map(fromIngredientRecord)
+      );
+      return new Map(recipes.map((recipe) => [recipe.id, recipePortionMacros(recipe, lookup)]));
     },
 
     async deleteRecipe(id: string): Promise<void> {
@@ -327,6 +394,68 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         }
         return written;
       });
+    },
+
+    // ---- recipes vs. planned history -----------------------------------------------
+
+    recipeUsage,
+
+    /** Every recipe with its usage - exactly what the library screen lists. */
+    async recipeLibrary(): Promise<RecipeListEntry[]> {
+      const [recipes, usage] = await Promise.all([database.recipes.toArray(), recipeUsage()]);
+      return recipes.map((recipe) => ({ recipe, usage: usage.get(recipe.id) ?? NO_USAGE }));
+    },
+
+    /**
+     * Planned meals referring to `recipeId`, split into past and future. Drives both the
+     * "update future days?" prompt on save and the warning on delete.
+     */
+    async recipeReferences(recipeId: string, today: string): Promise<RecipeReferences> {
+      const counts: RecipeReferences = { past: 0, future: 0, total: 0 };
+
+      for (const day of await database.days.toArray()) {
+        const meals = countMealsFromRecipe(day, recipeId);
+        if (meals === 0) continue;
+        if (day.date < today) counts.past += meals;
+        else counts.future += meals;
+        counts.total += meals;
+      }
+
+      return counts;
+    },
+
+    /**
+     * "Update future days": recompute the recipe's per-portion macros from what is stored
+     * now and write them into every meal from `fromDate` onwards. This is the only path
+     * that rewrites a `macroSnapshot`; days before `fromDate` are not even read for writing,
+     * so history cannot change. `cookingScale` and `portionsEaten` are left untouched.
+     */
+    async refreshFutureSnapshots(recipeId: string, fromDate: string): Promise<SnapshotRefresh> {
+      return database.transaction(
+        'rw',
+        database.days,
+        database.recipes,
+        database.ingredients,
+        async () => {
+          const recipe = await database.recipes.get(recipeId);
+          if (recipe === undefined) throw new Error(`Unknown recipe: ${recipeId}`);
+
+          const macros = recipePortionMacros(recipe, await lookupForRecipe(recipe));
+          const refreshed: SnapshotRefresh = { days: 0, meals: 0, macros };
+
+          const upcoming = await database.days.where('date').aboveOrEqual(fromDate).toArray();
+          for (const day of upcoming) {
+            const updated = resnapshotMeals(day, recipeId, macros);
+            // `resnapshotMeals` returns the same object when nothing matched.
+            if (updated === day) continue;
+            refreshed.days += 1;
+            refreshed.meals += countMealsFromRecipe(day, recipeId);
+            await database.days.put(updated);
+          }
+
+          return refreshed;
+        }
+      );
     }
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeKey, stripDiacritics } from './text';
-import { bumpTag, makeTag, resolveTags, tagKey, toTagKeys } from './tags';
+import { bumpTag, makeTag, rankTags, resolveTags, tagKey, toTagKeys } from './tags';
 import type { Tag } from './types';
 
 describe('normalizeKey', () => {
@@ -67,5 +67,36 @@ describe('bumpTag', () => {
 
   it('never goes below zero', () => {
     expect(bumpTag(tag, -5).useCount).toBe(0);
+  });
+});
+
+describe('rankTags', () => {
+  const tags = [
+    { key: 'obiad', label: 'Obiad', useCount: 12 },
+    { key: 'sniadanie', label: 'Śniadanie', useCount: 4 },
+    { key: 'obiad wegetarianski', label: 'Obiad wegetariański', useCount: 1 },
+    { key: 'szybkie', label: 'Szybkie', useCount: 7 }
+  ];
+
+  it('ranks an exact match above a prefix match', () => {
+    expect(rankTags('obiad', tags).map((tag) => tag.key)).toEqual([
+      'obiad',
+      'obiad wegetarianski'
+    ]);
+  });
+
+  it('matches without Polish letters', () => {
+    expect(rankTags('sniad', tags).map((tag) => tag.label)).toEqual(['Śniadanie']);
+  });
+
+  it('offers the most-used tags for an empty query', () => {
+    expect(rankTags('', tags, { limit: 2 }).map((tag) => tag.key)).toEqual(['obiad', 'szybkie']);
+  });
+
+  it('never re-offers a tag the recipe already carries', () => {
+    expect(rankTags('', tags, { exclude: ['obiad', 'szybkie'] }).map((tag) => tag.key)).toEqual([
+      'sniadanie',
+      'obiad wegetarianski'
+    ]);
   });
 });

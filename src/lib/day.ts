@@ -140,3 +140,26 @@ export function copyMealsInto(
   const base = mode === 'replace' ? emptyDay(day.date) : day;
   return addMeals(base, copies, options.goals);
 }
+
+/**
+ * Rewrite the frozen snapshot of every meal on this day that came from `recipeId`.
+ *
+ * This is the one operation allowed to touch a `macroSnapshot` after the fact, and it
+ * exists only for "update future days" on a recipe edit (PLAN.md; STATE.md decisions 49-50).
+ * `cookingScale` and `portionsEaten` are the user's own numbers and are left alone. A day
+ * with no meal from that recipe is returned unchanged, identity included, so a caller can
+ * skip the write.
+ */
+export function resnapshotMeals(day: Day, recipeId: string, macros: Macros): Day {
+  if (!day.meals.some((meal) => meal.recipeId === recipeId)) return day;
+
+  const meals = day.meals.map((meal) =>
+    meal.recipeId === recipeId ? { ...meal, macroSnapshot: { ...macros } } : meal
+  );
+  return makeDay(day.date, meals, day.goalSnapshot);
+}
+
+/** How many meals on this day came from `recipeId`. */
+export function countMealsFromRecipe(day: Day, recipeId: string): number {
+  return day.meals.filter((meal) => meal.recipeId === recipeId).length;
+}

@@ -1,4 +1,5 @@
 import type { Tag } from './types';
+import { rankCandidates } from './search';
 import { normalizeKey } from './text';
 
 /**
@@ -55,4 +56,23 @@ export function resolveTags(
   }
 
   return { keys, created };
+}
+
+/**
+ * Suggestions for the recipe editor's tag field, ranked by the same rules as the ingredient
+ * autocomplete (`search.ts`): match quality first, then how many recipes carry the tag. Keys
+ * in `exclude` are already on the recipe and are never offered again. An empty query offers
+ * the most-used tags, which is what the field should show before anything is typed.
+ */
+export function rankTags(
+  query: string,
+  tags: readonly Tag[],
+  options: { exclude?: readonly string[]; limit?: number } = {}
+): Tag[] {
+  const excluded = new Set(options.exclude ?? []);
+  const candidates = tags
+    .filter((tag) => !excluded.has(tag.key))
+    .map((tag) => ({ tag, nameKey: tag.key, aliasKeys: [] as string[], useCount: tag.useCount }));
+
+  return rankCandidates(query, candidates, options.limit ?? 8).map((match) => match.item.tag);
 }

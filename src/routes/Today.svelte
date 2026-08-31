@@ -1,14 +1,8 @@
 <script lang="ts">
   import Screen from '../lib/components/Screen.svelte';
+  import { todayDate } from '../lib/dates';
 
-  // Local calendar date as YYYY-MM-DD (never UTC — a meal belongs to the day the
-  // user is living in). Replaced by the shared date helpers in Phase 2.
-  const now = new Date();
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0')
-  ].join('-');
+  const today = todayDate();
 </script>
 
 <Screen title="Dziś" lead="Plan posiłków na dzisiaj. Ekran powstanie w fazie 5.">

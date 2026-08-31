@@ -18,7 +18,8 @@
     placeholder = 'Zacznij pisać, np. „ser zolty”',
     limit = 8,
     index = defaultIndex,
-    onselect
+    onselect,
+    oncreate
   }: {
     id?: string;
     label?: string;
@@ -26,6 +27,11 @@
     limit?: number;
     index?: IngredientIndex;
     onselect?: (ingredient: Ingredient) => void;
+    /**
+     * Offered when nothing matches, so a recipe is never blocked by a gap in the bundled
+     * catalogue. The recipe editor opens its custom-ingredient form (STATE.md decision 53).
+     */
+    oncreate?: (query: string) => void;
   } = $props();
 
   let query = $state('');
@@ -153,11 +159,25 @@
       {/each}
     </ul>
   {:else if open && query.trim() !== ''}
-    <p
-      class="absolute inset-x-0 top-full z-10 mt-1 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-sm text-(--color-ink-muted) shadow-lg"
-      role="status"
+    <div
+      class="absolute inset-x-0 top-full z-10 mt-1 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 shadow-lg"
     >
-      Brak składników pasujących do „{query}”.
-    </p>
+      <p class="text-sm text-(--color-ink-muted)" role="status">
+        Brak składników pasujących do „{query}”.
+      </p>
+      {#if oncreate}
+        <button
+          type="button"
+          class="mt-2 text-sm font-medium text-(--color-accent) underline"
+          onpointerdown={(event) => {
+            // Commit before the input's blur closes this panel.
+            event.preventDefault();
+            oncreate?.(query.trim());
+          }}
+        >
+          Dodaj własny składnik „{query.trim()}”
+        </button>
+      {/if}
+    </div>
   {/if}
 </div>

@@ -282,3 +282,146 @@ describe('meta', () => {
     expect(await repo.getMeta('driveModifiedTime')).toBeUndefined();
   });
 });
+
+describe('tags on save', () => {
+  it('collapses a differently spelled label onto the existing key and counts both uses', async () => {
+    await repo.saveRecipe(makeRecipe({ id: 'r1' }), ['Śniadanie']);
+    await repo.saveRecipe(makeRecipe({ id: 'r2' }), ['sniadanie']);
+
+    const tags = await repo.allTags();
+    expect(tags).toHaveLength(1);
+    // The label stays as first typed; the key is what both recipes carry.
+    expect(tags[0]).toEqual({ key: 'sniadanie', label: 'Śniadanie', useCount: 2 });
+    expect((await repo.getRecipe('r2'))?.tags).toEqual(['sniadanie']);
+  });
+
+  it('does not count the same tag twice when a recipe is saved again', async () => {
+    await repo.saveRecipe(makeRecipe({ id: 'r1' }), ['Obiad']);
+    await repo.saveRecipe(makeRecipe({ id: 'r1', name: 'Zmieniony' }), ['Obiad']);
+
+    expect((await repo.allTags())[0]?.useCount).toBe(1);
+  });
+
+  it('gives the count back when a tag is removed from a recipe', async () => {
+    await repo.saveRecipe(makeRecipe({ id: 'r1' }), ['Obiad']);
+    await repo.saveRecipe(makeRecipe({ id: 'r1' }), []);
+
+    expect((await repo.allTags())[0]?.useCount).toBe(0);
+  });
+});
+
+describe('recipe usage', () => {
+  it('counts planned meals and remembers the latest day', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+    await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+
+    const [entry] = await repo.recipeLibrary();
+    expect(entry?.usage).toEqual({ plannedCount: 3, lastPlannedDate: WEDNESDAY });
+  });
+
+  it('reports a never-planned recipe as unused', async () => {
+    await seedRecipe();
+    expect((await repo.recipeLibrary())[0]?.usage).toEqual({ plannedCount: 0 });
+  });
+
+  it('splits references into past and future at the given date', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    await repo.addRecipeToDay(TUESDAY, recipe.id);
+    await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+
+    // TUESDAY is "today": it counts as future, so its snapshot can still be refreshed.
+    expect(await repo.recipeReferences(recipe.id, TUESDAY)).toEqual({
+      past: 1,
+      future: 2,
+      total: 3
+    });
+  });
+
+  it('computes per-portion macros for a list of recipes in one pass', async () => {
+    const recipe = await seedRecipe();
+    expect((await repo.recipeMacros([recipe])).get(recipe.id)).toEqual(macros(300, 45, 1, 9));
+  });
+});
+
+describe('refreshFutureSnapshots', () => {
+  /** The fixture recipe cut down to 100 g of chicken: 100 kcal, 20 P, 0 C, 2 F. */
+  async function shrinkRecipe(recipe: Recipe): Promise<Recipe> {
+    const edited: Recipe = {
+      ...recipe,
+      items: [item(chicken.id, 100)],
+      updatedAt: '2026-09-08T12:00:00.000Z'
+    };
+    await repo.saveRecipe(edited);
+    return edited;
+  }
+
+  it('rewrites snapshots from the given day onwards and leaves the past untouched', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    await repo.addRecipeToDay(TUESDAY, recipe.id);
+    await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+
+    await shrinkRecipe(recipe);
+    const refreshed = await repo.refreshFutureSnapshots(recipe.id, TUESDAY);
+
+    expect(refreshed.days).toBe(2);
+    expect(refreshed.meals).toBe(2);
+    expect(refreshed.macros).toEqual(macros(100, 20, 0, 2));
+
+    // The past day still carries the macros frozen when the meal was planned.
+    expect(dayTotals(await repo.getDay(MONDAY))).toEqual(macros(300, 45, 1, 9));
+    expect(dayTotals(await repo.getDay(TUESDAY))).toEqual(macros(100, 20, 0, 2));
+    expect(dayTotals(await repo.getDay(WEDNESDAY))).toEqual(macros(100, 20, 0, 2));
+  });
+
+  it('keeps cookingScale, portionsEaten and the goal snapshot', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(WEDNESDAY, recipe.id, { cookingScale: 3, portionsEaten: 2 });
+
+    await shrinkRecipe(recipe);
+    await repo.refreshFutureSnapshots(recipe.id, TUESDAY);
+
+    const day = await repo.getDay(WEDNESDAY);
+    expect(day.meals[0]?.cookingScale).toBe(3);
+    expect(day.meals[0]?.portionsEaten).toBe(2);
+    expect(day.goalSnapshot).toEqual(DEFAULT_PROFILE.goals);
+    // meal macros = snapshot x portionsEaten
+    expect(dayTotals(day)).toEqual(macros(200, 40, 0, 4));
+  });
+
+  it('does not touch meals from another recipe', async () => {
+    const recipe = await seedRecipe();
+    const other = makeRecipe({ id: 'other', name: 'Inny', items: [item(chicken.id, 300)] });
+    await repo.saveRecipe(other);
+    await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+    await repo.addRecipeToDay(WEDNESDAY, other.id);
+
+    await shrinkRecipe(recipe);
+    await repo.refreshFutureSnapshots(recipe.id, TUESDAY);
+
+    const day = await repo.getDay(WEDNESDAY);
+    expect(day.meals[0]?.macroSnapshot).toEqual(macros(100, 20, 0, 2));
+    expect(day.meals[1]?.macroSnapshot).toEqual(macros(300, 60, 0, 6));
+  });
+
+  it('refuses to refresh a recipe that is gone', async () => {
+    await expect(repo.refreshFutureSnapshots('nie-ma', MONDAY)).rejects.toThrow('Unknown recipe');
+  });
+});
+
+describe('deleting a recipe', () => {
+  it('keeps its planned meals, which own their macros', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.deleteRecipe(recipe.id);
+
+    const day = await repo.getDay(MONDAY);
+    expect(await repo.getRecipe(recipe.id)).toBeUndefined();
+    expect(day.meals).toHaveLength(1);
+    expect(dayTotals(day)).toEqual(macros(300, 45, 1, 9));
+  });
+});

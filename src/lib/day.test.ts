@@ -5,12 +5,14 @@ import {
   clonePlannedMeal,
   clonePlannedMeals,
   copyMealsInto,
+  countMealsFromRecipe,
   duplicateMealInDay,
   emptyDay,
   findMeal,
   planMeal,
   removeMeal,
   reorderMeals,
+  resnapshotMeals,
   withGoals
 } from './day';
 import { dayTotals, ingredientLookup, mealMacros } from './macros';
@@ -185,5 +187,66 @@ describe('copyMealsInto', () => {
       goals
     });
     expect(result.goalSnapshot).toEqual(goals);
+  });
+});
+
+describe('resnapshotMeals', () => {
+  const from = (recipeId: string, id: string, snapshot = macros(100, 10, 5, 2)): PlannedMeal => ({
+    id,
+    recipeId,
+    cookingScale: 2,
+    portionsEaten: 1.5,
+    macroSnapshot: snapshot
+  });
+
+  it('rewrites every meal from that recipe and nothing else', () => {
+    const day: Day = {
+      date: '2026-09-10',
+      meals: [from('r1', 'm1'), from('r2', 'm2'), from('r1', 'm3')],
+      goalSnapshot: macros(2000, 100, 250, 70)
+    };
+
+    const updated = resnapshotMeals(day, 'r1', macros(300, 30, 10, 5));
+
+    expect(updated.meals.map((meal) => meal.macroSnapshot.kcal)).toEqual([300, 100, 300]);
+    expect(updated.goalSnapshot).toEqual(day.goalSnapshot);
+  });
+
+  it('leaves cookingScale and portionsEaten alone', () => {
+    const day: Day = { date: '2026-09-10', meals: [from('r1', 'm1')] };
+    const [meal] = resnapshotMeals(day, 'r1', macros(1, 1, 1, 1)).meals;
+
+    expect(meal?.cookingScale).toBe(2);
+    expect(meal?.portionsEaten).toBe(1.5);
+  });
+
+  it('copies the macros rather than sharing the object', () => {
+    const replacement = macros(300, 30, 10, 5);
+    const day: Day = { date: '2026-09-10', meals: [from('r1', 'm1')] };
+    const [meal] = resnapshotMeals(day, 'r1', replacement).meals;
+
+    expect(meal?.macroSnapshot).not.toBe(replacement);
+    expect(meal?.macroSnapshot).toEqual(replacement);
+  });
+
+  it('returns the same day object when no meal came from that recipe', () => {
+    const day: Day = { date: '2026-09-10', meals: [from('r2', 'm1')] };
+    expect(resnapshotMeals(day, 'r1', macros(1, 1, 1, 1))).toBe(day);
+  });
+});
+
+describe('countMealsFromRecipe', () => {
+  it('counts every meal, duplicates included', () => {
+    const meal = (id: string, recipeId: string): PlannedMeal => ({
+      id,
+      recipeId,
+      cookingScale: 1,
+      portionsEaten: 1,
+      macroSnapshot: macros(0, 0, 0, 0)
+    });
+    const day: Day = { date: '2026-09-10', meals: [meal('a', 'r1'), meal('b', 'r1'), meal('c', 'r2')] };
+
+    expect(countMealsFromRecipe(day, 'r1')).toBe(2);
+    expect(countMealsFromRecipe(day, 'r3')).toBe(0);
   });
 });
