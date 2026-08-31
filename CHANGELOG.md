@@ -6,6 +6,16 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+
+- Record the OAuth client ID as configured
+
+### Features
+
+- Phase 6 — Drive sync & encrypted vault
+
 ## [0.2.0] - 2026-08-31
 
 ### Bug Fixes
