@@ -77,7 +77,10 @@ Deploying it: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 Nutrition data: **U.S. Department of Agriculture, Agricultural Research Service,
 [FoodData Central](https://fdc.nal.usda.gov/)** — public domain (CC0), attribution requested.
-This project is not endorsed by the USDA.
+The app bundles a curated subset of the SR Legacy (2018-04) and Foundation Foods (2026-04-30)
+releases, built by [`scripts/build-nutrition.mjs`](scripts/build-nutrition.mjs) from the
+mapping in [`data/pl-ingredients.tsv`](data/pl-ingredients.tsv); the Polish names and synonyms
+are our own work. This project is not endorsed by the USDA.
 
 ## License
 

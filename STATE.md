@@ -8,13 +8,14 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | Phase | Name                        | Status  | Completed |
 |-------|-----------------------------|---------|-----------|
 | 1     | Scaffold & Docker           | done    | 2026-08-28 |
-| 2     | Local data layer            | pending | —         |
-| 3     | Nutrition DB & autocomplete | pending | —         |
-| 4     | Recipes                     | pending | —         |
-| 5     | Calendar & day view         | pending | —         |
+| 2     | Local data layer            | done    | 2026-08-29 |
+| 3     | Nutrition DB & autocomplete | done    | 2026-08-29 |
+| 4     | Recipes                     | done    | 2026-08-31 |
+| 5     | Calendar & day view         | done    | 2026-08-31 |
 | 6     | Drive sync & vault          | pending | —         |
 | 7     | Gemini import               | pending | —         |
 | 8     | PWA & polish                | pending | —         |
+| 9     | Daily-use comfort           | pending | —         |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
@@ -116,11 +117,459 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
     `/manifest.webmanifest` so Cloudflare cannot serve a stale service worker on top of the
     service worker's own cache.
 
+### 2026-08-29 — Phase 2
+
+22. **Two new dev dependencies: `vitest` and `fake-indexeddb`.** Vitest is named in PLAN.md
+    task 7. `fake-indexeddb` is not in the stack list and needs the justification: the acceptance
+    criterion "Dexie DB opens with versioned schema; a migration step is proven to run exactly
+    once" cannot be checked in Node without an IndexedDB implementation, and the alternative
+    (Vitest browser mode + Playwright) would pull a browser download into CI for one test file.
+    `fake-indexeddb` is dev-only, never reaches the bundle, and is the implementation Dexie's own
+    test suite uses. `dexie` itself is a runtime dependency and was already in the stack list.
+23. **IndexedDB rows may carry derived index fields that the spec types do not have.**
+    `src/lib/types.ts` holds the wire/Drive shapes exactly as PLAN.md specifies. The Dexie layer
+    stores `IngredientRecord = Ingredient & { nameKey, aliasKeys }` — diacritic-normalized keys
+    that exist only to be indexed. They are derived on write and stripped on read, so the Drive
+    JSON in Phase 6 stays byte-identical to the spec. Deriving them is not autocomplete (Phase 3);
+    it is the index autocomplete will later query.
+24. **The schema ships with two versions in Phase 2, not one.** Version 1 is the base set of
+    tables; version 2 adds the `nameKey` / `*aliasKeys` indexes from decision 23 and backfills
+    them in an `.upgrade()` callback. A single-version schema would make the "migration proven to
+    run exactly once" criterion unverifiable — there would be nothing to migrate. The upgrade is
+    covered by a test that opens a v1 database, reopens it at v2 and asserts the callback fired
+    exactly once across two opens.
+25. **`copyMealToDays` takes the source date.** PLAN.md writes the signature as
+    `copyMealToDays(mealId, targetDates[])`, but days are keyed by date and a `PlannedMeal` id is
+    not indexed, so that signature forces a full scan of every day in the database. The
+    implemented signature is `copyMealToDays(sourceDate, mealId, targetDates)`, matching the
+    sibling `duplicateMeal(dayDate, mealId)`. Callers always know the day they are looking at.
+26. **Unit → grams rules, and an incomplete item weighs nothing.** PLAN.md gives the units
+    (`g` / `ml` / `szt`) and `gramsPerUnit` but not the conversion. Implemented: `g` is grams;
+    `ml` defaults to 1 g/ml and `gramsPerUnit` overrides that as a density; `szt` requires
+    `gramsPerUnit`. A `szt` item with no `gramsPerUnit` contributes **0 g and 0 kcal** rather than
+    throwing — the recipe editor computes a live macro sum while the user is still typing, and a
+    throw there would blank the screen. `isRecipeItemComplete()` is the validator the editor uses
+    to flag the row instead.
+27. **`profile` and `meta` are outbound-key Dexie tables.** `Profile` in PLAN.md has no id field,
+    and inventing one would leak into the Drive JSON. Both tables are declared with an empty
+    schema string, so the key is passed to `put()` separately: the profile always under the key
+    `1`, the meta table as a plain key/value store for schema and sync bookkeeping.
+28. **Macro arithmetic keeps full float precision; rounding is a display concern.** `roundMacros()`
+    exists for the UI, but nothing in the computation or persistence path calls it, so repeated
+    copy/scale operations never accumulate rounding drift.
+29. **The data layer was verified in a real browser under the production CSP, then
+    unwired again.** Nothing in the UI imports it yet — Phase 3 is what first loads the
+    nutrition subset into IndexedDB — so the modules are tree-shaken out of the shipped
+    bundle and `npm run docker:up` would have proved nothing on its own. To check it anyway,
+    `src/main.ts` was *temporarily* pointed at the repository, the container rebuilt, and the
+    page loaded in headless Chrome against the real `Caddyfile` headers. It seeded an
+    ingredient, saved a recipe with two tags, planned it on a day, copied that day to the next
+    and read the result back: `kcal=200 copied=1 goal=2000 tag=bez glutenu` — correct on every
+    value, with no CSP violation and no `eval`-related failure from Dexie. The probe was then
+    removed; `src/main.ts` is byte-identical to what Phase 1 committed. Recorded because it is
+    the evidence that Dexie survives `script-src 'self'`, which nothing in the repository will
+    otherwise demonstrate until Phase 3.
+
+### 2026-08-29 — Phase 3
+
+30. **No new runtime or dev dependency.** PLAN.md names nothing new for this phase and nothing
+    was added. The build script has to read two ZIP archives, which Node cannot do out of the
+    box; rather than pull in an unzip package for a dev-time script, `scripts/usda-zip.mjs` is
+    ~70 lines over `zlib.inflateRawSync` — the FDC archives are plain 32-bit ZIPs.
+    `scripts/csv.mjs` is a small RFC 4180 reader for the same reason: the FDC exports quote
+    fields that contain commas, so a `split(',')` would silently mis-parse them.
+31. **The Polish mapping file *is* the selection.** PLAN.md task 1 (which USDA entries to
+    bundle) and task 2 (what to call them) are one hand-curated file, `data/pl-ingredients.tsv`:
+    four tab-separated columns `fdcId / name / aliases / state`. Splitting them would have meant
+    keeping two lists in step. 1343 entries, curated section by section — dairy and eggs,
+    vegetables, fruits, grains and pasta, nuts and seeds, legumes, fats and dressings, spices,
+    poultry, pork, beef and veal, lamb and game, fish and seafood, cold cuts, bread and baked
+    goods, sweets, snacks, cereals, drinks, broths and sauces. TSV rather than CSV because
+    Polish names contain commas and would need quoting on nearly every row.
+32. **Pinned USDA releases, verified by SHA-256.** SR Legacy 2018-04 (frozen since publication)
+    and Foundation Foods 2026-04-30. The archives are downloaded into `data/usda/` (gitignored,
+    ~10 MB) and the digest is checked on every run, so "same inputs -> byte-identical JSON" is a
+    property of the script rather than a hope. Bumping a release changes the URL, the digest,
+    the release id and `DATA_VERSION` together.
+33. **Energy falls back to the Atwater values.** SR Legacy carries nutrient 1008 (Energy, kcal);
+    most Foundation entries do not and carry 2047 / 2048 (Atwater general / specific) instead.
+    The script prefers 1008 and falls back in that order. An entry with no energy value, or
+    missing protein, carbohydrate or fat, is rejected outright rather than bundled with a hole.
+34. **Macros are clamped at zero.** "Carbohydrate, by difference" is literally a subtraction and
+    goes slightly negative for very fatty cuts — USDA raw pork belly comes out at -0.7 g. Left
+    alone, a recipe's carbohydrates would *fall* when bacon was added to it. Values are rounded
+    to two decimals (enough for a per-100 g figure, identical on every machine) and floored at 0.
+35. **The bundle is fetched, not imported.** `ingredients.json` is pulled in with Vite's `?url`,
+    so it ships as a hashed asset under `/assets/` and is fetched once on first run instead of
+    inflating the entry chunk by 239 kB. This is exactly the same-origin request decision 9
+    added `'self'` to `connect-src` for, and it is the only network request nutrition data ever
+    causes — verified offline, see decision 43.
+36. **`meta.ts` is generated next to the JSON.** The app has to know the data version *before*
+    deciding whether to fetch the bundle at all, and a hand-kept constant that drifted from the
+    file it guards would silently re-import, or fail to. `scripts/build-nutrition.mjs` writes
+    both files; `npm run check:nutrition` fails if either has drifted from the mapping.
+37. **Ranking: match quality first, then usage.** PLAN.md task 5 asks for "prefix matches ranked
+    above infix, previously-used ingredients first", and the acceptance criteria list the two as
+    separate requirements, which leaves their relative order open. Implemented as: tier
+    (exact -> prefix -> word-prefix -> infix), then `useCount` descending, then the earlier
+    match, then the shorter name, then Polish collation. A heavily-used infix match therefore
+    never outranks an unused prefix match: typing „ser" puts „Ser feta" above „Deser ryżowy"
+    even when the dessert is in every recipe. Covered by a test that asserts exactly that.
+38. **All query words must match the same name.** „zolty ser" matches the alias `ser zolty`
+    (word-prefix, order-independent), but „piers filet" does not match „Pierś z kurczaka" merely
+    because one word is in the name and the other in an alias — that is not a match a user would
+    recognize.
+39. **The autocomplete reads one in-memory snapshot of the ingredient table.** ~1300 rows are
+    read from IndexedDB once and ranked in memory. Infix matching cannot use an index anyway, so
+    re-querying per keystroke would be slower for nothing. Writers must call
+    `ingredientIndex.invalidate()`; the recipe editor will do so in Phase 4 when it creates a
+    custom ingredient.
+40. **The autocomplete is mounted on the Phase 4 stub screen.** `/recipes/:id/edit` is still the
+    Phase 4 placeholder, but it now hosts the Phase 3 component on its own. Without a mount
+    point the component could only be unit-tested, and the "no runtime network calls, verified
+    offline" criterion needs a real browser. Phase 4 replaces the screen; the component stays.
+41. **New route `/about`, linked from Settings.** Holds the USDA attribution (task 6), the names
+    of the pinned releases, a note that the Polish names and synonyms are our own work, and the
+    local database status. FDC is CC0 — attribution is requested rather than required, and is
+    given.
+42. **`nutritionDataVersion` and `nutritionImportedAt` added to the meta table.** No schema
+    version bump: `meta` is an outbound-key key/value store, so new keys need no migration. The
+    version flag is written *last*, after the rows, so a crash mid-import leaves it absent and
+    the next load retries.
+43. **Phase 3 verified in a real browser under the production CSP.** `npm run docker:up` plus
+    headless Chrome on a fresh profile: the first load imported 1343 ingredients into IndexedDB
+    (one request for the bundle, `meta.nutritionDataVersion = 1`); a reload made **zero**
+    requests for it; „zolty ser" returned the „Ser żółty …" entries and „kartofle" returned
+    „Ziemniaki" and „Ziemniaki gotowane"; ArrowDown + Enter committed the highlighted option and
+    its macros rendered (77 kcal / 2.05 / 17.49 / 0.09 g); with the network emulated **offline**
+    the search still worked; and the browser reported **zero** CSP violations throughout.
+
+### 2026-08-31 — Phase 4
+
+44. **No new dependency, and the two dialogs are a native `<dialog>`.** PLAN.md names nothing new
+    for this phase and nothing was added. The delete confirmation and the "update future days"
+    prompt use the platform `<dialog>` element behind one ~50-line component rather than Bits UI's
+    `AlertDialog`: `<dialog>` brings its own modal focus trap, inertness and Escape handling, and
+    it needs no positioning styles. That last point matters here — the production CSP is
+    `style-src 'self'` with no `unsafe-inline`, so any library that positions a floating layer
+    through a `style` attribute would be silently broken in production and fine in `npm run dev`.
+    Bits UI stays exercised by the sidebar `Separator` (decision 12).
+45. **A new recipe is `#/recipes/new/edit`.** `new` is a sentinel segment matched by the existing
+    `/recipes/:id/edit` route, so PLAN.md's route table is unchanged. The alternative — minting the
+    uuid on "Nowy przepis" and navigating to it — would have made an abandoned editor
+    indistinguishable from a recipe whose row failed to write. The id is generated on first save.
+46. **Library order: most recent activity first, frequency as the tie-break.** PLAN.md asks for
+    "sorted by recently/frequently used" without saying how the two combine. Implemented as
+    `max(updatedAt date, last planned date)` descending, then the number of planned meals
+    descending, then Polish collation on the name. Frequency alone would bury a recipe just
+    created (it has been planned zero times); recency alone would ignore the everyday staples.
+    Taking the later of "edited" and "planned" puts both at the top. A typed query overrides this
+    entirely and ranks by match quality — the Phase 3 ranker (`search.ts`), reused with the plan
+    count in place of `useCount`.
+47. **Tag chips filter with AND, and combine with the search box.** PLAN.md says "search + tag
+    chips" and not how they interact. Selecting „obiad" and „szybkie" shows recipes carrying both,
+    which is what a filter chip row reads as; the two selections narrow rather than widen.
+48. **Recipe usage means a full scan of the days table.** `Day.meals[].recipeId` is inside an
+    array in a row keyed by date, so IndexedDB cannot index it — the same constraint that shaped
+    decision 25. Both the library ordering and the "is this recipe planned anywhere" question read
+    every day row once and build a `Map` in memory. Acceptable: a year of planning is ~365 small
+    rows, and the alternative (a denormalized recipe→days index) would be a second source of truth
+    to keep in step, and one more thing for Phase 6 to sync.
+49. **"Future" includes today.** PLAN.md says a recipe edit may update *future* planned days and
+    that past days never change, which leaves the current day undecided. Days with
+    `date >= today` are updated: a meal planned for today has not necessarily been eaten yet, and
+    the day the user is looking at is the one where a stale snapshot would be most visible. Past
+    days are strictly `date < today` and are never written — asserted by a test.
+50. **The prompt is only shown when it can change something.** Saving a recipe that no future day
+    plans writes straight through with no dialog; the question is asked only when at least one
+    meal on a day `>= today` refers to it. The refresh recomputes the recipe's per-portion macros
+    from the *saved* recipe and writes them into those meals' `macroSnapshot`, leaving
+    `cookingScale` and `portionsEaten` alone.
+51. **Deleting a recipe keeps its planned meals.** PLAN.md task 5 asks for the behavior to be
+    chosen and recorded. A `PlannedMeal` owns its `macroSnapshot`, so a day's totals stay correct
+    with the recipe gone; deleting the meals as well would silently rewrite history, which is the
+    one thing the whole snapshot design exists to prevent. The editor's delete button therefore
+    warns with the count of planned meals ("… pozostaną w kalendarzu") and deletes only the recipe
+    row and its tag counts. Consequence for Phase 5, filed as an open question: a meal whose
+    recipe is gone has no name to show.
+52. **An incomplete `szt` row is flagged, not blocking.** `szt` without `gramsPerUnit` weighs 0 g
+    by decision 26. The editor marks the row („Podaj wagę 1 szt.") and shows the same warning above
+    the save button, but still saves: a half-filled recipe the user wants to come back to is more
+    useful than a form that refuses to close. Only a blank name blocks saving.
+53. **Custom ingredients are created from the editor, from the empty search result.** Decision 39
+    promised the invalidation hook; this is what calls it. When the autocomplete finds nothing, it
+    offers „Dodaj własny składnik", which opens a per-100 g form and writes a `custom:<uuid>`
+    ingredient (`source: 'custom'`) through the repository, then calls
+    `ingredientIndex.invalidate()` so the next keystroke sees it. Without this a recipe could only
+    ever be built from the 1343 bundled entries, which no real kitchen survives.
+54. **Draft rows hold `number | null`, not strings.** An emptied number input reads back as `null`
+    in Svelte, and treating that as `0` mid-typing makes the field fight the user. The editor's
+    draft type mirrors that (`amount: number | null`) and `toRecipeItem()` is the single place
+    where a draft becomes the wire shape — nulls become 0, `gramsPerUnit` is omitted for `g`, and
+    an untouched override is omitted rather than written as zeros.
+55. **`src/lib/dates.ts` is new.** One module, two functions (`toDateKey`, `todayDate`) so that
+    "today" has one definition — decision 49 depends on it, and `Today.svelte` had been carrying
+    an inline copy with a comment promising exactly this. Local calendar date, never UTC: a meal
+    belongs to the day the user is living in. Phase 5 will extend it, not replace it.
+56. **A Svelte `$state` proxy can never reach IndexedDB.** Found by the browser run, not by
+    the unit tests, and worth recording because it will recur. Holding the recipe that is
+    waiting on the "update future days?" answer in `$state` was enough to make
+    `IDBObjectStore.put` fail with `DataCloneError`: structured clone rejects a `Proxy`, and
+    every value read out of `$state` is one. The editor therefore keeps that recipe in a plain
+    variable and reactively tracks only the meal count the dialog prints. The general rule for
+    Phases 5-8: anything on its way to Dexie must be built from primitives or passed through
+    `$state.snapshot()` — a spread of the top level is not enough, because the nested objects
+    stay proxied.
+57. **Phase 4 verified in a real browser under the production CSP.** `npm run docker:up` plus
+    headless Chrome on a fresh profile, driving the real UI: created „Kurczak z serem" with the
+    tag „Śniadanie", picked „Pierś z kurczaka" by typing `piers z kurczaka` and „Jajko kurze" as
+    1 szt.; the live sum tracked every edit (200 g chicken = 240 kcal, +58 g egg = 323 kcal, a
+    1000 kcal/100 g override on the egg = 820 kcal, and back to 323 on „Przywróć wartości z
+    bazy"); the piece row with no weight was flagged and counted as 0 g. Saved, found it in the
+    library (`323 kcal / porcja`), searched „kurcz", filtered by the chip, reopened it and got
+    the tag label, instructions and both rows back. Two days were then planned straight into
+    IndexedDB, three days apart on either side of today: editing the recipe raised the dialog,
+    „Tak, zaktualizuj" left the past day at its frozen 999 kcal and rewrote the future day to
+    442.94 kcal. The delete dialog named the two planned meals, and after deleting for real both
+    meals were still on their days with their macros intact. „Twarog poltlusty domowy" matched
+    nothing, the custom-ingredient form saved it as „Twaróg półtłusty", and the next row found it
+    immediately. Finally, with the network emulated **offline**, a second recipe was created,
+    saved, searched and filtered by tag end to end. Zero CSP violations and zero page errors
+    throughout; the only request the app ever made was the one for the nutrition bundle, and the
+    only offline failure was Chrome's own `/favicon.ico` (there is no icon until Phase 8).
+
+### 2026-08-31 — End-user review (before Phase 5)
+
+The person who will actually use the app read the plan and asked three questions: whether every
+recipe has to be typed in by hand or comes from somewhere external, whether a recipe can be saved
+as *breakfast* on a given day and show up that way in the calendar, and whether the library can be
+browsed and **grouped** by tag. The answers exposed a gap between her mental model (a day has named
+meal times; a library has section dividers) and the plan (a day is an ordered list; a library is a
+filtered flat list). Her decisions on each point follow.
+
+58. **The day view stays a flat, ordered list — no meal-type slots.** The question was raised
+    deliberately before Phase 5, because adding a meal time to `PlannedMeal` afterwards would be a
+    rewrite of the screens Phase 5 builds. Decided: no. Drag & drop ordering is the answer — the
+    first meal on the list *is* breakfast because it was put there. `PlannedMeal` keeps its exact
+    PLAN.md shape and Phase 5 is unchanged. Recipe tags („Śniadanie") remain a filtering aid in the
+    picker, not a label on the meal card.
+59. **A tag-grouped view of the library is wanted, and lands post-1.0 as Phase 9.** Today's chips
+    filter (AND, combined with the search box, decision 47) — they do not group. Wanted: section
+    headers with counts. The mechanism exists; only the view is missing. It is not a blocker for
+    daily use, so it must not delay v1.0.0.
+60. **Tag management belongs in Settings, also Phase 9.** Rename, delete and merge. Today a typo in
+    a tag can only be fixed recipe by recipe. Explicitly accepted by the user as "not a problem to
+    iterate over every recipe" — recorded so the low priority is a decision rather than an
+    oversight. Settings is still the Phase 1 placeholder; Phases 6 and 8 fill it, Phase 9 adds this.
+61. **Empty states must explain ownership of the library, and Phase 8 task 4 carries the copy.**
+    The user did not assume the recipe library was hers to build — she expected recipes to come from
+    somewhere. The first draft of the copy said "the app does not fetch recipes from the internet",
+    which she corrected on the spot: it *can*, that is exactly what Phase 7 is for. The line to draw
+    is **"no recipe search"**, not "no recipes from the internet" — the app never searches the web for
+    a dish, but a recipe found on a blog is pasted in and parsed into ingredients, and only the
+    nutrition numbers are strictly local. Getting this backwards would talk the user out of the
+    import feature. Three places, no new screens: the empty library offers both routes („Nowy
+    przepis" and „Wklej przepis z internetu"), then says the app does not search for recipes and does
+    not guess calories, because the same meal must always compute the same; the empty day points at
+    „Skopiuj z innego dnia"
+    and „Dodaj posiłek"; `/about` (decision 41) gains a „Jak to działa" section stating that Drive
+    is a **backup, not a source of recipes**, and that the app cannot see the rest of the user's
+    Drive. The recipe picker adds a one-line empty state with a „Nowy przepis" button so a first-time
+    user never has to navigate away to start. The Drive sentence matters most: the "external folder"
+    question came from not knowing what the app does with Drive.
+62. **Shopping-list export is a real feature, filed into Phase 9.** Requested next to the
+    `cookingScale` control ("cooking for how many people") in the meal view: export the scaled
+    ingredient list to a shopping app — **Listonic** preferred, **Home Assistant's shopping list** as
+    the alternative. Three things to settle while building it, not now: (a) scope — one meal, a whole
+    day or a week, with the same ingredient summed across meals; (b) transport — a share sheet /
+    clipboard / text export needs nothing from the server, whereas Home Assistant's `todo.add_item`
+    is an authenticated call to the user's own instance; (c) the CSP consequence of (b): `connect-src`
+    is a static list of three Google hosts, and a per-user Home Assistant URL cannot be added to a
+    header baked into the image. A share-sheet export costs no policy widening; anything talking to
+    an HA instance directly does, and would need its own decision entry.
+63. **„Wklej przepis z internetu" accepts a link, not only pasted text.** PLAN.md's Phase 7 wording is
+    pasted text; the user asked for a URL and it is settled: a link is the primary input, pasted text
+    stays as the fallback for sites a fetch cannot reach (paywalls, logins, an app with no share
+    link). The browser itself must not fetch the page — `connect-src` allows three Google hosts and
+    recipe sites send no CORS headers anyway — so retrieval happens on Gemini's side and the CSP is
+    unchanged. Phase 7 has to verify that the configured model really returns the page contents
+    rather than a summary or a refusal, and must fall back to „wklej treść" with a clear Polish
+    message when a URL cannot be read. The nutrition rule is untouched: the model returns
+    ingredients, amounts and instructions, never numbers.
+64. **The recipe picker filters by the day's remaining budget, and that lands in Phase 5.** Asked for
+    directly: with three meals planned, choosing supper should not mean opening recipes one by one to
+    see which still fits. Everything it needs already exists — the day knows its `goalSnapshot` and
+    its total, and `repository.recipeMacros()` already gives per-portion kcal for the library — so it
+    is a filter over data the picker holds anyway, and building it while the picker is being written
+    is far cheaper than retrofitting it. Phase 5 gets: „Zostało 620 kcal" in the sheet header and a
+    „Zmieści się w limicie" toggle that keeps the existing ranking inside the filter. Three cases
+    have to behave: an exhausted budget says so and leaves the full list („Limit dzienny już
+    wykorzystany") rather than showing nothing; a day with no goal at all hides the toggle; and
+    recipes are compared at **one portion**, since `portionsEaten` is chosen after the pick.
+65. **Fitting by portion size and by the other macros is Phase 9, not Phase 5.** A 800 kcal recipe
+    fits a 620 kcal gap at 0.75 portion, and the arithmetic for that already exists — but suggesting a
+    portion is a different interaction from filtering a list. So is „you still need 40 g of protein",
+    which is a ranking problem and the easy way to build something that recommends nonsense. Both are
+    deliberately held back so Phase 5 ships the plain, obviously-correct version first.
+66. **Ingredient substitution already works; what is missing is keeping both versions.** „Zmień" on a
+    filled ingredient row re-opens the autocomplete and keeps the amount and unit, and the live sum
+    recomputes — rice to buckwheat is one tap plus a pick, and decision 50's dialog then offers to
+    refresh future days. The gap the user is really describing is that the swap **overwrites** the
+    recipe: having both versions means retyping one from scratch. Phase 9 task 3 (duplicate a recipe)
+    is what closes it — „Zapisz jako kopię", swap one row, done — and its wording now says so.
+67. **Rejected: per-meal ingredient substitution.** Swapping an ingredient on one planned meal without
+    touching the recipe ("today I made it with buckwheat") has nowhere to live. `PlannedMeal` holds a
+    frozen `macroSnapshot` and a `recipeId`, deliberately: that is the entire mechanism that stops
+    history from rewriting itself. Supporting it would mean adding per-meal item overrides to the data
+    model — a change to the foundation, for convenience that a duplicated recipe covers in two taps.
+    Recorded as considered and declined, with the reason, rather than left to be re-discovered.
+
+### 2026-08-31 — Phase 5
+
+68. **One new dependency: `svelte-dnd-action` 0.9.79**, named in PLAN.md task 4, and the only
+    package added. It needed a CSP check before it went in: the production policy is
+    `style-src 'self'` with no `unsafe-inline`, so a library that positioned or animated
+    anything through a `style` *attribute* or an injected `<style>` element would be silently
+    broken in production and fine in `npm run dev`. Its bundle contains neither — every
+    visual change is a CSSOM property assignment (`element.style.transform = …`), which CSP
+    does not police. Verified again in the browser under the real headers.
+69. **`dragHandleZone` + `dragHandle`, not `dndzone`.** A drag can only begin on the card's
+    handle, so a touch that lands anywhere else scrolls the list — which is what the
+    acceptance criterion „touch scroll on the list does not start a drag" actually asks for.
+    PLAN.md's „~200 ms touch delay" is `delayTouchStart: 200` on top of that, guarding the
+    handle itself.
+70. **The drag library speaks Polish.** `setAriaStrings()` is called once at module scope in
+    `MealList.svelte` with Polish wording for all seven screen-reader messages, and
+    `setKeyboardDragTrigger('space')` leaves Enter free to open the meal. Without this the
+    only English text in the app would be the one thing a blind user hears.
+71. **Rings and bars are SVG geometry, not CSS.** A progress ring drawn with
+    `stroke-dasharray` and a bar drawn as a `<rect width=…>` are SVG *presentation
+    attributes*, not styles, so they are untouched by `style-src`. The obvious alternative —
+    `style="width: 63%"` — is exactly the pattern decisions 44 and 68 exist to avoid. Nothing
+    in this phase sets an inline style anywhere.
+72. **A meal card offers its actions two ways: swipe-left and a „⋮" button.** PLAN.md asks for
+    swipe-left, which is invisible on a desktop and unreachable from a keyboard. Both gestures
+    open the same action row (Powiel / Kopiuj do… / Usuń), and the row is `inert` while
+    closed so it never takes focus. The swipe is measured on `touchend` and never calls
+    `preventDefault`, so vertical scrolling over a card is unaffected.
+73. **A planned meal whose recipe is gone reads „Usunięty przepis"** — resolving open question 7.
+    Decision 51 keeps such meals because their `macroSnapshot` is their own; the day view
+    therefore renders the placeholder name, keeps the macros, and drops the link to the meal
+    view's recipe section rather than pretending a recipe is still there. The meal view says
+    the same and still lets the user change `portionsEaten` and delete the meal.
+74. **The week starts on Monday, and the month grid is exactly as tall as the month needs.**
+    Polish convention. The grid runs from the Monday on or before the 1st to the Sunday on or
+    after the last day, so a month occupies five or six rows rather than a fixed 42 cells with
+    a trailing empty week.
+75. **A day with no `goalSnapshot` shows the profile's current goals.** PLAN.md task 2 says the
+    header falls back to profile goals for empty days; the same fallback is used for any day
+    without a snapshot, and the snapshot wins the moment one exists. `dayGoals()` is the one
+    place this is decided.
+76. **„Dodaj też jutro" undoes itself, behind a confirmation.** PLAN.md calls for a checkbox
+    next to `cookingScale`; checking it sets the scale to 2 and appends a copy of the meal to
+    tomorrow with `portionsEaten = 1`.
+
+    This first shipped as a *one-way* checkbox — checked and disabled once tomorrow carried a
+    meal from the same recipe — on the reasoning that guessing which of tomorrow's meals to
+    delete would be a silent rewrite of the user's plan. The user tried it and rejected that
+    outright: a checkbox that cannot be unchecked is not a checkbox. **Superseded**, and the
+    concern is answered by asking instead of guessing: unchecking opens a confirmation naming
+    the day („Usuniemy posiłek z tego przepisu zaplanowany na środa, 11 listopada"), and only
+    then removes the *last* meal on tomorrow from this recipe. `cookingScale` returns to 1
+    only when it is still the 2 the checkbox set, so a scale the user typed by hand survives
+    the undo. Nothing is deleted without the user reading which day it is on.
+
+    The general lesson, for the phases still to come: an irreversible control needs a reason
+    the *user* would accept, not one that only makes sense from inside the data model.
+77. **Reorder is persisted as a list of meal ids, never as the array the drag handed back.**
+    `svelte-dnd-action` returns the reordered items, but those objects came out of `$state`
+    and are proxies, which `IDBObjectStore.put` refuses (decision 56). The repository takes
+    `string[]` and rebuilds the day from the meals it already holds, so nothing that touched
+    a proxy can reach Dexie. The same rule shaped `updateMeal`, which takes a plain patch.
+78. **The replace/append question is only asked when it can change something.** „Kopiuj dzień
+    do…" prompts only if at least one chosen day already has meals; otherwise append and
+    replace are the same operation and the dialog would be noise. Append is the default, as
+    PLAN.md requires. Same rule as decision 50.
+79. **The calendar screen is one component behind two routes.** `/` and `/day/:date` both
+    render `DayScreen`; `/` passes today's date and re-reads it when the tab regains focus, so
+    an app left open overnight does not keep showing yesterday. An unparseable `:date` renders
+    a „nie ma takiej daty" message rather than a crashed screen.
+
+80. **The budget filter is off when the sheet opens, and it turns itself off when it stops
+    applying.** Decision 64 settles what the filter does; these two are the parts it left open.
+    Opening the picker shows the whole library — a sheet that silently hides recipes the moment
+    it opens is a sheet the user cannot trust — and the toggle is offered next to „Zostało
+    620 kcal". `dayBudget()` decides all three cases in one place, and the picker derives
+    „is the filter actually applying" from it rather than from the checkbox alone, so a day
+    that becomes exhausted while the sheet is open falls back to the full list instead of
+    showing nothing. A recipe whose per-portion macros could not be computed is never hidden:
+    an unknown value is not evidence that it does not fit.
+
+81. **Phase 5 verified in a real browser under the production CSP.** `npm run docker:up` plus
+    headless Chrome on a fresh profile, driving the real UI through CDP. Adding a meal from the
+    picker froze `macroSnapshot` at 300 kcal and captured `goalSnapshot` on that first meal;
+    the header read „300 / 2000 kcal" with the three bars beside it. The picker's „Zostało
+    1700 kcal" toggle dropped a 1900 kcal recipe and kept a 300 kcal one; an exhausted day said
+    „Limit dzienny już wykorzystany — 400 kcal ponad cel" with **no** toggle and the full list;
+    a profile with `kcal: 0` showed neither the line nor the toggle. In the meal view, „+" on
+    the cooking scale moved the displayed amount 300 g → 600 g while the day total stayed at
+    300 kcal, and `portionsEaten` 1 → 1.5 moved it to 450 kcal. A keyboard drag on the handle
+    reordered the list, the new order reached IndexedDB and survived a reload. A touch dragged
+    120 px up the **card body** started no drag (`#dnd-action-dragged-el` absent); the same
+    gesture on the **handle** did — which is the „touch scroll does not start a drag" criterion,
+    checked rather than assumed. Copying a day onto a non-empty one raised „Te dni już mają
+    posiłki" with Dopisz as the accented default, and appending left the target's own meal in
+    place; editing the source recipe afterwards left both copies at their frozen 500 and 200
+    kcal. After the profile goal dropped to 1500, the planned day still showed „/ 2000 kcal"
+    and an unplanned day showed „/ 1500 kcal". The week strip's rings read 0.1 and 0.35 of a
+    turn for 200/2000 and 700/2000. Deleting a recipe left its meal on the day as „Usunięty
+    przepis" with the day total unchanged at 700 kcal. With the network emulated **offline**
+    the day view still rendered. Zero CSP violations and zero page errors across both runs; the
+    only four requests the app ever made were the document, the CSS, the JS and the nutrition
+    bundle.
+
+82. **The app declares itself light-only.** `index.html` had carried
+    `<meta name="color-scheme" content="light dark">` since Phase 1, but `app.css` defines a
+    single light palette and there is no dark theme. On a machine set to dark, the browser
+    took the meta at its word and painted native form controls with the dark UA style — which
+    nothing noticed until Phase 5 added the first *unstyled* native control, and „Dodaj też
+    jutro" showed up as a solid black square on a white card. Every other input in the app
+    carries explicit `bg-`/`border-` classes and so hid the problem. Now `content="light"`,
+    which is simply the truth; a real dark theme is Phase 8's call, and it must change this
+    meta and the palette together. Confirmed by screenshot under an emulated dark preference,
+    before and after.
+
+### 2026-08-31 — Google OAuth client (outside the phase sequence)
+
+83. **The OAuth client exists and the app is published, not in testing.** Cloud project
+    `eat-my-way-507216`, client type *Web application*, sole scope
+    `https://www.googleapis.com/auth/drive.appdata`. Authorized JavaScript origins:
+    `http://localhost:5173`, `http://localhost:8080` (the Docker CSP check) and
+    `https://eatmyway.gorny.dev`; no redirect URIs, because Google Identity Services returns
+    the token to the page through a popup. The client *secret* is unused by design and must
+    never enter the repo, `.env*` or a GitHub secret. Publishing status was moved from
+    *Testing* to *In production* deliberately: testing mode expires refresh tokens after seven
+    days, which would force a fresh consent every week. Verification is still not required —
+    the app stays under the 100-user cap for an unverified sensitive scope, exactly as PLAN.md
+    assumed.
+
+84. **Publishing forced two static legal pages — a deviation from PLAN.md.** Google refuses to
+    move an app out of testing without a privacy-policy link, and the link's domain must be an
+    authorized domain, which rules out pointing at GitHub. So `public/privacy.html`,
+    `public/terms.html` and `public/legal.css` now ship as plain static files (Vite copies
+    `public/` into `dist/` verbatim, Caddy serves them ahead of the SPA rewrite). They are
+    *not* Svelte routes and must not become ones — Google fetches them without executing
+    JavaScript. The stylesheet is a separate file rather than a `<style>` block because the
+    production CSP has no `unsafe-inline` for `style-src`; verified under `npm run docker:up`,
+    both pages and the stylesheet return 200 with no inline style or script. `public/` did not
+    exist before this change.
+
 ## Open questions
 
-1. **Google OAuth client ID** — needs to be created in the Cloud Console (scope `drive.appdata`,
-   origins `http://localhost:5173` and `https://eatmyway.gorny.dev`) and set as the
-   `VITE_GOOGLE_CLIENT_ID` repository variable. Blocks Phase 6, nothing earlier.
+1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216` and written to
+   the local `.env.local`; see decision 83. Still open: setting the same value as the
+   `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a secret) in GitHub, without which a
+   production build ships an empty client ID. Phase 6 is otherwise unblocked.
 2. **Server prerequisites — done.** DNS, `/var/www/eatmyway`, the nginx site
    (`/etc/nginx/sites-available/eatmyway.gorny.dev`), the certificate with verified unattended
    renewal, the four `SSH_*` secrets and `DEPLOY_CHECK_TOKEN` are all in place. The only
@@ -128,8 +577,44 @@ Newest last. Every deviation from PLAN.md lands here **before** it is acted on.
    yet, so the site returns 502. The deploy key's public half is in the server's
    `~/.ssh/authorized_keys` for user `zyndata`; `SSH_HOST` is the raw IP because every name in
    the zone is Cloudflare-proxied and would never reach port 22.
-3. **CSP will have to widen in Phase 6** for Google Identity Services (`script-src` and
-   `frame-src` for `https://accounts.google.com`). Recorded now so it is a decision, not a
-   surprise.
+3. **CSP *and* COOP will have to widen in Phase 6** for Google Identity Services: `script-src`
+   and `frame-src` for `https://accounts.google.com`, and `Cross-Origin-Opener-Policy` relaxed
+   from `same-origin` to `same-origin-allow-popups` — GIS hands the token back through a popup,
+   and the stricter value severs that window reference. Both live in the Caddyfile header
+   block. Recorded now so they are decisions, not surprises.
 4. **PWA + OAuth interaction** (Phase 8): the service worker must not cache the OAuth redirect
    or token responses. Verify explicitly when the service worker lands.
+5. **The nutrition bundle must be precached by the service worker** (Phase 8). It is fetched
+   once on first run, so a fresh install that happens to be offline at that moment has no
+   ingredients at all. Today the import simply fails and retries on the next load, which is
+   correct but not pleasant.
+6. **Foundation Foods moves twice a year.** Nothing watches for a new release; refreshing it is
+   a deliberate act (decision 32). Worth a reminder once the app is in daily use.
+7. **A planned meal whose recipe was deleted — answered.** Decision 73: the day view and the
+   meal view render „Usunięty przepis" when `recipeId` no longer resolves, keep the frozen
+   macros, and drop the recipe section rather than pretending it is still there.
+8. **Ingredient rows cannot be reordered, and a recipe cannot be duplicated.** Neither is in
+   PLAN.md Phase 4 and neither was built. Both are obvious wants once the app is in daily use;
+   `reorderMeals` in `day.ts` is the pattern to copy if rows ever need it.
+9. **The curated mapping is a starting point, not a finished catalogue.** 1343 entries cover
+   ordinary Polish cooking, but Polish specifics with no USDA equivalent (twaróg półtłusty,
+   korzeń pietruszki) are approximated or absent. Open Food Facts is the planned second source
+   (PLAN.md, "Nutrition data") and would fill these in; user-created custom ingredients cover
+   the gap in the meantime.
+10. **Shopping-list export target and transport** (Phase 9, decision 62). Listonic has no documented
+    public import API; a share sheet / plain-text export may be the only thing that reaches it.
+    Home Assistant is reachable but only at a URL the app cannot know at build time. Resolve when
+    Phase 9 starts, and record the CSP consequence before writing any code.
+11. **Grouped library view vs. the existing ranking** (Phase 9, decision 59). Decision 46 orders the
+    library by recent activity. Grouping by tag has to decide what happens inside a section (the same
+    ranking, presumably), what happens to untagged recipes (an „Bez tagu" section), and whether a
+    recipe with three tags appears three times or once. Not decided.
+12. **The swipe-left gesture is only checked by hand.** The drag/scroll boundary is verified in
+    the browser (decision 81), but the card's own swipe is not — synthesizing a horizontal drag
+    that a browser turns into a click is the part the CDP run does not cover. The „⋮" button is
+    the path that *is* covered, and it reaches the same actions (decision 72).
+13. **The day screen re-reads the whole month grid after every write.** ~42 rows and one
+    `getDays` call, which is nothing today. It becomes worth revisiting if Phase 6 makes a read
+    cost a sync round trip; it is written so that only `load()` would have to change.
+14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
+    built here — decision 64's filter compares whole portions against kcal only.

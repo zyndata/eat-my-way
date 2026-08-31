@@ -5,6 +5,7 @@ import Recipes from '../routes/Recipes.svelte';
 import RecipeEditor from '../routes/RecipeEditor.svelte';
 import Settings from '../routes/Settings.svelte';
 import Setup from '../routes/Setup.svelte';
+import About from '../routes/About.svelte';
 import NotFound from '../routes/NotFound.svelte';
 
 /**
@@ -19,5 +20,6 @@ export const routes = {
   '/recipes/:id/edit': RecipeEditor,
   '/settings': Settings,
   '/setup': Setup,
+  '/about': About,
   '*': NotFound
 };

@@ -1,18 +1,24 @@
 <script lang="ts">
-  import Screen from '../lib/components/Screen.svelte';
+  import DayScreen from '../lib/components/DayScreen.svelte';
+  import { todayDate } from '../lib/dates';
 
-  // Local calendar date as YYYY-MM-DD (never UTC — a meal belongs to the day the
-  // user is living in). Replaced by the shared date helpers in Phase 2.
-  const now = new Date();
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, '0'),
-    String(now.getDate()).padStart(2, '0')
-  ].join('-');
+  /**
+   * `/` — today. The same screen as `/day/:date`, always pointed at the current day, which
+   * makes today one tap away from anywhere via the „Kalendarz" nav item.
+   *
+   * The date is re-read whenever the tab becomes visible again, so an app left open
+   * overnight does not keep showing yesterday (STATE.md decision 79).
+   */
+
+  let today = $state(todayDate());
+
+  $effect(() => {
+    const check = (): void => {
+      if (document.visibilityState === 'visible') today = todayDate();
+    };
+    document.addEventListener('visibilitychange', check);
+    return () => document.removeEventListener('visibilitychange', check);
+  });
 </script>
 
-<Screen title="Dziś" lead="Plan posiłków na dzisiaj. Ekran powstanie w fazie 5.">
-  <a class="text-sm font-medium text-(--color-accent) underline" href="#/day/{today}">
-    Otwórz widok dnia ({today})
-  </a>
-</Screen>
+<DayScreen date={today} {today} />

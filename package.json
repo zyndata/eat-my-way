@@ -11,24 +11,31 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:nutrition": "node scripts/build-nutrition.mjs",
+    "check:nutrition": "node scripts/build-nutrition.mjs --offline --check",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "echo \"no tests yet - added in Phase 2\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "docker:up": "npm run build && docker compose up --build -d",
     "changelog": "git-cliff --config cliff.toml -o CHANGELOG.md"
   },
   "dependencies": {
     "bits-ui": "2.19.0",
+    "dexie": "4.4.5",
+    "svelte-dnd-action": "0.9.79",
     "svelte-spa-router": "5.1.1"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@tailwindcss/vite": "4.3.3",
+    "fake-indexeddb": "6.2.5",
     "git-cliff": "2.13.1",
     "svelte": "5.56.10",
     "svelte-check": "4.7.6",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   }
 }
