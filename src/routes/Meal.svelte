@@ -11,6 +11,7 @@
   import { findMeal } from '../lib/day';
   import { addDays, formatDayLong, isDateKey, relativeDayLabel, todayDate } from '../lib/dates';
   import { repository } from '../lib/repository';
+  import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
 
   /**
@@ -39,8 +40,11 @@
   let meal = $state<PlannedMeal | undefined>(undefined);
   let recipe = $state<Recipe | undefined>(undefined);
   let ingredients = $state<Ingredient[]>([]);
-  /** Tomorrow already carries a meal from the same recipe — decision 76. */
-  let alreadyTomorrow = $state(false);
+  /** Ids of tomorrow's meals from this same recipe — what „Dodaj też jutro" reflects. */
+  let tomorrowMeals = $state<string[]>([]);
+  let uncheckOpen = $state(false);
+
+  const alreadyTomorrow = $derived(tomorrowMeals.length > 0);
 
   let scale = $state(1);
   let portions = $state(1);
@@ -67,7 +71,7 @@
     meal = undefined;
     recipe = undefined;
     ingredients = [];
-    alreadyTomorrow = false;
+    tomorrowMeals = [];
 
     if (!isDateKey(dayDate)) {
       loading = false;
@@ -93,7 +97,9 @@
     }
 
     const next = await repository.getDay(addDays(dayDate, 1));
-    alreadyTomorrow = next.meals.some((other) => other.recipeId === found.recipeId);
+    tomorrowMeals = next.meals
+      .filter((other) => other.recipeId === found.recipeId)
+      .map((other) => other.id);
     loading = false;
   }
 
@@ -126,6 +132,23 @@
   async function cookAlsoTomorrow(): Promise<void> {
     if (meal === undefined || alreadyTomorrow) return;
     await repository.cookAlsoOn(date, mealId, tomorrow, { scale: Math.max(2, scale) });
+    await load(date, mealId);
+  }
+
+  /**
+   * Unchecking undoes exactly what checking did: the copy leaves tomorrow, and the cooking
+   * scale goes back to 1 — but only if it is still the 2 the checkbox set, so a scale the
+   * user typed themselves survives. Confirmed rather than silent, because the meal on
+   * tomorrow may be one the user planned deliberately rather than the copy this made
+   * (STATE.md decision 76).
+   */
+  async function undoTomorrow(): Promise<void> {
+    uncheckOpen = false;
+    const last = tomorrowMeals.at(-1);
+    if (last === undefined) return;
+
+    await repository.removeMealFromDay(tomorrow, last);
+    if (scale === 2) await repository.updateMeal(date, mealId, { cookingScale: 1 });
     await load(date, mealId);
   }
 </script>
@@ -255,26 +278,32 @@
         </span>
       </div>
 
-      <label class="flex items-start gap-2 pt-4 text-sm">
-        <input
-          class="mt-0.5 size-4 accent-(--color-accent)"
-          type="checkbox"
-          checked={alreadyTomorrow}
-          disabled={alreadyTomorrow}
-          onchange={() => void cookAlsoTomorrow()}
-        />
-        <span>
+      <div class="pt-4">
+        <label class="flex items-center gap-2 text-sm">
+          <input
+            class="size-4 accent-(--color-accent)"
+            type="checkbox"
+            checked={alreadyTomorrow}
+            onchange={(event) => {
+              // Tomorrow's day is the source of truth, not the box: both paths re-read it,
+              // and the removal has to be confirmed first.
+              event.currentTarget.checked = alreadyTomorrow;
+              if (alreadyTomorrow) uncheckOpen = true;
+              else void cookAlsoTomorrow();
+            }}
+          />
           Dodaj też jutro
-          <span class="block text-xs text-(--color-ink-muted)">
-            {#if alreadyTomorrow}
-              Ten przepis jest już zaplanowany na
-              <a class="text-(--color-accent) underline" href="#/day/{tomorrow}">jutro</a>.
-            {:else}
-              Ugotuje się na dwa dni: ustawimy 2 porcje i dopiszemy jeden posiłek do jutra.
-            {/if}
-          </span>
-        </span>
-      </label>
+        </label>
+        <p class="pt-1 pl-6 text-xs text-(--color-ink-muted)">
+          {#if alreadyTomorrow}
+            Ten przepis jest zaplanowany na
+            <a class="text-(--color-accent) underline" href="#/day/{tomorrow}">jutro</a>. Odznacz,
+            żeby usunąć tamten posiłek.
+          {:else}
+            Ugotuje się na dwa dni: ustawimy 2 porcje i dopiszemy jeden posiłek do jutra.
+          {/if}
+        </p>
+      </div>
     </section>
 
     <section class="mt-4 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
@@ -365,3 +394,22 @@
     {/if}
   {/if}
 {/if}
+
+<ConfirmDialog
+  open={uncheckOpen}
+  title="Usunąć jutrzejszy posiłek?"
+  confirmLabel="Usuń z jutra"
+  cancelLabel="Zostaw"
+  danger
+  onconfirm={() => void undoTomorrow()}
+  oncancel={() => (uncheckOpen = false)}
+>
+  {#if tomorrowMeals.length > 1}
+    Jutro są {tomorrowMeals.length} posiłki z tego przepisu — usuniemy ostatni z nich.
+  {:else}
+    Usuniemy posiłek z tego przepisu zaplanowany na {formatDayLong(tomorrow)}.
+  {/if}
+  {#if scale === 2}
+    Liczba porcji do ugotowania wróci do 1.
+  {/if}
+</ConfirmDialog>

@@ -465,13 +465,22 @@ filtered flat list). Her decisions on each point follow.
     header falls back to profile goals for empty days; the same fallback is used for any day
     without a snapshot, and the snapshot wins the moment one exists. `dayGoals()` is the one
     place this is decided.
-76. **„Dodaj też jutro" is a one-way checkbox.** PLAN.md calls for a checkbox next to
-    `cookingScale`; checking it sets the scale to 2 and appends a copy of the meal to
-    tomorrow with `portionsEaten = 1`. Unchecking it is *not* implemented as an undo: the
-    checkbox is shown checked and disabled once tomorrow already carries a meal from the same
-    recipe, next to a link to that day. Guessing which of tomorrow's meals to delete — the
-    user may have planned that recipe for tomorrow deliberately — would be the kind of silent
-    rewrite the whole snapshot design exists to prevent.
+76. **„Dodaj też jutro" undoes itself, behind a confirmation.** PLAN.md calls for a checkbox
+    next to `cookingScale`; checking it sets the scale to 2 and appends a copy of the meal to
+    tomorrow with `portionsEaten = 1`.
+
+    This first shipped as a *one-way* checkbox — checked and disabled once tomorrow carried a
+    meal from the same recipe — on the reasoning that guessing which of tomorrow's meals to
+    delete would be a silent rewrite of the user's plan. The user tried it and rejected that
+    outright: a checkbox that cannot be unchecked is not a checkbox. **Superseded**, and the
+    concern is answered by asking instead of guessing: unchecking opens a confirmation naming
+    the day („Usuniemy posiłek z tego przepisu zaplanowany na środa, 11 listopada"), and only
+    then removes the *last* meal on tomorrow from this recipe. `cookingScale` returns to 1
+    only when it is still the 2 the checkbox set, so a scale the user typed by hand survives
+    the undo. Nothing is deleted without the user reading which day it is on.
+
+    The general lesson, for the phases still to come: an irreversible control needs a reason
+    the *user* would accept, not one that only makes sense from inside the data model.
 77. **Reorder is persisted as a list of meal ids, never as the array the drag handed back.**
     `svelte-dnd-action` returns the reordered items, but those objects came out of `$state`
     and are proxies, which `IDBObjectStore.put` refuses (decision 56). The repository takes
@@ -518,6 +527,17 @@ filtered flat list). Her decisions on each point follow.
     the day view still rendered. Zero CSP violations and zero page errors across both runs; the
     only four requests the app ever made were the document, the CSS, the JS and the nutrition
     bundle.
+
+82. **The app declares itself light-only.** `index.html` had carried
+    `<meta name="color-scheme" content="light dark">` since Phase 1, but `app.css` defines a
+    single light palette and there is no dark theme. On a machine set to dark, the browser
+    took the meta at its word and painted native form controls with the dark UA style — which
+    nothing noticed until Phase 5 added the first *unstyled* native control, and „Dodaj też
+    jutro" showed up as a solid black square on a white card. Every other input in the app
+    carries explicit `bg-`/`border-` classes and so hid the problem. Now `content="light"`,
+    which is simply the truth; a real dark theme is Phase 8's call, and it must change this
+    meta and the palette together. Confirmed by screenshot under an emulated dark preference,
+    before and after.
 
 ## Open questions
 
