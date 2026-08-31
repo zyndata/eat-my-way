@@ -1,0 +1,77 @@
+/* Standalone stylesheet for the two legal pages. They are plain static files
+   outside the Svelte bundle, and the production CSP forbids inline styles, so
+   this cannot be a <style> block. Values mirror the tokens in src/app.css. */
+
+:root {
+  --surface: oklch(99% 0.005 95);
+  --surface-raised: oklch(100% 0 0);
+  --border: oklch(90% 0.008 95);
+  --ink: oklch(25% 0.02 95);
+  --ink-muted: oklch(52% 0.015 95);
+  --accent: oklch(62% 0.16 145);
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+  line-height: 1.25;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  font-size: 1.125rem;
+  margin: 2.25rem 0 0.5rem;
+}
+
+p,
+li {
+  margin: 0.75rem 0;
+}
+
+ul {
+  padding-left: 1.25rem;
+}
+
+.updated {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  margin: 0 0 2rem;
+}
+
+.lead {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+footer {
+  border-top: 1px solid var(--border);
+  margin-top: 3rem;
+  padding-top: 1rem;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}

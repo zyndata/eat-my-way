@@ -539,11 +539,37 @@ filtered flat list). Her decisions on each point follow.
     meta and the palette together. Confirmed by screenshot under an emulated dark preference,
     before and after.
 
+### 2026-08-31 — Google OAuth client (outside the phase sequence)
+
+83. **The OAuth client exists and the app is published, not in testing.** Cloud project
+    `eat-my-way-507216`, client type *Web application*, sole scope
+    `https://www.googleapis.com/auth/drive.appdata`. Authorized JavaScript origins:
+    `http://localhost:5173`, `http://localhost:8080` (the Docker CSP check) and
+    `https://eatmyway.gorny.dev`; no redirect URIs, because Google Identity Services returns
+    the token to the page through a popup. The client *secret* is unused by design and must
+    never enter the repo, `.env*` or a GitHub secret. Publishing status was moved from
+    *Testing* to *In production* deliberately: testing mode expires refresh tokens after seven
+    days, which would force a fresh consent every week. Verification is still not required —
+    the app stays under the 100-user cap for an unverified sensitive scope, exactly as PLAN.md
+    assumed.
+
+84. **Publishing forced two static legal pages — a deviation from PLAN.md.** Google refuses to
+    move an app out of testing without a privacy-policy link, and the link's domain must be an
+    authorized domain, which rules out pointing at GitHub. So `public/privacy.html`,
+    `public/terms.html` and `public/legal.css` now ship as plain static files (Vite copies
+    `public/` into `dist/` verbatim, Caddy serves them ahead of the SPA rewrite). They are
+    *not* Svelte routes and must not become ones — Google fetches them without executing
+    JavaScript. The stylesheet is a separate file rather than a `<style>` block because the
+    production CSP has no `unsafe-inline` for `style-src`; verified under `npm run docker:up`,
+    both pages and the stylesheet return 200 with no inline style or script. `public/` did not
+    exist before this change.
+
 ## Open questions
 
-1. **Google OAuth client ID** — needs to be created in the Cloud Console (scope `drive.appdata`,
-   origins `http://localhost:5173` and `https://eatmyway.gorny.dev`) and set as the
-   `VITE_GOOGLE_CLIENT_ID` repository variable. Blocks Phase 6, nothing earlier.
+1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216` and written to
+   the local `.env.local`; see decision 83. Still open: setting the same value as the
+   `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a secret) in GitHub, without which a
+   production build ships an empty client ID. Phase 6 is otherwise unblocked.
 2. **Server prerequisites — done.** DNS, `/var/www/eatmyway`, the nginx site
    (`/etc/nginx/sites-available/eatmyway.gorny.dev`), the certificate with verified unattended
    renewal, the four `SSH_*` secrets and `DEPLOY_CHECK_TOKEN` are all in place. The only
@@ -551,9 +577,11 @@ filtered flat list). Her decisions on each point follow.
    yet, so the site returns 502. The deploy key's public half is in the server's
    `~/.ssh/authorized_keys` for user `zyndata`; `SSH_HOST` is the raw IP because every name in
    the zone is Cloudflare-proxied and would never reach port 22.
-3. **CSP will have to widen in Phase 6** for Google Identity Services (`script-src` and
-   `frame-src` for `https://accounts.google.com`). Recorded now so it is a decision, not a
-   surprise.
+3. **CSP *and* COOP will have to widen in Phase 6** for Google Identity Services: `script-src`
+   and `frame-src` for `https://accounts.google.com`, and `Cross-Origin-Opener-Policy` relaxed
+   from `same-origin` to `same-origin-allow-popups` — GIS hands the token back through a popup,
+   and the stricter value severs that window reference. Both live in the Caddyfile header
+   block. Recorded now so they are decisions, not surprises.
 4. **PWA + OAuth interaction** (Phase 8): the service worker must not cache the OAuth redirect
    or token responses. Verify explicitly when the service worker lands.
 5. **The nutrition bundle must be precached by the service worker** (Phase 8). It is fetched

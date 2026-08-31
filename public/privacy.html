@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Polityka prywatności aplikacji Eat My Way." />
+    <meta name="color-scheme" content="light" />
+    <title>Polityka prywatności — Eat My Way</title>
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Polityka prywatności</h1>
+      <p class="updated">Eat My Way · ostatnia aktualizacja: 31 sierpnia 2026</p>
+
+      <p class="lead">
+        Eat My Way to osobisty kalendarz planowania posiłków działający w całości w Twojej
+        przeglądarce. Aplikacja nie ma serwera aplikacyjnego — nie istnieje żadna baza danych,
+        do której trafiałyby Twoje dane. Nie zbieramy ich, nie analizujemy i nie przekazujemy
+        nikomu.
+      </p>
+
+      <h2>Kto odpowiada za aplikację</h2>
+      <p>
+        Aplikacja jest prywatnym, niekomercyjnym projektem. Kontakt:
+        <a href="mailto:eatmyway-support@googlegroups.com">eatmyway-support@googlegroups.com</a>.
+        Kod źródłowy jest jawny i dostępny pod adresem
+        <a href="https://github.com/zyndata/eat-my-way">github.com/zyndata/eat-my-way</a>.
+      </p>
+
+      <h2>Gdzie są przechowywane Twoje dane</h2>
+      <ul>
+        <li>
+          <strong>W przeglądarce.</strong> Przepisy, plan posiłków, profil i ustawienia zapisują
+          się w pamięci IndexedDB na Twoim urządzeniu. To jedyne miejsce, w którym aplikacja
+          trzyma dane w trybie domyślnym.
+        </li>
+        <li>
+          <strong>Na Twoim Dysku Google — opcjonalnie.</strong> Jeśli włączysz synchronizację,
+          dane trafiają do prywatnego folderu aplikacji (<code>appDataFolder</code>) na Twoim
+          koncie. Folder ten jest niewidoczny na liście plików Dysku i dostępny wyłącznie dla tej
+          aplikacji. Właścicielem danych pozostajesz Ty.
+        </li>
+      </ul>
+
+      <h2>Dostęp do konta Google</h2>
+      <p>
+        Aplikacja prosi o jeden zakres uprawnień:
+        <code>https://www.googleapis.com/auth/drive.appdata</code>. Pozwala on wyłącznie na
+        odczyt i zapis własnego folderu aplikacji. <strong>Nie mamy dostępu do pozostałych
+        plików na Twoim Dysku</strong> — ani do zdjęć, dokumentów czy poczty.
+      </p>
+      <p>
+        Z profilu Google zapisujemy lokalnie identyfikator konta (<code>sub</code>), aby wykryć
+        sytuację, w której logujesz się innym kontem niż poprzednio, i ostrzec Cię, zamiast po
+        cichu założyć nowy profil. Token dostępu żyje w pamięci karty i wygasa po godzinie.
+      </p>
+      <p>
+        Dostęp możesz odebrać w każdej chwili na stronie
+        <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.
+      </p>
+
+      <h2>Import przepisów przez Gemini</h2>
+      <p>
+        Import przepisu z tekstu lub linku jest funkcją opcjonalną i wymaga Twojego własnego
+        klucza API Google Gemini. Klucz przechowujemy w zaszyfrowanym sejfie na Twoim urządzeniu
+        — nigdy nie opuszcza przeglądarki inaczej niż jako nagłówek żądania do Google. Treść,
+        którą importujesz, trafia do Google zgodnie z warunkami usługi Gemini API. Jeśli nie
+        wpiszesz klucza, aplikacja nie wysyła do Gemini niczego.
+      </p>
+
+      <h2>Czego nie robimy</h2>
+      <ul>
+        <li>nie używamy plików cookie ani żadnych identyfikatorów śledzących;</li>
+        <li>nie korzystamy z analityki, statystyk odwiedzin ani reklam;</li>
+        <li>nie sprzedajemy, nie udostępniamy i nie przekazujemy danych osobom trzecim;</li>
+        <li>nie profilujemy użytkowników i nie podejmujemy decyzji automatycznych.</li>
+      </ul>
+
+      <h2>Logi serwera</h2>
+      <p>
+        Strona jest wyłącznie zbiorem plików statycznych. Serwer i pośredniczący w ruchu
+        Cloudflare zapisują techniczne logi żądań (adres IP, czas, adres URL, nagłówek
+        przeglądarki), potrzebne do działania i bezpieczeństwa usługi. Nie łączymy ich z Twoimi
+        danymi w aplikacji ani z kontem Google.
+      </p>
+
+      <h2>Usunięcie danych</h2>
+      <ul>
+        <li>
+          <strong>Na urządzeniu</strong> — wyczyść dane witryny dla
+          <code>eatmyway.gorny.dev</code> w ustawieniach przeglądarki.
+        </li>
+        <li>
+          <strong>Na Dysku Google</strong> — odbierz aplikacji dostęp na stronie uprawnień konta
+          Google i usuń dane aplikacji w sekcji „Dane aplikacji" ustawień Dysku.
+        </li>
+      </ul>
+      <p>Nie mamy kopii tych danych, więc nie ma nic więcej do usunięcia po naszej stronie.</p>
+
+      <h2>Zmiany</h2>
+      <p>
+        Zmiany w tej polityce publikujemy na tej stronie wraz z nową datą aktualizacji. Historia
+        zmian jest jawna w repozytorium projektu.
+      </p>
+
+      <footer>
+        <p><a href="/">Powrót do aplikacji</a> · <a href="/terms.html">Warunki korzystania</a></p>
+      </footer>
+    </main>
+  </body>
+</html>
