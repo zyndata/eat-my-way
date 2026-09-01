@@ -12,6 +12,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - Save daily goals, which a $state proxy had always prevented
 - Default to gemini-3.6-flash, which a new key can actually call
+- Migrate profiles off the retired model and report the real quota
 
 ### Documentation
 
@@ -26,6 +27,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 
