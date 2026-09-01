@@ -746,6 +746,89 @@ filtered flat list). Her decisions on each point follow.
      the version moved — is checked against a scripted `fetch` that asserts the metadata read
      happens *before* the upload.
 
+### 2026-09-01 — Automated coverage for login and sync (outside the phase sequence)
+
+106. **Playwright joins as a dev dependency, which partly reverses decision 22.** That decision
+     rejected browser-mode testing because it would pull a browser download into CI "for one
+     test file". The trade has changed: Phase 6 added an OAuth flow, a token lifecycle, a
+     Drive client and an app-wide sync state machine, none of which can be exercised from
+     Node, and the first two had no tests at all. `@playwright/test` is dev-only, never
+     reaches the bundle, and CI installs Chromium alone behind a lockfile-keyed cache in a
+     job separate from the `check → test → build` gate. Decision 22's reasoning still holds
+     for the data layer, which keeps using `fake-indexeddb`.
+
+107. **Google is faked at the network boundary, never inside `src/`.** The suite answers
+     `accounts.google.com/gsi/client` with a stub implementing `initTokenClient` and `revoke`,
+     and `www.googleapis.com/**` with an in-memory `appDataFolder` behind the real Drive REST
+     surface (`e2e/fake-google.ts`). The app under test is the shipped app: real
+     `google-auth.ts`, real `drive.ts`, real engine, no `?e2e=1` flag and no test-only seam.
+     Serving the GIS stub from Google's own URL means the run happens under the production
+     `script-src` rather than a relaxed one — `npm run test:e2e:csp` points the same 17 specs
+     at the Caddy container, and all of them pass with zero CSP violations.
+
+     This also gives PLAN.md's two-browser criterion a real second browser: two Playwright
+     contexts, two IndexedDBs, one shared `FakeDrive`. `src/test/fake-drive.ts` and its
+     two-repository version stay — they are faster and they cover the merge rules — but the
+     acceptance criterion is no longer approximated.
+
+108. **`google-auth.ts` and `state.svelte.ts` had zero tests; they now have 46.** Between them
+     they hold ~430 lines of token lifecycle and orchestration on the path from a click to a
+     sync, and neither is reachable from the engine's suite. The new unit tests cover the
+     expiry margin, request coalescing, silent versus interactive prompts, recovery after a
+     rejected or failed script load, and — on the state side — `silentAllowed`, the Polish
+     message for each outcome, the conflict prompt's round trip, the debounce, the three
+     background triggers and their teardown. Two consequences worth recording: `vitest.config.ts`
+     now runs `vite-plugin-svelte` so a rune module (`*.svelte.ts`) can be imported at all, and
+     the tests stub the handful of `window`/`document` members those two modules touch rather
+     than adding jsdom.
+
+109. **The wizard redirect after connecting to an empty folder is deliberate, and is now
+     asserted both ways.** It is the first thing the e2e run walked into: connecting to a fresh
+     `appDataFolder` navigates away from Settings to `/setup`, which reads as a bug until you
+     find PLAN.md's condition for it. One spec asserts the redirect happens on an empty folder
+     and another asserts it does *not* happen when the folder already holds data.
+
+
+110. **„Zapisz cele" never saved anything, and decision 56 is the reason it was predictable.**
+     Reported as „synchronizacja trwała w nieskończoność" and reproduced in a real browser
+     against real Google: clicking „Zapisz cele" threw
+     `DataCloneError: #<Object> could not be cloned` inside a `void`-ed promise, wrote nothing
+     to IndexedDB, and left the button on „Zapisywanie…" — disabled — until the page was
+     reloaded. The wizard's „Cele" step has the same call and freezes on step 5 instead.
+
+     The cause is exactly what decision 56 said would recur: `goals` is `bind:goals` in
+     `GoalsForm`, so `repository.setGoals` receives a `$state` proxy, and
+     `{ ...current, goals }` unwraps only the top level while the proxy stays nested. Nothing
+     caught it because `repository.test.ts` calls these methods with object literals, and
+     every real caller passes something that came out of a rune.
+
+     Fixed at the repository boundary rather than at the call site — `plain()`, a JSON round
+     trip, applied in `saveProfile`, `setGoals`, `putIngredient`, `putIngredients`,
+     `saveRecipe`, `storeDay` (which every day write funnels through) and `putCorrection`.
+     Decision 56 asked callers to be careful and a caller was not; a guard that cannot be
+     forgotten is the answer. JSON is the right copy here because everything stored is already
+     JSON-serialisable — that property is what keeps the Drive documents byte-identical to the
+     spec — and the only thing lost is `undefined` properties, which IndexedDB stores as absent
+     anyway.
+
+     Two guards now exist. `repository.proxy.test.ts` pushes a deep proxy through every write
+     the UI can reach; when it was written, **five of seven failed** (`setGoals`,
+     `saveProfile`, `putIngredient`, `saveRecipe`, `saveDay`/`addMealToDay`), even though the
+     recipe and day paths happen to work today because their callers pass plain objects — the
+     margin was luck, not design. `e2e/goals.spec.ts` covers the screen itself: the save
+     finishes, says „Zapisano.", survives a reload and reaches `profile.json` on Drive.
+
+111. **The first real sign-in against Google happened, and the sync design held.** Driven by
+     hand in Chrome over CDP on `http://localhost:8080` under the production headers, with the
+     traffic recorded. GIS loaded, the consent screen completed, `about.get` returned the
+     account, the empty folder was listed and `profile.json`, `recipes.json` and
+     `ingredients.json` were uploaded; a later pass wrote `vault.json` and two `days/*.json`.
+     An **idle sync costs exactly two requests** — `about.get` plus one listing, no downloads
+     — so the `driveFiles`/`modifiedTime` skip in `engine.ts` does what its comment claims
+     against real Drive, not just against the fake. This is what open question 15 asked for on
+     the upload path, the identity read and real `modifiedTime` behaviour.
+
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -802,11 +885,16 @@ filtered flat list). Her decisions on each point follow.
     background job on top of it.
 14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
     built here — decision 64's filter compares whole portions against kcal only.
-15. **The live Drive round trip has never run against Google.** Everything is verified against
-    an in-memory `appDataFolder` and, for the client itself, a scripted `fetch` (decision 105).
-    The first real sign-in on `eatmyway.gorny.dev` is therefore also the first real test of the
-    upload path, the `about.get` identity read and the foreign-account message. Worth doing
-    deliberately, on a throwaway day of data, before trusting it with a month of planning.
+15. **The live Drive round trip still has never run against Google.** Narrowed, not closed,
+    by decision 107: the flows are now driven end to end in a real browser under the production
+    CSP, but every request is answered locally, so the client is checked against the Drive API
+    *as documented* rather than as it behaves. What remains unverified is Google's own
+    behaviour — real token lifetimes, `modifiedTime` semantics under a racing write, what
+    `about.get` actually returns for an appdata-only grant, and the real consent screen. The
+    first real sign-in on `eatmyway.gorny.dev` is still that test. Worth doing deliberately, on
+    a throwaway day of data, before trusting it with a month of planning. An opt-in `@live`
+    spec against a throwaway Google account is the obvious next step and was deliberately not
+    built here.
 16. **Data export is in PLAN.md's settings screen and is not built.** No phase claims it —
     Phase 6 owns the vault, Drive and goals, and Phase 9 is comfort features. Drive sync makes
     it less urgent (the JSON is in the user's own account), but a user without Drive has no way
@@ -820,3 +908,23 @@ filtered flat list). Her decisions on each point follow.
     debounce after an edit, focus, `online`, and a five-minute timer (decision 99) — all of
     which need the tab to be open. Phase 8's service worker could add a background sync;
     whether that is worth the complexity for a single-user planner is not decided.
+
+19. **COOP blocks Google Identity Services from noticing a closed popup, and nothing times
+    out.** Six `Cross-Origin-Opener-Policy policy would block the window.closed call` warnings
+    were recorded during a real sign-in — two seconds after the popup opened, and four more
+    when it completed. Decision 86 relaxed COOP to `same-origin-allow-popups` so the `opener`
+    reference survives, and it does: the token came back. But GIS also polls `popup.closed` to
+    detect a dismissal, and *that* read is still refused. `google-auth.ts` has **no timeout** —
+    its promise settles only through `callback` or `error_callback` — so if neither fires when
+    the user closes the window, `syncState.phase` stays `'syncing'`, „Połącz Dysk Google" stays
+    disabled, and only a reload recovers. The consequence is certain; whether GIS really fails
+    to call back in that case is **not yet verified**, because it needs a human to close the
+    consent window. Worth settling, and worth a timeout in `getAccessToken` regardless. Note
+    that `e2e/connect.spec.ts` covers the dismissal path and passes — the GIS stub calls
+    `error_callback`, which is more generous than the real one may be.
+
+20. **A silent renewal after a reload asked GIS for a popup.** One
+    `[GSI_LOGGER]: Failed to open popup window` was recorded on a load that should have renewed
+    silently (`prompt: ''`). The sync recovered and reported „Połączono", so nothing broke, but
+    a silent path that reaches for a popup is a silent path that can fail without a gesture.
+    Seen once, not investigated.
