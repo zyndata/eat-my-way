@@ -1,5 +1,6 @@
 import { test as base, expect, type BrowserContext, type Page } from '@playwright/test';
 import { FakeDrive, installFakeGoogle, type GoogleSession } from './fake-google';
+import { createFakeGemini, installFakeGemini, type FakeGemini } from './fake-gemini';
 
 /**
  * One `FakeDrive` per test, and as many browser contexts over it as the test wants. Two
@@ -15,6 +16,8 @@ export interface DeviceOptions {
 
 interface Fixtures {
   drive: FakeDrive;
+  /** Gemini, answered at the network boundary. A test writes `gemini.script` before acting. */
+  gemini: FakeGemini;
   pageErrors: string[];
   openDevice: (options?: DeviceOptions) => Promise<Page>;
   /** One device, already on the settings screen — the common case. */
@@ -28,17 +31,22 @@ export const test = base.extend<Fixtures>({
     await use(new FakeDrive());
   },
 
+  gemini: async ({}, use) => {
+    await use(createFakeGemini());
+  },
+
   pageErrors: async ({}, use) => {
     await use([]);
   },
 
-  openDevice: async ({ browser, drive, baseURL, pageErrors }, use) => {
+  openDevice: async ({ browser, drive, gemini, baseURL, pageErrors }, use) => {
     const contexts: BrowserContext[] = [];
 
     await use(async (options: DeviceOptions = {}) => {
       const context = await browser.newContext();
       contexts.push(context);
       await installFakeGoogle(context, drive, options);
+      await installFakeGemini(context, gemini);
 
       const page = await context.newPage();
       // The sync paths are full of `void promise` calls whose rejections surface nowhere

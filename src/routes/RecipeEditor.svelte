@@ -3,6 +3,7 @@
   import Screen from '../lib/components/Screen.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import CustomIngredientForm from '../lib/components/CustomIngredientForm.svelte';
+  import RecipeImportSheet from '../lib/components/RecipeImportSheet.svelte';
   import RecipeItemRow from '../lib/components/RecipeItemRow.svelte';
   import TagInput from '../lib/components/TagInput.svelte';
   import type { Ingredient, Recipe, Tag } from '../lib/types';
@@ -23,6 +24,7 @@
   import { newId } from '../lib/ids';
   import { todayDate } from '../lib/dates';
   import { nutritionStatus } from '../lib/nutrition/status.svelte';
+  import { rememberCorrection, type ImportedRecipe } from '../lib/gemini/import';
 
   /**
    * Recipe editor. Items are always the amounts for exactly one portion (PLAN.md task 3).
@@ -61,6 +63,12 @@
   let pendingRecipe: Recipe | null = null;
   let pendingFuture = $state(0);
   let deleteOpen = $state(false);
+
+  let importOpen = $state(false);
+  /** Set once an import has landed, so the editor can explain what it did. */
+  let imported = $state(false);
+  let importedUnmatched = $state(0);
+  let importedPortions = $state(1);
 
   let rowCounter = 0;
   const nextKey = (): string => `row-${++rowCounter}`;
@@ -124,6 +132,29 @@
     row.ingredientId = ingredient.id;
     // A fresh pick starts from the database values, never from a previous row's override.
     row.macroOverride = null;
+
+    // A row that came from an import carries the name the model produced. Picking on it — to
+    // fix a wrong match or to fill one it could not make — is the user saying what that name
+    // means, so it is stored and the next import matches it by lookup (STATE.md decision 116).
+    if (row.sourceName !== null) {
+      void rememberCorrection(row.sourceName, ingredient.id).then(() => scheduleSync());
+    }
+  }
+
+  /**
+   * Land an import in the open editor. Rows are appended rather than replacing what is there:
+   * importing into a half-typed recipe must never throw work away. The name and the
+   * instructions only fill blanks, for the same reason.
+   */
+  function applyImport(result: ImportedRecipe): void {
+    importOpen = false;
+    ingredientsById = { ...ingredientsById, ...result.ingredientsById };
+    draft.items = [...draft.items, ...result.items];
+    if (draft.name.trim() === '' && result.name !== '') draft.name = result.name;
+    if (draft.instructions.trim() === '') draft.instructions = result.instructions;
+    importedUnmatched = result.unmatched;
+    importedPortions = result.sourcePortions;
+    imported = true;
   }
 
   async function saveCustomIngredient(key: string, ingredient: Ingredient): Promise<void> {
@@ -220,14 +251,29 @@
       <div>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium text-(--color-ink-muted)"
-          disabled
+          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          onclick={() => (importOpen = true)}
         >
           Wklej przepis z internetu
         </button>
-        <p class="pt-1 text-xs text-(--color-ink-muted)">
-          Import przez Gemini pojawi się w fazie 7.
-        </p>
+        {#if imported}
+          <p class="pt-1 text-xs text-(--color-ink-muted)">
+            Przepis wczytany.
+            {#if importedPortions > 1}
+              Ilości podzielone z {importedPortions} porcji na jedną.
+            {/if}
+            {#if importedUnmatched > 0}
+              {importedUnmatched}
+              {importedUnmatched === 1 ? 'składnika nie udało się' : 'składników nie udało się'}
+              dopasować do bazy — wybierz je ręcznie, a przy następnym imporcie dopasują się same.
+            {/if}
+            Sprawdź wszystko i dopiero wtedy zapisz.
+          </p>
+        {:else}
+          <p class="pt-1 text-xs text-(--color-ink-muted)">
+            Wklej link albo treść przepisu — Gemini rozpisze składniki, kalorie policzymy sami.
+          </p>
+        {/if}
       </div>
 
       <section>
@@ -350,6 +396,13 @@
     </div>
   {/if}
 </Screen>
+
+<RecipeImportSheet
+  open={importOpen}
+  onclose={() => (importOpen = false)}
+  onimport={applyImport}
+  {nextKey}
+/>
 
 <ConfirmDialog
   open={pendingFuture > 0}

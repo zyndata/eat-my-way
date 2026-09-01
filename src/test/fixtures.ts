@@ -70,3 +70,13 @@ export function seqIds(prefix = 'id'): IdFactory {
 export function freshDb(): EatMyWayDb {
   return new EatMyWayDb(`test-${crypto.randomUUID()}`);
 }
+
+/**
+ * `rows[index]`, minus the `| undefined` that `noUncheckedIndexedAccess` adds. A missing row
+ * is a failing test, so it throws rather than making every assertion write `!`.
+ */
+export function at<T>(rows: readonly T[], index = 0): T {
+  const row = rows[index];
+  if (row === undefined) throw new Error(`No row at index ${index} (length ${rows.length})`);
+  return row;
+}

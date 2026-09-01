@@ -13,7 +13,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 4     | Recipes                     | done    | 2026-08-31 |
 | 5     | Calendar & day view         | done    | 2026-08-31 |
 | 6     | Drive sync & vault          | done    | 2026-08-31 |
-| 7     | Gemini import               | pending | —         |
+| 7     | Gemini import               | done    | 2026-09-01 |
 | 8     | PWA & polish                | pending | —         |
 | 9     | Daily-use comfort           | pending | —         |
 
@@ -829,6 +829,80 @@ filtered flat list). Her decisions on each point follow.
      the upload path, the identity read and real `modifiedTime` behaviour.
 
 
+### 2026-09-01 — Phase 7
+
+112. **No new dependencies.** The Gemini REST API is one `fetch` against
+     `generativelanguage.googleapis.com`; `@google/genai` would add a dependency that holds the
+     user's API key for the sake of a URL string and a JSON body. `connect-src` already lists
+     the host (Phase 1), so nothing in the CSP changes and the „link" input costs no widening —
+     the page is retrieved on Google's side, never by the browser (decision 63).
+
+113. **A link is resolved into text first, then imported exactly like pasted text.** PLAN.md
+     task 3 asks that a link and its pasted text produce the same draft. The cheapest way to
+     *guarantee* that rather than hope for it is to make the link path a strict prefix of the
+     text path: call one, with the `url_context` tool, asking only for the recipe's text as it
+     appears on the page; then feed that text into the very same parse call the paste path uses.
+     Two consequences, both wanted. The failure is localized — a page the model cannot read
+     fails in step one, where the message can honestly say „nie udało się otworzyć strony,
+     wklej treść przepisu", instead of surfacing as a mysteriously empty ingredient list. And
+     structured output never has to be combined with a tool call, a combination the API
+     restricts on some models and which could not be verified from here. The cost is one extra
+     request per link import.
+
+114. **Ingredient matching is a second call over a controlled vocabulary, and corrections
+     short-circuit it.** For each parsed name the app ranks its own IndexedDB index (the Phase 3
+     ranker, unchanged) and offers Gemini at most eight candidates as `{id, name}`; the model may
+     answer only with an id from that list or `null`. It never sees the nutrition numbers and
+     cannot invent an ingredient — the fallback for `null` is the manual autocomplete, which is
+     the state a hand-written recipe row starts in anyway. A stored correction for the name
+     (`corrections`, the table and Drive document Phase 6 already built) wins before the call is
+     made and its name is not even sent, so a name the user has fixed once is matched by lookup
+     from then on and costs nothing.
+
+115. **Determinism is bought where it can be, and stated where it cannot.** `temperature: 0`,
+     `topK: 1` and a fixed `seed` go on every request, and everything after the model —
+     unit normalization, candidate selection, correction lookup, draft assembly — is pure and
+     covered by tests. That makes the app's half of „the same text twice yields the same draft"
+     an assertion rather than an aspiration. Google does not contract greedy decoding to be
+     bit-identical across serving revisions, so the criterion is verified over the deterministic
+     half plus a fixed-response test, and the model half is honest guesswork. Recorded as open
+     question 21.
+
+116. **The parsed name rides along in the editor draft, and picking an ingredient records a
+     correction.** `DraftItem` gains `sourceName: string | null` — editor-local, never written to
+     a `Recipe`, never sent to Drive. A row that came from an import carries the Polish name the
+     model produced, so when the user changes or fills that row the editor stores
+     `normalizeKey(sourceName) → ingredientId` as an `IngredientCorrection`. That is the whole of
+     PLAN.md task 5: the correction is a by-product of the fix the user was making anyway, with
+     no extra screen and no „czy zapamiętać?" prompt.
+
+117. **The import is a sheet over the editor and never writes anything.** „Wklej przepis z
+     internetu" opens a `BottomSheet` with one field (link or text) and lands its result in the
+     open editor draft — name, tags untouched, ingredient rows, instructions — leaving the
+     ordinary „Zapisz przepis" as the only path to IndexedDB, exactly as PLAN.md task 6 asks.
+     Importing into an editor that already has rows *appends*; it never silently discards work.
+     The vault unlock is requested through `requestUnlock()` at the moment the key is needed and
+     not before, which is the trigger PLAN.md reserves for Gemini.
+
+118. **The import is faked at the network boundary too, and runs under the production CSP.**
+     `e2e/fake-gemini.ts` answers `generativelanguage.googleapis.com` for a browser context the
+     same way `fake-google.ts` answers Drive and GIS (decision 107): real `client.ts`, real
+     prompts, real readers, no test-only seam in `src/`. Its matching answer is not canned — it
+     parses the controlled-vocabulary prompt and picks the first id actually offered for each
+     name, so a test cannot pass by agreeing with a hard-coded id the app never sent. Six specs
+     cover the paste, the link, an unreadable page, a refused key, an app with no key at all and
+     the correction round trip. `npm run test:e2e:csp` runs all 25 specs against the Caddy
+     container and reports zero CSP violations, which is what makes „a link import needs no
+     policy change" a measurement rather than a claim.
+
+119. **Two rules were needed that PLAN.md does not state, both discovered by building it.**
+     A recipe page says „na 4 porcje" and the app stores one, so the amounts are divided on
+     import — including `szt` rows, where a quarter of an egg is honest and four eggs would be
+     wrong by 4×. And the Phase 3 ranker, which requires every query word to hit the same name,
+     finds nothing for „oliwa do smażenia" — right for a person typing, useless for a name off a
+     page — so a name that ranks empty is retried word by word and the results unioned in word
+     order. Both are pure functions with their own tests.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -930,3 +1004,22 @@ filtered flat list). Her decisions on each point follow.
     silently (`prompt: ''`). The sync recovered and reported „Połączono", so nothing broke, but
     a silent path that reaches for a popup is a silent path that can fail without a gesture.
     Seen once, not investigated.
+
+21. **The model half of import determinism is unverified, and unverifiable from here.**
+    Decision 115: every request goes out with `temperature: 0`, `topK: 1` and a fixed seed, and
+    everything downstream of the model — unit normalization, candidate selection, correction
+    lookup, draft assembly — is pure and asserted twice over. What is *not* established is that
+    Gemini returns byte-identical JSON for the same prompt across serving revisions; Google
+    contracts no such thing. The practical consequence is small and self-limiting: a name the
+    model waffles on is a name the user corrects once, after which it never reaches the model
+    again. Worth re-checking against the real API on the first live import.
+
+22. **The prompts have never met the real model.** Every test in this phase answers with a
+    canned or prompt-derived response, so what is verified is that the app handles a
+    well-formed answer, a malformed one, a refusal and each HTTP failure — not that
+    `gemini-2.5-flash` actually obeys „no nutrition numbers", actually quantifies „skropić
+    oliwą", or actually retrieves a Polish recipe blog through `url_context`. The structure
+    defends the first of those on its own (there is nowhere in the schema to put a calorie, and
+    the reader drops unknown fields), and the second and third fail visibly rather than
+    silently. Still: the first real import against a real key on a real recipe page is the test
+    that has not been run, and it is the same kind of gap open question 15 named for Drive.
