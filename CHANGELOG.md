@@ -32,10 +32,12 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
+- Update CHANGELOG
 
 ### Tests
 
 - Cover the Drive login and sync flows end to end
+- Cover the loop that turns an unmatched row into a permanent match
 
 ## [0.2.0] - 2026-08-31
 
