@@ -20,6 +20,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Record the OAuth client ID as configured
 - Record the goals bug and the first live Drive round trip
 - The COOP window.closed warning does not break dismissal detection
+- Settle open questions 6 and 8-12 after the phase-8 review
 
 ### Features
 
@@ -39,11 +40,13 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
+- Update CHANGELOG
 
 ### Tests
 
 - Cover the Drive login and sync flows end to end
 - Cover the loop that turns an unmatched row into a permanent match
+- Drive the meal-card swipe as a real touch gesture
 
 ## [0.2.0] - 2026-08-31
 
