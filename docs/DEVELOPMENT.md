@@ -181,6 +181,7 @@ see STATE.md decision 88. Any violation from our own code is a real regression.
 | `import.spec.ts` | The Gemini import: a paste, a link, a bad key, the usage counter |
 | `pwa.spec.ts` | The app with the network gone, and the installability requirements |
 | `backup.spec.ts` | „Zapisz kopię" on one device, „Wczytaj kopię" on a fresh one |
+| `swipe.spec.ts` | The meal card's swipe-left, as a real touch gesture on a phone context |
 | `screens.spec.ts` | Every route in one session, asserting no CSP violation and no console error |
 
 The Drive flow is the deepest of them: connecting, the silent renewal on reload, a revoked
