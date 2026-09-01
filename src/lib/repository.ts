@@ -38,6 +38,24 @@ import { resolveTags } from './tags';
 import { NO_USAGE, type RecipeListEntry, type RecipeUsage } from './recipes';
 import type { SearchCandidate } from './search';
 
+/**
+ * A copy IndexedDB will accept.
+ *
+ * Everything that reaches this module from a screen came out of a Svelte rune, and every
+ * object read out of `$state` is a `Proxy` that structured clone refuses (STATE.md decision
+ * 56). A spread only unwraps the top level, so the guard has to be deep — and it belongs
+ * here rather than at each call site, because decision 56 predicted the mistake would recur
+ * and it did: `setGoals` passed the bound goals object straight through, so „Zapisz cele"
+ * threw `DataCloneError`, wrote nothing and left the button on „Zapisywanie…" for good.
+ *
+ * JSON is the right shape for the copy: everything stored here is already JSON-serialisable
+ * — that is what keeps the Drive documents byte-identical to the spec — so a round trip
+ * loses only the `undefined` properties IndexedDB would have stored as absent anyway.
+ */
+function plain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 /** Planned meals referring to one recipe, split at "today" (STATE.md decision 49). */
 export interface RecipeReferences {
   /** Meals on days strictly before `today`. Never rewritten by anything.  */
@@ -78,9 +96,10 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
   /** An emptied day loses its row rather than being stored as an empty one. */
   async function storeDay(day: Day): Promise<Day> {
-    if (day.meals.length === 0) await database.days.delete(day.date);
-    else await database.days.put(day);
-    return day;
+    const row = plain(day);
+    if (row.meals.length === 0) await database.days.delete(row.date);
+    else await database.days.put(row);
+    return row;
   }
 
   async function currentGoals(): Promise<Macros> {
@@ -159,13 +178,14 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     async saveProfile(profile: Profile): Promise<Profile> {
-      await database.profile.put(profile, PROFILE_KEY);
-      return profile;
+      const row = plain(profile);
+      await database.profile.put(row, PROFILE_KEY);
+      return row;
     },
 
     async setGoals(goals: Macros): Promise<Profile> {
       const current = (await database.profile.get(PROFILE_KEY)) ?? DEFAULT_PROFILE;
-      const profile: Profile = { ...current, goals };
+      const profile: Profile = plain({ ...current, goals });
       await database.profile.put(profile, PROFILE_KEY);
       return profile;
     },
@@ -196,12 +216,13 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     async putIngredient(ingredient: Ingredient): Promise<Ingredient> {
-      await database.ingredients.put(toIngredientRecord(ingredient));
-      return ingredient;
+      const row = plain(ingredient);
+      await database.ingredients.put(toIngredientRecord(row));
+      return row;
     },
 
     async putIngredients(ingredients: readonly Ingredient[]): Promise<void> {
-      await database.ingredients.bulkPut(ingredients.map(toIngredientRecord));
+      await database.ingredients.bulkPut(plain([...ingredients]).map(toIngredientRecord));
     },
 
     async countIngredients(): Promise<number> {
@@ -273,12 +294,12 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     async saveRecipe(recipe: Recipe, labels?: readonly string[]): Promise<Recipe> {
       return database.transaction('rw', database.recipes, database.tags, async () => {
         const previous = await database.recipes.get(recipe.id);
-        let stored = recipe;
+        let stored = plain(recipe);
 
         if (labels !== undefined) {
-          const { keys, created } = resolveTags(labels, await database.tags.toArray());
+          const { keys, created } = resolveTags([...labels], await database.tags.toArray());
           if (created.length > 0) await database.tags.bulkPut(created);
-          stored = { ...recipe, tags: keys };
+          stored = { ...stored, tags: keys };
         }
 
         await applyTagDelta(previous?.tags ?? [], stored.tags);
@@ -601,7 +622,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     async putCorrection(correction: IngredientCorrection): Promise<void> {
-      await database.corrections.put(correction);
+      await database.corrections.put(plain(correction));
     },
 
     /**
