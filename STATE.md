@@ -1247,6 +1247,95 @@ one of which broke the feature outright.
      spec therefore also reads the cache and asserts it holds `/index.html` and the hashed
      `ingredients-*.json`. The container run under the real CSP passes the same spec.
 
+### 2026-09-01 — Reviewing the open questions (after Phase 8)
+
+143. **A bare Polish staple name can resolve to the wrong product, silently — PLAN.md Phase 9
+     gains task 8 to audit it.** Found while walking the open questions, not by a user report,
+     and it changes what open question 9 is about.
+
+     „Twaróg" is not missing from the mapping, as the question claimed. It matches
+     `172181 Twaróg chudy`, at **72 kcal / 10.3 g protein / 6.7 g carbohydrate**. Two things are
+     wrong with that. The obvious one: what a Polish shopper buys as „twaróg" is *półtłusty*,
+     around 133 kcal and 4.7 g fat, so 200 g logged this way understates the day by roughly 120
+     kcal and 9 g of fat. The worse one: those macros are not a plausible twaróg *at all* — twaróg
+     chudy carries about 18–19 g of protein and 3 g of carbohydrate, and 10.3/6.7 is a
+     cottage-cheese profile. Which USDA row `172181` actually is could not be confirmed here:
+     `data/usda/` is empty on this machine, so `check:nutrition` cannot run offline either.
+
+     What makes this worth a task rather than a note is the failure mode. **An absent
+     ingredient is harmless** — nothing matches, the user notices instantly and adds a custom
+     one, and the app is already built for that. **A wrong ingredient is silent**, because
+     something did match. The only thing standing between the user and a wrong number today is
+     the kcal figure shown in the autocomplete row, which helps exactly as much as the user
+     happens to be paying attention.
+
+     Scope of the evidence, stated plainly: **one** case, found by checking the two examples the
+     open question happened to name. Whether it is an outlier or the tip of something is
+     precisely what the audit decides. It landed in Phase 9 by the user's call; the task text
+     says to do it first in the phase, because every day of use adds meals computed from
+     whatever is wrong, and frozen snapshots mean those days are never corrected retroactively.
+
+144. **The shopping list leaves through the share sheet, and Home Assistant is not called
+     directly.** Settling open question 10 early, because the part that was uncertain was the
+     CSP consequence, and that is not a Phase 9 discovery — it is an architectural fact that was
+     already true.
+
+     `navigator.share()` and the clipboard are not network requests, so neither is governed by
+     `connect-src`: the whole feature costs **no policy change at all**. Web Share needs HTTPS
+     and a user gesture, both of which we have; where it is unavailable (most desktop browsers)
+     the list goes to the clipboard instead. On Android the share sheet reaches anything that
+     accepts text, Listonic included if it registers as a share target — which is as close to
+     decision 62's „Listonic preferred" as anything can get, given that Listonic publishes no
+     import API.
+
+     **A direct `todo.add_item` against the user's own Home Assistant is rejected**, and the
+     reason is architectural rather than technical. The CSP is a header baked into the Docker
+     image by the Caddyfile; the HA instance lives at a private address known only to the user.
+     Templating it in at deploy time from a GitHub secret would work, and would mean a private
+     hostname in a public repository's deploy configuration, an HA token held in the browser,
+     and `connect-src` widened for one convenience. That is a poor trade for a shopping list.
+
+     There is a free path to the same place, and it is worth trying before anyone builds
+     anything: if the Home Assistant companion app registers as an Android share target, then
+     „share → HA" reaches the shopping list with no API call, no token and no policy change.
+     **Unverified** — check it on the phone, alongside the install in open question 26.
+
+     PLAN.md Phase 9 task 7 now carries the settled transport; only the scope (meal / day /
+     week) is still open there.
+
+145. **PLAN.md Phase 9 task 1 answered open question 11 and then told the reader to go and
+     settle it.** Wording fixed rather than re-decided: the three points the question called
+     undecided — the ranking inside a section, a section for untagged recipes, and a
+     multi-tagged recipe appearing under each of its tags — were all already written into the
+     task, and the phase's acceptance criterion already checks the last two.
+
+     What genuinely was not decided is the order of the *sections*, and it stays open on purpose:
+     alphabetical, by `useCount`, or by recent activity is a judgement best made looking at the
+     screen. „Bez tagu" goes last regardless — it is the absence of a category, not one of them.
+     Noted in the task text as well: because a recipe appears under each of its tags, the header
+     counts sum to more than the library holds. That is intended, and someone will ask.
+
+146. **The swipe is now driven as a real gesture — and the half that still is not covered was
+     found by trying to break it.** Open question 12 said the card's own swipe could not be
+     automated because a synthesized horizontal drag is not what a browser turns into a click.
+     Half of that is no longer true and half of it is exactly true.
+
+     `e2e/swipe.spec.ts` opens a touch-capable phone context (`devices['Pixel 5']`, through a new
+     `touch` option on the `openDevice` fixture) and sends `Input.dispatchTouchEvent` over a CDP
+     session, so the `TouchEvent`s come out of Chromium's input pipeline rather than from
+     `dispatchEvent` in page script. That covers the gesture rules for real: the 50 px threshold,
+     the 40 px vertical slack, direction, and that the revealed row stops being `inert`.
+
+     `inert` is the assertion, not visibility: the action row is always painted and the card
+     slides over it, so „is it visible" answers nothing about which state the card is in.
+
+     **Still uncovered: that a finished swipe does not also follow the link it crossed.**
+     Chromium synthesizes a click from a tap, not from a CDP touch drag, so nothing is generated
+     for `suppressClick` to swallow. Established by mutation rather than assumed — removing the
+     `event.preventDefault()` from `MealCard` leaves the whole suite green. No assertion was
+     written for it, deliberately: one that cannot fail reads like coverage and is worse than
+     having none. That path remains a hand check on a real phone.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -1275,31 +1364,86 @@ one of which broke the feature outright.
 5. **The nutrition bundle is precached — answered.** Decision 136: `globPatterns` covers the
    hashed `ingredients-*.json`, and `e2e/pwa.spec.ts` asserts it is in the cache after the first
    load. A fresh install that goes offline before its first run now has its ingredients.
-6. **Foundation Foods moves twice a year.** Nothing watches for a new release; refreshing it is
-   a deliberate act (decision 32). Worth a reminder once the app is in daily use.
+6. **Foundation Foods moves twice a year — answered: nothing will watch it, deliberately.**
+   Reviewed 2026-09-01 and settled: no cron, no reminder. The bundle gets refreshed *reactively*
+   — when something actually goes wrong, or when someone files a GitHub issue about a missing or
+   wrong ingredient. A watcher that fires twice a year into an empty room is a thing to maintain,
+   not a thing that helps.
+
+   Three facts checked while deciding, so the refresh does not have to be re-researched:
+
+   - **We are on the newest release.** The pinned `foundation_food_csv_2026-04-30.zip` is the
+     last entry on USDA's list.
+   - **The list is greppable**, so finding the current release costs one command — no API key,
+     no parser: `curl -sL https://fdc.nal.usda.gov/download-datasets/ | grep -o
+     'foundation_food_csv_[0-9-]*\.zip' | sort -u | tail -1`. The `.html` URL in
+     `build-nutrition.mjs` redirects there. Real cadence is April plus late autumn, but the
+     autumn date drifts (2025-12-18, not October), so guessing a URL from a date is fragile and
+     reading the list is not. SR Legacy has exactly one release, 2018-04, frozen — nothing to
+     watch there ever.
+   - **A refresh cannot quietly break a recipe.** `build-nutrition.mjs` throws when a mapped
+     `fdcId` has no complete macros in the pinned releases, so a release that drops an entry
+     fails the build loudly instead of shrinking the bundle under recipes that reference it.
+     That is what makes "refresh when it matters" a safe policy rather than a gamble.
 7. **A planned meal whose recipe was deleted — answered.** Decision 73: the day view and the
    meal view render „Usunięty przepis" when `recipeId` no longer resolves, keep the frozen
    macros, and drop the recipe section rather than pretending it is still there.
-8. **Ingredient rows cannot be reordered, and a recipe cannot be duplicated.** Neither is in
-   PLAN.md Phase 4 and neither was built. Both are obvious wants once the app is in daily use;
-   `reorderMeals` in `day.ts` is the pattern to copy if rows ever need it.
-9. **The curated mapping is a starting point, not a finished catalogue.** 1343 entries cover
-   ordinary Polish cooking, but Polish specifics with no USDA equivalent (twaróg półtłusty,
-   korzeń pietruszki) are approximated or absent. Open Food Facts is the planned second source
-   (PLAN.md, "Nutrition data") and would fill these in; user-created custom ingredients cover
-   the gap in the meantime.
-10. **Shopping-list export target and transport** (Phase 9, decision 62). Listonic has no documented
-    public import API; a share sheet / plain-text export may be the only thing that reaches it.
-    Home Assistant is reachable but only at a URL the app cannot know at build time. Resolve when
-    Phase 9 starts, and record the CSP consequence before writing any code.
-11. **Grouped library view vs. the existing ranking** (Phase 9, decision 59). Decision 46 orders the
-    library by recent activity. Grouping by tag has to decide what happens inside a section (the same
-    ranking, presumably), what happens to untagged recipes (an „Bez tagu" section), and whether a
-    recipe with three tags appears three times or once. Not decided.
-12. **The swipe-left gesture is only checked by hand.** The drag/scroll boundary is verified in
-    the browser (decision 81), but the card's own swipe is not — synthesizing a horizontal drag
-    that a browser turns into a click is the part the CDP run does not cover. The „⋮" button is
-    the path that *is* covered, and it reaches the same actions (decision 72).
+8. **Ingredient rows and duplicating a recipe — answered: both are scheduled.** The question
+   predates Phase 9 being written, and the plan has since claimed both: PLAN.md Phase 9 task 3
+   is „Zapisz jako kopię" (a deep copy with a new id, the variant workflow of decision 66) and
+   task 5 is reordering the rows. `reorderMeals` in `day.ts` remains the pattern to copy — that
+   is the one piece of guidance PLAN.md does not repeat.
+
+   One detail to settle when Phase 9 starts, not now: whether a duplicated recipe inherits its
+   tags (it should) and whether that increments each tag's `useCount` (it should, or the counter
+   drifts from the number of recipes actually carrying the tag).
+9. **The curated mapping holds two different problems, and only one of them is dangerous.**
+   Reviewed 2026-09-01; decision 143 split what used to be one question.
+
+   **(a) Absent — answered, and not fixable by mapping.** Some Polish staples have no USDA
+   equivalent at all: „korzeń pietruszki" is the clean example, present only as natka and as
+   dried parsley, because parsley root is not a US vegetable. No amount of curation invents a
+   row that FoodData Central does not have. This tries to fail well and does: nothing matches,
+   the user sees that immediately, and a custom ingredient closes it in one step. Open Food
+   Facts remains the planned second source (PLAN.md, „Nutrition data") and is post-1.0.
+
+   **(b) Present but wrong — open, and now PLAN.md Phase 9 task 8.** „Twaróg" resolves to
+   `172181 Twaróg chudy` at 72 kcal / 10.3 g protein / 6.7 g carbohydrate: neither the fat level
+   the name means to a Polish shopper, nor a believable twaróg at all (see decision 143). This
+   one is silent — something matched, so nobody looks — and it puts a wrong number into the one
+   thing the app promises to get right. One case found so far, from checking the two names this
+   question happened to list; the audit exists to find out whether it is an outlier.
+10. **Shopping-list transport — answered; only the scope is still open.** Decision 144:
+    `navigator.share()` with a clipboard fallback, which is not a network request and therefore
+    **costs no CSP change**. A direct call to the user's own Home Assistant `todo.add_item` is
+    rejected — a per-user host cannot live in a policy baked into the image, and the workarounds
+    (a private hostname in a public repo's deploy config, an HA token in the browser, a widened
+    `connect-src`) are worse than the feature. Listonic publishes no import API, so the share
+    sheet is also the closest thing to decision 62's stated preference.
+
+    Two loose ends. **Unverified:** whether the Home Assistant companion app registers as an
+    Android share target — if it does, „share → HA" reaches the shopping list for free; check it
+    on the phone together with open question 26. **Still to decide, in Phase 9:** the scope —
+    one meal, a day or a week.
+11. **Grouped library view — answered by PLAN.md Phase 9 task 1** (decision 145). Inside a
+    section the activity ranking of decision 46 applies; untagged recipes get their own section;
+    a recipe with three tags appears under each of them. The task had carried those answers all
+    along while still saying „settle open question 11 first"; the wording is now fixed.
+
+    Open only in one respect: the order of the sections themselves (alphabetical / `useCount` /
+    recent activity), deliberately left to whoever builds the screen. „Bez tagu" goes last
+    either way.
+12. **The swipe-left gesture — mostly covered now; one path is not, and cannot be.** Decision
+    146: `e2e/swipe.spec.ts` drives a real touch drag on a phone-sized touch context through
+    CDP, and asserts the gesture rules (50 px threshold, 40 px vertical slack, direction) and
+    that the action row stops being `inert`.
+
+    What remains uncovered is the click suppression — that a swipe across the card does not also
+    open the meal. Chromium synthesizes a click from a tap, not from a CDP drag, so there is
+    nothing for `suppressClick` to swallow in a test; verified by mutation (deleting the
+    `preventDefault` leaves the suite green), and left without an assertion rather than given a
+    green one that cannot fail. Hand check on a phone, alongside open question 26. The „⋮"
+    button reaches the same actions and is covered (decision 72).
 13. **The day screen re-reads the whole month grid after every write.** ~42 rows and one
     `getDays` call, which is nothing today. Phase 6 did not make this worse: a read never costs
     a sync round trip, because IndexedDB stayed the source of truth and sync is a debounced
