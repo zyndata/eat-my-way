@@ -31,6 +31,8 @@ same on both machines and in CI.
 | `npm run check` | `svelte-check` + TypeScript |
 | `npm test` | Vitest, one pass. Data-layer unit tests (`src/**/*.test.ts`). |
 | `npm run test:watch` | The same suite in watch mode. |
+| `npm run test:e2e` | Playwright: the login and sync flows in a real browser (`e2e/`). |
+| `npm run test:e2e:csp` | The same specs against the Caddy container, under the production CSP. |
 | `npm run docker:up` | `build` + rebuild and start the Caddy container on :8080 |
 | `npm run changelog` | Regenerate `CHANGELOG.md` from commits (git-cliff) |
 
@@ -125,3 +127,48 @@ There is **one known violation**, and only after the user clicks *Połącz Dysk 
 Identity Services applies an inline style inside its own transient iframe, which
 `style-src 'self'` blocks. It leaves nothing in the DOM and does not affect the sign-in popup —
 see STATE.md decision 88. Any violation from our own code is a real regression.
+
+## End-to-end tests for login and sync
+
+`e2e/` drives the built app in Chromium through the whole Drive flow: connecting, the silent
+renewal on reload, a revoked grant, a foreign account, two devices merging, the same-day
+conflict prompt, and the debounced background push.
+
+**No Google account is involved, and none can be.** Google is replaced at the network
+boundary, not in the app:
+
+- `https://accounts.google.com/gsi/client` is answered with a stub that implements
+  `initTokenClient` and `revoke`. It is served from that same URL, so the production
+  `script-src` accepts it exactly as it accepts the real one.
+- `https://www.googleapis.com/**` is answered by `FakeDrive` in `e2e/fake-google.ts`, an
+  in-memory `appDataFolder` behind the real Drive REST surface.
+
+Everything in `src/` runs unmodified — the real `google-auth.ts`, the real `drive.ts`, the real
+sync engine. There is no `?e2e=1` flag and no test-only seam in the app, which is the point: a
+suite that swapped out the code it is meant to protect would prove nothing.
+
+```bash
+npm run test:e2e            # builds, serves on :4173, runs everything
+npm run test:e2e -- --ui    # pick and step through individual specs
+```
+
+Two browser contexts sharing one `FakeDrive` are two devices signed in to one account, each
+with its own IndexedDB. That is PLAN.md's two-browser acceptance criterion, run for real.
+
+### Under the production CSP
+
+`vite preview` sends no security headers, so the default run cannot catch a policy regression.
+The specs collect `securitypolicyviolation` events and assert there were none, which only means
+something when the headers are actually there:
+
+```bash
+npm run docker:up
+npm run test:e2e:csp
+```
+
+### What is still not covered
+
+The live round trip to Google itself — a real token, a real `appDataFolder`, Drive's real
+`modifiedTime` semantics. Every request in this suite is answered locally, so the client is
+checked against the API *as documented*, not as it behaves. See open question 15 in
+[STATE.md](../STATE.md).
