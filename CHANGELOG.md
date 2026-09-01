@@ -21,6 +21,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Record the goals bug and the first live Drive round trip
 - The COOP window.closed warning does not break dismissal detection
 - Settle open questions 6 and 8-12 after the phase-8 review
+- Record where the open-questions review stopped
 
 ### Features
 
@@ -32,6 +33,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
