@@ -9,6 +9,8 @@
  * body (PLAN.md security: "the API key must never leak into logs or error reporters").
  */
 
+import { isOffline } from '../net';
+
 const MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export type KeyTestStatus = 'ok' | 'rejected' | 'legacy-key' | 'network' | 'unknown';
@@ -48,7 +50,9 @@ export async function testGeminiKey(
     // Never include the caught error: it can quote the request, and the request carries the key.
     return {
       status: 'network',
-      message: 'Nie udało się połączyć z Gemini. Sprawdź połączenie z internetem i spróbuj ponownie.'
+      message: isOffline()
+        ? 'Jesteś offline. Sprawdzenie klucza wymaga połączenia z internetem.'
+        : 'Nie udało się połączyć z Gemini. Sprawdź połączenie z internetem i spróbuj ponownie.'
     };
   }
 

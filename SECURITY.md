@@ -26,6 +26,16 @@ browser and in their own Google Drive:
 The vault's master password is never stored and cannot be recovered. The decrypted vault key
 exists only in page memory for the duration of the session.
 
+The data export in settings (*Zapisz kopię*) writes a JSON file holding the goals, recipes,
+tags, custom ingredients and planned days — and **deliberately not the vault**. A backup file
+ends up in Downloads, in mail attachments and in other people's cloud drives; an API key does
+not travel that way. An export that contained the key, in any form, would be a vulnerability.
+
+The service worker precaches the application bundle and the bundled USDA ingredient data, and
+nothing else: it declares no `runtimeCaching`, so no OAuth popup, token response, Drive
+document or Gemini request is routed through it, and none can land in a cache. A change that
+adds runtime caching has to answer that question again before it lands.
+
 ## Scope
 
 Security-relevant problems are most likely to look like:
@@ -46,7 +56,9 @@ Security-relevant problems are most likely to look like:
 - **OAuth handling** that requests a broader scope than `drive.appdata`, leaks a token, or
   silently binds one Google account's data to another account's `sub`;
 - **untrusted input treated as markup or code**: recipe text pasted by the user, JSON returned
-  by Gemini, or a file fetched from Drive rendered without escaping.
+  by Gemini, a file fetched from Drive, or a restored backup file rendered without escaping;
+- **a service worker that caches more than the application bundle**, or a backup export that
+  starts carrying the vault.
 
 The `VITE_GOOGLE_CLIENT_ID` value ships inside the public bundle by design — an OAuth client ID
 is not a credential. A *client secret* in the bundle would be a vulnerability; please report one

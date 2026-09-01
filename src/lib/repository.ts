@@ -9,9 +9,11 @@ import type {
 } from './db';
 import type { IngredientCorrection } from './sync/documents';
 import { monthOf } from './sync/documents';
+import type { BackupDocument, BackupInput } from './backup';
 import {
   DEFAULT_PROFILE,
   PROFILE_KEY,
+  SCHEMA_VERSION,
   db as defaultDb,
   fromIngredientRecord,
   toIngredientRecord
@@ -693,6 +695,93 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
             if (emptied.length > 0) await database.days.bulkDelete(emptied.map((day) => day.date));
             await database.days.bulkPut(rows);
           }
+        }
+      );
+    },
+
+    // ---- backup (Phase 8) ----------------------------------------------------------
+
+    /**
+     * Everything the export file carries. The same reading as `syncSnapshot`, minus the
+     * vault: a downloaded file must not carry the Gemini key (`backup.ts`).
+     */
+    async backupInput(): Promise<BackupInput> {
+      const [profile, recipes, tags, ingredients, corrections, days, schemaVersion] =
+        await Promise.all([
+          database.profile.get(PROFILE_KEY),
+          database.recipes.toArray(),
+          database.tags.toArray(),
+          database.ingredients.where('source').equals('custom').toArray(),
+          database.corrections.toArray(),
+          database.days.toArray(),
+          database.meta.get('schemaVersion' satisfies MetaKey) as Promise<number | undefined>
+        ]);
+
+      return {
+        profile: profile ?? DEFAULT_PROFILE,
+        recipes,
+        tags,
+        customIngredients: ingredients.map(fromIngredientRecord),
+        corrections,
+        days,
+        schemaVersion: schemaVersion ?? SCHEMA_VERSION
+      };
+    },
+
+    /**
+     * Restore a backup, replacing the user's data wholesale. Not a merge: the file is a
+     * complete picture of a database, and merging it into another one would silently keep
+     * rows the user believes they replaced.
+     *
+     * The bundled USDA ingredients are untouched — they belong to the build, not to the user
+     * — and so is the vault. What sync remembers *is* cleared: after a restore this device's
+     * data no longer descends from the last sync, and a stale baseline would let the merge
+     * read a restored row as a deletion.
+     */
+    async restoreBackup(backup: BackupDocument): Promise<void> {
+      const rows = plain({
+        profile: backup.profile,
+        recipes: backup.recipes,
+        tags: backup.tags,
+        ingredients: backup.ingredients.map(toIngredientRecord),
+        corrections: backup.corrections,
+        // An empty day has no row anywhere else in this app; a backup does not reintroduce one.
+        days: backup.days.filter((day) => day.meals.length > 0)
+      });
+
+      await database.transaction(
+        'rw',
+        [
+          database.profile,
+          database.recipes,
+          database.tags,
+          database.ingredients,
+          database.corrections,
+          database.days,
+          database.syncBaseline,
+          database.driveFiles
+        ],
+        async () => {
+          await database.profile.put(rows.profile, PROFILE_KEY);
+
+          await database.recipes.clear();
+          await database.recipes.bulkPut(rows.recipes);
+
+          await database.tags.clear();
+          await database.tags.bulkPut(rows.tags);
+
+          const customIds = await database.ingredients.where('source').equals('custom').primaryKeys();
+          if (customIds.length > 0) await database.ingredients.bulkDelete(customIds);
+          await database.ingredients.bulkPut(rows.ingredients);
+
+          await database.corrections.clear();
+          await database.corrections.bulkPut(rows.corrections);
+
+          await database.days.clear();
+          await database.days.bulkPut(rows.days);
+
+          await database.syncBaseline.clear();
+          await database.driveFiles.clear();
         }
       );
     }

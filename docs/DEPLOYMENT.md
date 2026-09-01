@@ -212,7 +212,7 @@ their browser's IndexedDB and their own Google Drive.
 | Site loads, app blank, console full of CSP errors | The Caddyfile's policy is out of date with what the app now loads. Reproduce locally with `npm run docker:up` |
 | Duplicate `Content-Security-Policy` headers | Security headers were also added to the nginx block — remove them there |
 | Google login fails only in production | Origin missing from the OAuth client, or `VITE_GOOGLE_CLIENT_ID` not set as a repo variable at build time |
-| Old version still served after a deploy | Service worker cache — hard-reload; check the workflow actually reached the `deploy` job |
+| Old version still served after a deploy | The service worker is registered `prompt`-style: an open tab keeps the running version until the user answers „Jest nowa wersja… → Odśwież". A closed-and-reopened tab picks it up on its own. If neither does, hard-reload and check the workflow actually reached the `deploy` job |
 | `403` with a `cf-mitigated: challenge` header | Cloudflare's WAF answered, the request never reached the VM. Bypass the edge with `curl --resolve …:443:127.0.0.1` |
 | `522` from Cloudflare | Cloudflare could not reach the origin — inbound `:80` is closed at the GCP VPC firewall, or a stale `AAAA` record points at a host that does not exist |
 | certbot: `Could not automatically find a matching server block` | A non-UTF-8 byte in an nginx config file. Find it with `LC_ALL=C.UTF-8 grep -naxv '.*' <file>` |

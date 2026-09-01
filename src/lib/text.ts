@@ -56,3 +56,22 @@ export function pluralPl(count: number, forms: { one: string; few: string; many:
   if (last >= 2 && last <= 4 && !(lastTwo >= 12 && lastTwo <= 14)) return forms.few;
   return forms.many;
 }
+
+/**
+ * „porcja" / „porcje" / „porcji" for a count that may be fractional.
+ *
+ * Portions are the one number in this app that is deliberately not an integer — `portionsEaten`
+ * moves in halves — and a fraction is not a plural: Polish puts it in the genitive singular,
+ * which for this noun happens to look like the genitive plural.
+ */
+export function portionWord(count: number): string {
+  // A fraction takes the genitive, which `pluralPl` cannot say: it truncates, so 1.5 would
+  // come back as „porcja".
+  if (!Number.isInteger(count)) return 'porcji';
+  return pluralPl(count, { one: 'porcja', few: 'porcje', many: 'porcji' });
+}
+
+/** The same, with the count in front and a Polish decimal comma: „1,5 porcji". */
+export function formatPortions(count: number): string {
+  return `${count.toLocaleString('pl-PL')} ${portionWord(count)}`;
+}

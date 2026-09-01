@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeKey, pluralPl } from './text';
+import { formatPortions, normalizeKey, pluralPl, portionWord } from './text';
 
 const zapytanie = { one: 'zapytanie', few: 'zapytania', many: 'zapytań' };
 
@@ -30,5 +30,26 @@ describe('normalizeKey', () => {
   it('strips Polish diacritics, including the stroked l', () => {
     expect(normalizeKey('  Mąka   PSZENNA ')).toBe('maka pszenna');
     expect(normalizeKey('Żółć')).toBe('zolc');
+  });
+});
+
+describe('portions', () => {
+  it('uses all three plural forms for whole portions', () => {
+    expect(formatPortions(1)).toBe('1 porcja');
+    expect(formatPortions(2)).toBe('2 porcje');
+    expect(formatPortions(5)).toBe('5 porcji');
+    expect(formatPortions(22)).toBe('22 porcje');
+  });
+
+  it('puts a fraction in the genitive and writes it with a comma', () => {
+    expect(formatPortions(0.5)).toBe('0,5 porcji');
+    expect(formatPortions(1.5)).toBe('1,5 porcji');
+    expect(formatPortions(2.5)).toBe('2,5 porcji');
+  });
+
+  it('offers the bare word for a field that prints the number itself', () => {
+    expect(portionWord(1)).toBe('porcja');
+    expect(portionWord(3)).toBe('porcje');
+    expect(portionWord(1.5)).toBe('porcji');
   });
 });

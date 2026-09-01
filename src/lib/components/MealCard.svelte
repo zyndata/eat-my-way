@@ -2,6 +2,7 @@
   import { dragHandle } from 'svelte-dnd-action';
   import type { PlannedMeal } from '../types';
   import { mealMacros } from '../macros';
+  import { formatPortions } from '../text';
   import NavIcon from './NavIcon.svelte';
 
   /**
@@ -127,9 +128,7 @@
         {name}
       </span>
       <span class="block pt-0.5 text-xs text-(--color-ink-muted)">
-        {Math.round(macros.kcal)} kcal · {meal.portionsEaten === 1
-          ? '1 porcja'
-          : `${meal.portionsEaten} porcji`}
+        {Math.round(macros.kcal)} kcal · {formatPortions(meal.portionsEaten)}
         {#if meal.cookingScale !== 1}
           · gotowane ×{meal.cookingScale}
         {/if}

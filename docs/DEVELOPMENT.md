@@ -26,6 +26,7 @@ same on both machines and in CI.
 | `npm run dev` | Vite dev server with HMR. **Does not apply the production CSP.** |
 | `npm run build` | Production bundle into `dist/` |
 | `npm run build:nutrition` | Regenerate the bundled USDA subset (see below). Dev-time only. |
+| `npm run build:icons` | Regenerate the PWA icons in `public/icons/` (see below). Dev-time only. |
 | `npm run check:nutrition` | Assert the committed subset matches the mapping, without downloading. |
 | `npm run preview` | Serve the built bundle locally (still no CSP headers) |
 | `npm run check` | `svelte-check` + TypeScript |
@@ -34,6 +35,7 @@ same on both machines and in CI.
 | `npm run test:e2e` | Playwright: the login and sync flows in a real browser (`e2e/`). |
 | `npm run test:e2e:csp` | The same specs against the Caddy container, under the production CSP. |
 | `npm run docker:up` | `build` + rebuild and start the Caddy container on :8080 |
+| `npm run screenshots` | Retake the README screenshots against a running build. Dev-time only. |
 | `npm run changelog` | Regenerate `CHANGELOG.md` from commits (git-cliff) |
 
 ## The bundled nutrition database
@@ -67,6 +69,27 @@ src/lib/nutrition/meta.ts            version, source ids and attribution, for th
   and `DATA_VERSION` in `scripts/build-nutrition.mjs` together — `DATA_VERSION` is what makes
   existing installs re-import.
 
+## The PWA icons
+
+`public/icons/*.png` is **generated and committed**, like the nutrition bundle. They are drawn
+by [`scripts/build-icons.mjs`](../scripts/build-icons.mjs) — plain arithmetic plus Node's own
+`zlib`, no image library and no design-tool export nobody can reproduce. The brand colour is
+the `oklch(62% 0.16 145)` of `--color-accent` in `src/app.css`, converted in the script, so
+changing the token and re-running is all it takes to recolour the set.
+
+They are committed because the production image is built from `dist/` in CI, which must not
+depend on this script having run.
+
+## The screenshots in the README
+
+`docs/screenshots/*.png` come from [`scripts/screenshots.mjs`](../scripts/screenshots.mjs),
+which drives a real build on a phone-sized viewport. It needs a server:
+
+```bash
+npm run docker:up
+npm run screenshots            # or BASE_URL=http://localhost:4173 npm run screenshots
+```
+
 ## Cross-platform rules
 
 These exist because the same checkout is edited on Windows and Linux:
@@ -83,6 +106,24 @@ These exist because the same checkout is edited on Windows and Linux:
 - **Docker Desktop (Windows) and Docker Engine (Linux)** both run `docker compose` the same way;
   the compose file must not depend on either.
 - Do not commit `.env.local`, `node_modules/`, `dist/`, or `.claude/settings.local.json`.
+
+## The service worker
+
+`vite-plugin-pwa` generates `dist/sw.js` at build time. Two things about it are deliberate and
+easy to undo by accident:
+
+- **Registration is imported, not injected.** `injectRegister: null` in `vite.config.ts`, and
+  `src/main.ts` imports `virtual:pwa-register`. The plugin's default is an inline `<script>`,
+  which `script-src 'self'` blocks.
+- **There is no `runtimeCaching`.** Workbox then handles navigations and precached assets and
+  nothing else, so no OAuth popup, token response or Gemini call can ever land in a cache.
+  Adding a runtime cache means thinking about that again first.
+
+The worker is registered with `registerType: 'prompt'`: a new bundle installs in the background
+and waits, and `UpdatePrompt.svelte` offers „Odśwież". Nothing reloads under the user's hands.
+
+`npm run dev` does not run a service worker at all (`devOptions.enabled: false`) — test it with
+`npm run docker:up` or `npm run preview`.
 
 ## Working on the app
 
@@ -128,11 +169,23 @@ Identity Services applies an inline style inside its own transient iframe, which
 `style-src 'self'` blocks. It leaves nothing in the DOM and does not affect the sign-in popup —
 see STATE.md decision 88. Any violation from our own code is a real regression.
 
-## End-to-end tests for login and sync
+## End-to-end tests
 
-`e2e/` drives the built app in Chromium through the whole Drive flow: connecting, the silent
-renewal on reload, a revoked grant, a foreign account, two devices merging, the same-day
-conflict prompt, and the debounced background push.
+`e2e/` drives the built app in Chromium:
+
+| Spec | What it covers |
+|---|---|
+| `connect.spec.ts` | Connecting Drive, the silent renewal on reload, a revoked grant, disconnecting |
+| `sync.spec.ts` | Two devices over one fake Drive: merging, the same-day conflict prompt, the debounced background push |
+| `goals.spec.ts` | „Zapisz cele" end to end — the `$state`-proxy defect of decision 56 |
+| `import.spec.ts` | The Gemini import: a paste, a link, a bad key, the usage counter |
+| `pwa.spec.ts` | The app with the network gone, and the installability requirements |
+| `backup.spec.ts` | „Zapisz kopię" on one device, „Wczytaj kopię" on a fresh one |
+| `screens.spec.ts` | Every route in one session, asserting no CSP violation and no console error |
+
+The Drive flow is the deepest of them: connecting, the silent renewal on reload, a revoked
+grant, a foreign account, two devices merging, the same-day conflict prompt, and the debounced
+background push.
 
 **No Google account is involved, and none can be.** Google is replaced at the network
 boundary, not in the app:

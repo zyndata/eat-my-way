@@ -2,6 +2,8 @@
   import Screen from '../lib/components/Screen.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import GoalsForm from '../lib/components/GoalsForm.svelte';
+  import BackupSection from '../lib/components/BackupSection.svelte';
+  import InstallSection from '../lib/components/InstallSection.svelte';
   import type { Macros, Profile } from '../lib/types';
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
@@ -524,6 +526,10 @@
       {/if}
     {/if}
   </section>
+
+  <BackupSection />
+
+  <InstallSection />
 
   <a class="mt-4 inline-block text-sm font-medium text-(--color-accent) underline" href="#/about">
     O aplikacji i źródłach danych

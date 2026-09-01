@@ -280,6 +280,26 @@ describe('what the user is told', () => {
     expect(state.syncState.phase).toBe('error');
   });
 
+  it('names being offline instead of blaming the sync, and skips it in the background', async () => {
+    const state = await connected();
+    vi.stubGlobal('navigator', { onLine: false });
+    try {
+      h.engine.sync.mockResolvedValue({ status: 'error', message: 'network' });
+
+      // An explicit click still tries, and gets a sentence that says what to expect.
+      await state.syncNow({ interactive: true });
+      expect(state.syncState.message).toContain('Jesteś offline');
+      expect(state.syncState.message).toContain('sama, gdy wróci połączenie');
+
+      // A background sync does not even reach the engine — there is nothing for it to do.
+      h.engine.sync.mockClear();
+      await state.syncNow();
+      expect(h.engine.sync).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('reports an abandoned conflict prompt as harmless and stays idle', async () => {
     const state = await connected();
     h.engine.sync.mockResolvedValue({ status: 'cancelled' });

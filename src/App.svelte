@@ -3,6 +3,7 @@
   import { routes } from './lib/routes';
   import AppShell from './lib/components/AppShell.svelte';
   import ConflictDialog from './lib/components/ConflictDialog.svelte';
+  import UpdatePrompt from './lib/components/UpdatePrompt.svelte';
   import VaultUnlock from './lib/components/VaultUnlock.svelte';
   import { ensureNutritionImported } from './lib/nutrition/status.svelte';
   import { migrateRetiredDefaultModel } from './lib/gemini/migrate';
@@ -56,3 +57,6 @@
   />
 {/if}
 <VaultUnlock />
+
+<!-- The new-version bar. App-wide because a worker can finish installing on any screen. -->
+<UpdatePrompt />

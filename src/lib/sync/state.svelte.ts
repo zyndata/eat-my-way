@@ -1,3 +1,4 @@
+import { isOffline } from '../net';
 import { repository } from '../repository';
 import type { AccountInfo } from './backend';
 import { createDriveBackend } from './drive';
@@ -67,6 +68,13 @@ let running: Promise<SyncOutcome> | null = null;
 let silentAllowed = false;
 
 function describe(outcome: SyncOutcome, interactive: boolean): string {
+  // Offline is not a failure of the app or of the account, and the app recovers from it on
+  // its own — `startAutoSync` listens for `online`. Saying "sync failed" here would send the
+  // user looking for a problem that will fix itself.
+  if (outcome.status !== 'ok' && isOffline()) {
+    return 'Jesteś offline. Kalendarz i przepisy działają normalnie; synchronizacja ruszy sama, gdy wróci połączenie.';
+  }
+
   switch (outcome.status) {
     case 'ok':
       return '';
@@ -92,6 +100,12 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
   }
   if (options.interactive !== true && !silentAllowed) {
     return { status: 'unauthenticated', message: 'Drive has never been connected on this device' };
+  }
+  // A background sync with no network cannot succeed and has nothing to tell the user. It is
+  // skipped rather than attempted, so the indicator does not go red on a train; `online`
+  // brings the next attempt along by itself.
+  if (options.interactive !== true && isOffline()) {
+    return { status: 'error', message: 'offline' };
   }
 
   syncState.phase = 'syncing';

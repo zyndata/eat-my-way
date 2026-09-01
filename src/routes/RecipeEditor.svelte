@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { push } from 'svelte-spa-router';
+  import { push, router } from 'svelte-spa-router';
   import Screen from '../lib/components/Screen.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import CustomIngredientForm from '../lib/components/CustomIngredientForm.svelte';
@@ -23,6 +23,7 @@
   import { ingredientIndex } from '../lib/ingredients';
   import { newId } from '../lib/ids';
   import { todayDate } from '../lib/dates';
+  import { pluralPl } from '../lib/text';
   import { nutritionStatus } from '../lib/nutrition/status.svelte';
   import { rememberCorrection, type ImportedRecipe } from '../lib/gemini/import';
 
@@ -64,7 +65,13 @@
   let pendingFuture = $state(0);
   let deleteOpen = $state(false);
 
-  let importOpen = $state(false);
+  /**
+   * `#/recipes/new/edit?import` opens the import sheet straight away. The empty library
+   * offers „Wklej przepis z internetu" as one of its two starting points (STATE.md decision
+   * 61), and it would be a poor offer if it landed the user on a blank form with the sheet
+   * still to be found.
+   */
+  let importOpen = $state(router.querystring === 'import');
   /** Set once an import has landed, so the editor can explain what it did. */
   let imported = $state(false);
   let importedUnmatched = $state(0);
@@ -347,8 +354,12 @@
         {#if incomplete.length > 0}
           <p class="pt-2 text-xs text-red-700">
             {incomplete.length}
-            {incomplete.length === 1 ? 'składnik nie ma' : 'składników nie ma'} podanej wagi 1 szt.
-            — {incomplete.length === 1 ? 'nie wlicza się' : 'nie wliczają się'} do sumy.
+            {pluralPl(incomplete.length, {
+              one: 'składnik nie ma',
+              few: 'składniki nie mają',
+              many: 'składników nie ma'
+            })} podanej wagi 1 szt. — {incomplete.length === 1 ? 'nie wlicza się' : 'nie wliczają się'}
+            do sumy.
           </p>
         {/if}
       </section>
@@ -418,7 +429,7 @@
   oncancel={() => answer(false)}
 >
   Ten przepis jest zaplanowany na {pendingFuture}
-  {pendingFuture === 1 ? 'posiłek' : 'posiłków'} od dzisiaj w przód. Możemy przeliczyć ich
+  {pluralPl(pendingFuture, { one: 'posiłek', few: 'posiłki', many: 'posiłków' })} od dzisiaj w przód. Możemy przeliczyć ich
   makroskładniki według nowej wersji przepisu. Dni z przeszłości pozostaną nietknięte niezależnie
   od wyboru.
 </ConfirmDialog>

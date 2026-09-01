@@ -9,6 +9,7 @@
     scaleMacros
   } from '../lib/macros';
   import { findMeal } from '../lib/day';
+  import { portionWord } from '../lib/text';
   import { addDays, formatDayLong, isDateKey, relativeDayLabel, todayDate } from '../lib/dates';
   import { repository } from '../lib/repository';
   import { scheduleSync } from '../lib/sync/state.svelte';
@@ -279,7 +280,7 @@
           <NavIcon path={PLUS} class="size-4" />
         </button>
         <span class="text-sm text-(--color-ink-muted)">
-          {scale === 1 ? 'porcja' : 'porcji'}
+          {portionWord(scale)}
         </span>
       </div>
 
@@ -347,7 +348,7 @@
           <NavIcon path={PLUS} class="size-4" />
         </button>
         <span class="text-sm text-(--color-ink-muted)">
-          {portions === 1 ? 'porcja' : 'porcji'}
+          {portionWord(portions)}
         </span>
       </div>
 

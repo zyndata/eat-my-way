@@ -3,6 +3,7 @@
   import type { Macros, Tag } from '../lib/types';
   import type { RecipeListEntry } from '../lib/recipes';
   import { searchRecipes } from '../lib/recipes';
+  import { pluralPl } from '../lib/text';
   import { repository } from '../lib/repository';
 
   /**
@@ -96,9 +97,33 @@
   {#if loading}
     <p class="pt-6 text-sm text-(--color-ink-muted)">Wczytywanie…</p>
   {:else if entries.length === 0}
-    <p class="pt-6 text-sm text-(--color-ink-muted)">
-      Nie masz jeszcze żadnego przepisu. Zacznij od „Nowy przepis”.
-    </p>
+    <!-- The library is yours to build, and a first-time user does not assume that (STATE.md
+         decision 61). Both ways in are offered here, and the line drawn is „no recipe search,
+         no guessed calories" — never „no recipes from the internet", which would talk the user
+         out of the import that exists. -->
+    <div class="mt-6 rounded-xl border border-dashed border-(--color-border) p-6 text-center">
+      <p class="text-sm">Biblioteka jest pusta. To Twoje przepisy — zbierasz je sam.</p>
+      <div class="flex flex-wrap justify-center gap-2 pt-4">
+        <a
+          class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
+          href="#/recipes/new/edit"
+        >
+          Nowy przepis
+        </a>
+        <a
+          class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
+          href="#/recipes/new/edit?import"
+        >
+          Wklej przepis z internetu
+        </a>
+      </div>
+      <p class="pt-4 text-sm text-(--color-ink-muted)">
+        Przepis z bloga wklejasz jako link albo jako tekst, a aplikacja rozkłada go na
+        składniki. Nie szuka za Ciebie przepisów w sieci i nie zgaduje kalorii: wartości
+        odżywcze bierze wyłącznie z lokalnej bazy USDA, żeby ten sam posiłek zawsze liczył się
+        tak samo.
+      </p>
+    </div>
   {:else if visible.length === 0}
     <p class="pt-6 text-sm text-(--color-ink-muted)">Nic nie pasuje do tych kryteriów.</p>
   {:else}
@@ -121,7 +146,11 @@
 
             <span class="block pt-1 text-xs text-(--color-ink-muted)">
               {entry.recipe.items.length}
-              {entry.recipe.items.length === 1 ? 'składnik' : 'składników'}
+              {pluralPl(entry.recipe.items.length, {
+                one: 'składnik',
+                few: 'składniki',
+                many: 'składników'
+              })}
               {#if entry.usage.plannedCount > 0}
                 · zaplanowany {entry.usage.plannedCount}
                 {entry.usage.plannedCount === 1 ? 'raz' : 'razy'}

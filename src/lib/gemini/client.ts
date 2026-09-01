@@ -12,6 +12,8 @@
  * call without a code change (PLAN.md Phase 7 task 1).
  */
 
+import { isOffline } from '../net';
+
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export type GeminiErrorKind =
@@ -252,7 +254,9 @@ export async function generateText(request: GeminiRequest): Promise<string> {
     // The caught error can quote the request, and the request carries the key.
     throw new GeminiError(
       'network',
-      'Nie udało się połączyć z Gemini. Sprawdź połączenie z internetem i spróbuj ponownie.'
+      isOffline()
+        ? 'Jesteś offline. Import przepisu wymaga połączenia z internetem — reszta aplikacji działa bez niego.'
+        : 'Nie udało się połączyć z Gemini. Sprawdź połączenie z internetem i spróbuj ponownie.'
     );
   }
 

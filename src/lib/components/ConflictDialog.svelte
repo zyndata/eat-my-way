@@ -3,6 +3,7 @@
   import type { DayConflict } from '../sync/engine';
   import { dayTotals } from '../macros';
   import { formatDayLong } from '../dates';
+  import { pluralPl } from '../text';
 
   /**
    * The same-day conflict prompt. PLAN.md is explicit that the app must never guess here, so
@@ -43,7 +44,8 @@
   function summary(day: Day | undefined): string {
     if (day === undefined || day.meals.length === 0) return 'Dzień pusty';
     const totals = dayTotals(day);
-    const meals = day.meals.length === 1 ? '1 posiłek' : `${day.meals.length} posiłki`;
+    const word = pluralPl(day.meals.length, { one: 'posiłek', few: 'posiłki', many: 'posiłków' });
+    const meals = `${day.meals.length} ${word}`;
     return `${meals} · ${Math.round(totals.kcal)} kcal`;
   }
 </script>

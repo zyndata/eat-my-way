@@ -8,9 +8,16 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: in development.** The app is being built phase by phase — see
-> [PLAN.md](PLAN.md) for the specification and [STATE.md](STATE.md) for what is done so far.
-> Nothing is released yet.
+> **Status: feature-complete for 1.0.** Phases 1–8 of [PLAN.md](PLAN.md) are done: the
+> calendar, the recipe library, the nutrition database, Drive sync, the encrypted vault, the
+> Gemini import, and the installable offline PWA. [STATE.md](STATE.md) is the record of what
+> was decided and what is still open; [PLAN.md](PLAN.md) Phase 9 is the post-1.0 comfort list.
+
+## What it looks like
+
+| Kalendarz | Przepisy | Edytor | Posiłek |
+|---|---|---|---|
+| ![Day view](docs/screenshots/day.png) | ![Empty library](docs/screenshots/library-empty.png) | ![Recipe editor](docs/screenshots/recipe-editor.png) | ![Meal view](docs/screenshots/meal.png) |
 
 ## What makes it different
 
@@ -25,6 +32,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   today never rewrites what you ate last month.
 - **Bring your own key.** The optional Gemini recipe import uses *your* API key, stored in a
   vault encrypted with Argon2id + AES-GCM. The decrypted key never leaves your browser's memory.
+- **It works with the network off.** Installed as a PWA it opens, plans and edits in airplane
+  mode. Only two things need a connection — syncing with Drive and importing a recipe — and both
+  say so in plain Polish and pick themselves up when the network returns.
 
 ## Stack
 
@@ -60,6 +70,44 @@ npm run docker:up              # build + container on http://localhost:8080
 
 Working on the project itself: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 Deploying it: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Installing it
+
+Open https://eatmyway.gorny.dev and install it from the browser, or from *Ustawienia → Aplikacja
+na urządzeniu*:
+
+- **Android / Chrome, Edge:** the „Zainstaluj aplikację" button, or the browser menu's *Install
+  app* / *Add to Home screen*.
+- **Desktop Chrome / Edge:** the install icon in the address bar, or the same button in settings.
+- **iPhone / Safari:** *Share* → *Add to Home Screen*. iOS offers no install prompt to a page,
+  so the app can only point at the menu item.
+
+Installed, it launches in its own window and opens without a connection. The data is the same
+data — an installed app and a browser tab share one IndexedDB on that device.
+
+## Getting your data back
+
+There is no server and no account to recover from, so recovery means one of two files. Both
+paths are in *Ustawienia*.
+
+**A new device, with Drive.** Install the app, *Połącz Dysk Google* with the same account, and
+enter the master password when the vault is fetched. The calendar, the recipes, the custom
+ingredients and the Gemini key all come back from the app's private `appDataFolder`.
+
+**A new device, without Drive.** *Zapisz kopię* on the old device writes one JSON file with
+everything local in it; *Wczytaj kopię* on the new one reads it back and replaces what is
+there. The file deliberately does **not** contain the vault — re-enter the Gemini key
+afterwards, because a backup ends up in Downloads and in mail attachments, and an API key
+should not travel that way.
+
+**A forgotten master password.** It cannot be recovered: nothing anywhere stores it. *Nie
+pamiętam hasła* → *Załóż sejf od nowa* discards the vault and asks for the Gemini key again.
+Only the vault is lost — the calendar, the recipes and the ingredients live outside it and are
+untouched.
+
+**The browser's data was cleared.** IndexedDB is the source of truth, so clearing site data on
+a device with no Drive connection and no backup file loses that device's data. That is the
+reason both paths above exist.
 
 ## Documentation
 

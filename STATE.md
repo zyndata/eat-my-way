@@ -14,10 +14,14 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 5     | Calendar & day view         | done    | 2026-08-31 |
 | 6     | Drive sync & vault          | done    | 2026-08-31 |
 | 7     | Gemini import               | done    | 2026-09-01 |
-| 8     | PWA & polish                | pending | —         |
+| 8     | PWA & polish                | done    | 2026-09-01 |
 | 9     | Daily-use comfort           | pending | —         |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 8 is done except for its ninth task, `v1.0.0` — releasing is a separate act through the
+`/release` skill, not something a phase does (decision 141). The app is feature-complete for
+1.0 and waiting on that tag.
 
 ## Decisions
 
@@ -1126,6 +1130,123 @@ one of which broke the feature outright.
      frozen macros of every future day that plans it. There is no case where that is what someone
      wanted. The button — and the sheet behind it — now appear only while creating.
 
+### 2026-09-01 — Phase 8
+
+133. **One new dependency: `vite-plugin-pwa` 1.3.0**, named in PLAN.md's stack, pinned exactly
+     like every other package. Nothing else was added: the icons are drawn by a script over
+     Node's own `zlib`, the screenshots use the Playwright the e2e suite already depends on, and
+     the export is a `Blob` and a file input.
+
+     Two settings in it are not defaults and must not drift back:
+     `injectRegister: null`, because the plugin's own registration snippet is an inline
+     `<script>` that `script-src 'self'` blocks — `main.ts` imports `virtual:pwa-register`
+     instead, so registration lands inside the hashed bundle (the same reasoning as decision
+     10's module-preload polyfill); and `runtimeCaching: []`, which is the answer to open
+     question 4 and is discussed in decision 136.
+
+134. **The PWA icons are generated and committed, like the nutrition bundle.**
+     `scripts/build-icons.mjs` (`npm run build:icons`) writes `public/icons/*.png` with a
+     hand-rolled PNG encoder — `zlib.deflateSync`, a CRC table and three chunks — plus an
+     OKLCH→sRGB conversion so the brand colour is literally the `--color-accent` token from
+     `app.css` rather than a hex somebody eyeballed. No image library, no design-tool export
+     nobody can reproduce. The files are committed because the production image is built from
+     `dist/` in CI, which must not depend on this script having run.
+
+     The set is a 192 and a 512 with rounded corners for `purpose: any`, a full-bleed 512 with
+     the mark shrunk into Android's 80 % safe zone for `purpose: maskable`, a 180 for iOS and a
+     32 for the tab.
+
+135. **The update flow asks; it never swaps under the user's hands.** `registerType: 'prompt'`,
+     and `UpdatePrompt.svelte` is a bar — not a dialog — offering „Odśwież" and „Później".
+     A meal-planning app is used mid-edit, with a half-typed recipe on screen; an auto-reloading
+     service worker would throw that away to deliver a change nobody was waiting for. The
+     waiting worker costs nothing while it waits, and a closed-and-reopened tab picks it up by
+     itself.
+
+136. **The service worker precaches the bundle and the USDA subset, and declares no runtime
+     cache at all** — which answers open questions 4 and 5 together.
+
+     *Question 5:* `globPatterns` includes `json`, so the hashed `ingredients-*.json` is in the
+     precache. A fresh install that goes offline before its first run now has its ingredients;
+     previously it had none. Asserted in `e2e/pwa.spec.ts` by reading the cache contents.
+
+     *Question 4:* with `runtimeCaching: []`, Workbox registers exactly two things —
+     `precacheAndRoute` over the build output, and a `NavigationRoute` bound to `/index.html`.
+     A service worker only ever sees requests inside its own scope, so a navigation to
+     `accounts.google.com` never reaches it, and the OAuth flow has no redirect back to our
+     origin to intercept in the first place (GIS answers through a popup callback, not a
+     redirect URI). `grep` over the generated `sw.js` finds no Google host. Adding any runtime
+     cache means answering this again first, and SECURITY.md now says so.
+
+137. **The data export deliberately does not contain the vault, and PLAN.md's Phase 8 gained an
+     import to go with it.** Task 6 says „data export (single JSON download)"; the acceptance
+     criterion says „export file re-imports cleanly into a fresh profile", which cannot be true
+     without a way in. So *Wczytaj kopię* was built alongside *Zapisz kopię* — recorded here as
+     a deviation, because it is one task's worth of work the task list did not name. It also
+     closes open question 16.
+
+     The file carries the profile, recipes, tags, custom ingredients, name corrections and every
+     planned day. It does **not** carry the vault: a backup ends up in Downloads, in a mail
+     attachment and in someone else's cloud drive, and when the user turned encryption off the
+     vault holds the Gemini key in the clear. Re-entering the key after a restore costs a
+     minute. It also does not carry the bundled USDA rows — they ship in the build.
+
+     A restore **replaces**, it does not merge: the file is a complete picture of a database and
+     merging two of them would silently keep rows the user believes they replaced. It clears the
+     sync baseline for the same reason decision 96's „different account" path does — after a
+     restore this device's data no longer descends from the last sync, and a stale baseline
+     would let the merge read a restored row as a deletion.
+
+138. **Offline is named, not reported as a failure.** `navigator.onLine === false` is trusted in
+     one direction only (certainly offline; `true` proves nothing), and it changes two things.
+     A background sync while offline is skipped rather than attempted, so the indicator does not
+     go red on a train — `startAutoSync` already listens for `online` and picks it up. An
+     interactive attempt still runs and gets „Jesteś offline. Kalendarz i przepisy działają
+     normalnie; synchronizacja ruszy sama, gdy wróci połączenie." Gemini says the equivalent for
+     an import and for the key test.
+
+139. **The Polish plural sweep from open question 23 is done, and portions needed their own
+     rule.** „{n} składnik/składniki/składników", the conflict dialog's meal count and the
+     „{n} posiłek" in the editor's update prompt now go through `pluralPl`. „{n} raz/razy" was
+     already correct — `razy` serves both plural forms — and „w {n} przepisach" is a locative,
+     which does not vary.
+
+     Portions could not use `pluralPl` at all: `portionsEaten` moves in halves, and a fraction
+     in Polish takes the genitive („1,5 porcji"), not a plural, while `pluralPl` truncates and
+     would have produced „1,5 porcja". Hence `portionWord` / `formatPortions` in `text.ts`,
+     which also fixes the decimal separator the old code printed as „1.5".
+
+140. **The empty library states the ownership question in the user's own terms.** Decision 61
+     wrote the copy; this is what shipped. Two buttons — „Nowy przepis" and „Wklej przepis z
+     internetu", the second landing on `#/recipes/new/edit?import` with the sheet already open,
+     because offering a route and then hiding it behind another click is not an offer — then the
+     line the user herself corrected: the app does not *search* for recipes and does not guess
+     calories, never „no recipes from the internet". `/about` gained „Jak to działa" with the
+     four sentences that answer the questions actually asked: the recipes are yours, the
+     calories are not guessed, Drive is a backup and cannot see the rest of your Drive, and the
+     app works offline.
+
+141. **`v1.0.0` is not tagged by this phase.** PLAN.md Phase 8 task 9 says to release; CLAUDE.md
+     says a phase does not deploy and releasing is a separate act through the `/release` skill.
+     The workflow rule wins — the phase ends with the code on `dev`, verified, and the release
+     is the user's next deliberate step. The last acceptance criterion („a `v1.0.0` tag runs the
+     release workflow green") is therefore **not met by this phase** and is met by that release.
+
+142. **Two acceptance criteria were checked differently from how they are worded, and the
+     difference is worth recording.**
+
+     *„Lighthouse PWA checks pass"* — Lighthouse itself was not run; adding it would have meant
+     a large dependency for one number. What was run instead is a check of the criteria
+     Lighthouse reports on, in `e2e/pwa.spec.ts`: a service worker registered *and controlling*,
+     a linked manifest served as `application/manifest+json` with a name, a Polish `lang`,
+     `display: standalone`, a `start_url` in scope and 192/512/maskable icons that all actually
+     answer 200. A real install on a phone remains the one thing only a phone can confirm.
+
+     *„Airplane mode"* — Playwright's `context.setOffline(true)` covers the page but not the
+     service worker's own fetches, so „it loaded" is not by itself proof of a cache hit. The
+     spec therefore also reads the cache and asserts it holds `/index.html` and the hashed
+     `ingredients-*.json`. The container run under the real CSP passes the same spec.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -1145,12 +1266,15 @@ one of which broke the feature outright.
    vault's Argon2id WebAssembly at all (decision 87). `connect-src` is unchanged. One
    violation remains and it is Google's own, inside GIS's transient iframe — decision 88, and
    worth rechecking whenever GIS is updated.
-4. **PWA + OAuth interaction** (Phase 8): the service worker must not cache the OAuth redirect
-   or token responses. Verify explicitly when the service worker lands.
-5. **The nutrition bundle must be precached by the service worker** (Phase 8). It is fetched
-   once on first run, so a fresh install that happens to be offline at that moment has no
-   ingredients at all. Today the import simply fails and retries on the next load, which is
-   correct but not pleasant.
+4. **PWA + OAuth interaction — answered.** Decision 136: the worker declares no
+   `runtimeCaching`, so it routes precached assets and navigations *inside its own scope* and
+   nothing else. `accounts.google.com` is out of scope and the token arrives through a GIS
+   popup callback, not a redirect back to our origin, so there is nothing on that path to
+   cache. `grep` over the generated `sw.js` finds no Google host. This holds only while
+   `runtimeCaching` stays empty — SECURITY.md now lists widening it as a reportable change.
+5. **The nutrition bundle is precached — answered.** Decision 136: `globPatterns` covers the
+   hashed `ingredients-*.json`, and `e2e/pwa.spec.ts` asserts it is in the cache after the first
+   load. A fresh install that goes offline before its first run now has its ingredients.
 6. **Foundation Foods moves twice a year.** Nothing watches for a new release; refreshing it is
    a deliberate act (decision 32). Worth a reminder once the app is in daily use.
 7. **A planned meal whose recipe was deleted — answered.** Decision 73: the day view and the
@@ -1192,10 +1316,9 @@ one of which broke the feature outright.
     a throwaway day of data, before trusting it with a month of planning. An opt-in `@live`
     spec against a throwaway Google account is the obvious next step and was deliberately not
     built here.
-16. **Data export is in PLAN.md's settings screen and is not built.** No phase claims it —
-    Phase 6 owns the vault, Drive and goals, and Phase 9 is comfort features. Drive sync makes
-    it less urgent (the JSON is in the user's own account), but a user without Drive has no way
-    to get their data out. Pick a phase for it.
+16. **Data export — answered.** Built in Phase 8 as task 6, together with the restore the
+    acceptance criterion implies (decision 137). *Zapisz kopię* / *Wczytaj kopię* in Settings;
+    the file holds everything local except the vault, and a restore replaces rather than merges.
 17. **A vault changed on two devices at once resolves in Drive's favour, silently apart from a
     sentence in Settings** (decision 93). Ciphertext cannot be merged, so something has to win;
     the case where it costs anything is narrow — the key would have to have been set differently
@@ -1257,11 +1380,10 @@ one of which broke the feature outright.
     time that limit has been visible; a user importing several recipes back to back will meet
     it, and the message for it already exists.
 
-23. **The older screens still use two Polish plural forms where there are three** (decision 128).
-    „{n} razy", „{n} posiłków", „{n} składników" and the „zaplanowany raz/razy" line all read
-    wrong for 2, 3 and 4. `pluralPl` exists now and each is a one-line change; it is a small
-    sweep across `RecipeEditor`, `DayScreen` and `MealCard`, deliberately not bundled into a
-    commit about Gemini quotas. Worth doing before anyone else reads the UI closely.
+23. **The Polish plural sweep — answered.** Done in Phase 8 (decision 139). The counts that
+    were genuinely wrong now go through `pluralPl`; „{n} razy" and „w {n} przepisach" turned out
+    to have been right all along, and portions needed a rule of their own because they can be
+    fractional (`portionWord` / `formatPortions`).
 
 24. **Which model should be the default is now a real trade-off, not an obvious answer**
     (decision 129). `gemini-3.6-flash` allows 20 requests a day — about six link imports —
@@ -1278,3 +1400,22 @@ one of which broke the feature outright.
     API since the fix: the candidate half was verified offline against the real bundle, the
     model half was not. Run it on `gemini-3.5-flash-lite` and on `gemini-3.6-flash` when
     settling open question 24, and use the same page for both.
+
+26. **Nothing has been installed on a real phone yet.** The installability criteria are
+    asserted programmatically (decision 142) and the manifest, the icons and the service worker
+    are all in place, but „it installs on Android and launches standalone" has been verified by
+    proxy, not by installing it. Do this on the first real visit to `eatmyway.gorny.dev` after
+    the `v1.0.0` release, along with open question 15's live Drive round trip — the same visit
+    can settle both.
+
+27. **A restore is not offered a preview of what it replaces.** The confirmation dialog says
+    what the file contains („3 przepisy, 12 zaplanowanych dni…") but not what is about to be
+    lost. On a device that is about to be overwritten by an old backup, that is the more useful
+    half of the sentence. Cheap to add; deliberately not added, because a restore is already a
+    two-step, red-button action and the export is one click away first.
+
+28. **Nothing re-tries a sync that failed while the app was closed — still true, and the
+    service worker did not change it** (open question 18). Workbox's Background Sync was
+    considered and not used: it would mean a runtime-caching plugin in the worker, which is the
+    one thing decision 136 keeps out of it, and a single-user planner that syncs on focus,
+    on `online` and every five minutes has no gap worth that.
