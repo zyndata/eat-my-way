@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Ingredient } from '../types';
 import type { IngredientMatch } from '../ingredients';
 import { MatchTier } from '../search';
+import { normalizeKey } from '../text';
 import { at, chicken, egg, oil } from '../../test/fixtures';
 import {
   MATCH_SCHEMA,
@@ -193,6 +194,61 @@ describe('gatherCandidates', () => {
     // Nothing in the database contains „do" or „smażenia" — the head noun has to carry it.
     const found = await gatherCandidates('oliwa do smażenia', search);
     expect(found.map((match) => match.ingredient.id)).toEqual([oil.id]);
+  });
+
+  it('tries an adjacent pair before a single word, so a generic noun cannot win', async () => {
+    // The real failure: „mięso mielone wołowo-wieprzowe" filled its candidate list with goat,
+    // bison and goose, because „mięso" was tried first and matched every meat in the database
+    // (STATE.md decision 131).
+    const meat = { ...chicken, id: 'usda:meat', name: 'Mięso mielone wieprzowe' };
+    const goat = { ...chicken, id: 'usda:goat', name: 'Koza', aliases: ['mięso kozie'] };
+    const bison = { ...chicken, id: 'usda:bison', name: 'Bizon', aliases: ['mięso z bizona'] };
+
+    const queries: string[] = [];
+    const search = async (query: string): Promise<IngredientMatch[]> => {
+      queries.push(query);
+      const words = normalizeKey(query).split(' ').filter((word) => word !== '');
+      return ranked(
+        [meat, goat, bison].filter((row) =>
+          words.every((word) =>
+            [normalizeKey(row.name), ...row.aliases.map(normalizeKey)].some((field) =>
+              field.includes(word)
+            )
+          )
+        )
+      );
+    };
+
+    const found = await gatherCandidates('mięso mielone wołowo-wieprzowe', search);
+
+    expect(found.map((match) => match.ingredient.id)).toEqual(['usda:meat']);
+    // The pair was asked about before any single word.
+    expect(queries[1]).toBe('mieso mielone');
+    expect(queries).not.toContain('mieso');
+  });
+
+  it('falls back to single words rarest-first when no pair matches', async () => {
+    const rare = { ...chicken, id: 'usda:rare', name: 'Passata pomidorowa' };
+    const common = { ...egg, id: 'usda:common', name: 'Sos', aliases: ['sos pomidorowy'] };
+
+    const search = async (query: string): Promise<IngredientMatch[]> => {
+      const words = normalizeKey(query).split(' ').filter((word) => word !== '');
+      // „sos" matches both; „passata" matches one. No pair matches anything.
+      return ranked(
+        [rare, common].filter((row) =>
+          words.every((word) =>
+            [normalizeKey(row.name), ...row.aliases.map(normalizeKey)].some((field) =>
+              field.includes(word)
+            )
+          )
+        )
+      );
+    };
+
+    const found = await gatherCandidates('passata sos', search);
+
+    // The selective word's hit comes first, not the one that matches everything.
+    expect(found[0]?.ingredient.id).toBe('usda:rare');
   });
 
   it('skips words too short to narrow anything down', async () => {

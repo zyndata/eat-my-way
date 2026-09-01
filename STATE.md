@@ -1094,6 +1094,38 @@ one of which broke the feature outright.
      is *before* the first key is ever saved, so the dropdown stayed empty until the next page
      load. `saveKey` now reloads it.
 
+### 2026-09-01 — A reported bad import, diagnosed without spending a request
+
+131. **The candidate fallback tried words in the wrong order, and „mięso" swamped everything.**
+     Reported from a real import of kwestiasmaku's „Cukinia faszerowana mięsem i ricottą":
+     empty ingredient rows, minced meat missing. „Mięso mielone wieprzowe" *is* in the bundled
+     subset, so this was a matching failure, not a data gap — and it was reproducible **locally
+     against the real bundle with no API call at all**, which is how it was found.
+
+     Decision 125's fallback retried a name word by word *in the order the words appear*,
+     assuming the Polish head noun comes first. That holds for „oliwa do smażenia" and fails
+     badly for „mięso mielone wołowo-wieprzowe": „mięso" is the least selective word in the
+     language for this database, matches goat, bison, goose and duck through their aliases, and
+     filled all eight candidate slots before „mielone" was ever tried. The model was then asked
+     to choose minced meat from a list containing no minced meat, and correctly refused.
+
+     `gatherCandidates` now tries **adjacent pairs first** — a Polish ingredient name is
+     typically noun plus qualifier, and „mięso mielone" identifies the product where „mięso"
+     does not — and only falls back to single words **rarest first**, so a generic noun can no
+     longer crowd out the word that carries the meaning. Same input, after: the five minced-meat
+     rows, in place of Koza and Bizon.
+
+     Worth noting what this says about the earlier evidence. Decision 125 read three `null`s as
+     the model being over-cautious and softened the prompt; at least some of that was the model
+     being handed a list with no right answer in it. The prompt change stands, but the candidate
+     list was the larger fault, and it was invisible while only short recipes were tried.
+
+132. **„Wklej przepis z internetu" is gone from the edit screen.** Asked about, and the question
+     was the right one. Import *creates* a recipe: on an existing one the button appended rows to
+     work already done, which duplicates ingredients, and saving then offers to rewrite the
+     frozen macros of every future day that plans it. There is no case where that is what someone
+     wanted. The button — and the sheet behind it — now appear only while creating.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -1237,3 +1269,12 @@ one of which broke the feature outright.
     it matched 15/16 and 12/15 ingredients on real pages; `gemini-3.6-flash` matched 6/6 and
     7/7, but on shorter recipes, so the two have never been compared on the same input. Worth
     settling with one deliberate A/B on the same three pages before changing the default again.
+
+25. **A standing regression page for imports: kwestiasmaku's „Cukinia faszerowana mięsem i
+    ricottą w sosie pomidorowym."** The page that exposed decision 131. Everything it needs is
+    in the bundled subset — „Mięso mielone wieprzowe", „Ser ricotta", „Cukinia", „Passata
+    pomidorowa", „Pomidory krojone z puszki" — so a correct import matches every row, which
+    makes it a sharp test rather than a vague one. It has **not** been re-run against the live
+    API since the fix: the candidate half was verified offline against the real bundle, the
+    model half was not. Run it on `gemini-3.5-flash-lite` and on `gemini-3.6-flash` when
+    settling open question 24, and use the same page for both.

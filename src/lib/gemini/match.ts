@@ -46,12 +46,17 @@ export interface ResolvedMatch {
  *
  * The autocomplete's ranker requires *every* query word to hit the same name, which is right
  * for a person typing and wrong for a name off a recipe page: „oliwa do smażenia" matches
- * nothing at all, because „do" and „smażenia" appear in no ingredient. So a name that ranks
- * empty is retried word by word and the results are unioned in word order — the head noun of
- * a Polish ingredient name comes first, which is why „oliwa" finds the olive oil.
+ * nothing, because „do" and „smażenia" appear in no ingredient. So a name that ranks empty is
+ * retried on shorter pieces of itself.
  *
- * Words shorter than three letters are skipped: „do", „z", „na" would each drag in a third of
- * the database and push the real candidate off the end of the list.
+ * The order those pieces are tried in is the whole difference between a useful list and a
+ * useless one. Adjacent **pairs** come first, because a Polish ingredient name is usually a
+ * noun plus a qualifier and the pair is what identifies the product: „mięso mielone" finds the
+ * minced meat, while „mięso" alone finds goat, bison and goose (STATE.md decision 131). Only if
+ * no pair matches are single words tried, and then **least common first** — a word that matches
+ * three rows says far more about the ingredient than one that matches ninety.
+ *
+ * Words shorter than three letters are skipped throughout: „do", „z", „na" carry nothing.
  */
 export async function gatherCandidates(
   name: string,
@@ -66,12 +71,29 @@ export async function gatherCandidates(
 
   const merged: IngredientMatch[] = [];
   const seen = new Set<string>();
-  for (const word of words) {
-    for (const match of await search(word)) {
+  const take = (matches: readonly IngredientMatch[]): void => {
+    for (const match of matches) {
       if (seen.has(match.ingredient.id)) continue;
       seen.add(match.ingredient.id);
       merged.push(match);
     }
+  };
+
+  for (let i = 0; i + 1 < words.length; i += 1) {
+    take(await search(`${words[i]} ${words[i + 1]}`));
+    if (merged.length >= MAX_CANDIDATES) return merged;
+  }
+  if (merged.length > 0) return merged;
+
+  // Least common first, so a generic head noun cannot crowd out the word that identifies the
+  // product. Ties keep the name's own order, which `sort` preserves.
+  const scored = await Promise.all(
+    words.map(async (word) => ({ word, matches: await search(word) }))
+  );
+  for (const { matches } of scored
+    .filter((row) => row.matches.length > 0)
+    .sort((a, b) => a.matches.length - b.matches.length)) {
+    take(matches);
     if (merged.length >= MAX_CANDIDATES) break;
   }
   return merged;

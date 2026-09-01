@@ -264,3 +264,24 @@ test('the model field is a list built from the key, and still accepts a typed na
   await device.reload();
   await expect(device.getByLabel('Model Gemini')).toHaveValue('gemini-9.9-przyszly');
 });
+
+test('import is offered when creating a recipe and not when editing one', async ({
+  device,
+  gemini
+}) => {
+  gemini.script.recipe = PARSED;
+
+  await setUpKey(device);
+  await openEditor(device);
+  await expect(device.getByRole('button', { name: 'Wklej przepis z internetu' })).toBeVisible();
+
+  // Save it, then reopen the same recipe for editing.
+  await device.getByLabel('Nazwa').fill('Placki');
+  await device.getByRole('button', { name: 'Zapisz przepis' }).click();
+  await expect(device.getByRole('heading', { name: 'Przepisy' })).toBeVisible();
+  await device.getByRole('link', { name: /Placki/ }).first().click();
+  await expect(device.getByRole('heading', { name: 'Edytuj przepis' })).toBeVisible();
+
+  // Importing into an existing recipe only appended rows to work already done.
+  await expect(device.getByRole('button', { name: 'Wklej przepis z internetu' })).toHaveCount(0);
+});

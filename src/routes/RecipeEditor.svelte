@@ -248,6 +248,10 @@
 
       <TagInput bind:labels={draft.tagLabels} {tags} />
 
+      <!-- Import creates a recipe; it does not edit one. On an existing recipe the button only
+           appended rows to something already written, which duplicates ingredients and then
+           offers to rewrite every future day's macros (STATE.md decision 132). -->
+      {#if existing === undefined}
       <div>
         <button
           type="button"
@@ -275,6 +279,7 @@
           </p>
         {/if}
       </div>
+      {/if}
 
       <section>
         <h2 class="text-base font-semibold">Składniki na 1 porcję</h2>
@@ -398,7 +403,7 @@
 </Screen>
 
 <RecipeImportSheet
-  open={importOpen}
+  open={importOpen && existing === undefined}
   onclose={() => (importOpen = false)}
   onimport={applyImport}
   {nextKey}
