@@ -909,19 +909,21 @@ filtered flat list). Her decisions on each point follow.
     which need the tab to be open. Phase 8's service worker could add a background sync;
     whether that is worth the complexity for a single-user planner is not decided.
 
-19. **COOP blocks Google Identity Services from noticing a closed popup, and nothing times
-    out.** Six `Cross-Origin-Opener-Policy policy would block the window.closed call` warnings
-    were recorded during a real sign-in — two seconds after the popup opened, and four more
-    when it completed. Decision 86 relaxed COOP to `same-origin-allow-popups` so the `opener`
-    reference survives, and it does: the token came back. But GIS also polls `popup.closed` to
-    detect a dismissal, and *that* read is still refused. `google-auth.ts` has **no timeout** —
-    its promise settles only through `callback` or `error_callback` — so if neither fires when
-    the user closes the window, `syncState.phase` stays `'syncing'`, „Połącz Dysk Google" stays
-    disabled, and only a reload recovers. The consequence is certain; whether GIS really fails
-    to call back in that case is **not yet verified**, because it needs a human to close the
-    consent window. Worth settling, and worth a timeout in `getAccessToken` regardless. Note
-    that `e2e/connect.spec.ts` covers the dismissal path and passes — the GIS stub calls
-    `error_callback`, which is more generous than the real one may be.
+19. **The COOP `window.closed` warning is noise — answered.** Six
+    `Cross-Origin-Opener-Policy policy would block the window.closed call` warnings are logged
+    during a real sign-in, two seconds after the popup opens and four more when it completes,
+    and they looked like they might break dismissal detection: decision 86 relaxed COOP only
+    far enough to keep the `opener` reference alive, GIS is visibly being refused the `.closed`
+    read, and `google-auth.ts` has no timeout — its promise settles only through `callback` or
+    `error_callback`. Checked by hand against real Google: **closing the consent window is
+    detected and reported.** GIS does not depend on that read to notice a dismissal, so the
+    warning belongs with decision 88 — Google's own, inside Google's frame, with no observed
+    effect. It follows that `e2e/connect.spec.ts` models this correctly after all: its stub
+    calls `error_callback`, and so does the real thing.
+
+    What remains true, and is now only theoretical, is that `getAccessToken` has no timeout.
+    No path is known that reaches it, so nothing was added; if one ever turns up, the symptom
+    is `syncState.phase` stuck on `'syncing'` with „Połącz Dysk Google" disabled until reload.
 
 20. **A silent renewal after a reload asked GIS for a popup.** One
     `[GSI_LOGGER]: Failed to open popup window` was recorded on a load that should have renewed
