@@ -3,6 +3,7 @@ import type { EatMyWayDb } from '../db';
 import { createRepository, type Repository } from '../repository';
 import { createIngredientIndex, type IngredientIndex } from '../ingredients';
 import { at, chicken, egg, freshDb, ingredients, oil, seqIds } from '../../test/fixtures';
+import type { Ingredient } from '../types';
 import { GeminiError } from './client';
 import { importRecipe, rememberCorrection, type ImportedRecipe } from './import';
 
@@ -413,6 +414,95 @@ describe('corrections', () => {
     // The corrected name is not even sent: it is settled before the request is built.
     const matchCall = after.calls.find((call) => call.system.startsWith('Dopasowujesz'));
     expect(matchCall?.prompt ?? '').not.toContain('mąka pszenna');
+  });
+
+  it('recognises a custom ingredient the user added for an unmatched row', async () => {
+    // The real case from a live import: „ryż jaśminowy" is a varietal the bundled USDA subset
+    // does not carry, so the model is offered candidates and declines.
+    const RICE = {
+      ...PANCAKES_JSON,
+      ingredients: [{ name: 'ryż jaśminowy', amount: 200, unit: 'g', state: 'raw' }]
+    };
+
+    const first = fakeGemini({ recipe: RICE, matches: { matches: [{ name: 'ryż jaśminowy', id: null }] } });
+    const before = await importRecipe(PANCAKES_TEXT, deps(first.fetchImpl));
+    expect(at(before.items).ingredientId).toBe('');
+    expect(at(before.items).sourceName).toBe('ryż jaśminowy');
+
+    // Exactly what the editor does when the user fills that row with a hand-written
+    // ingredient: store it, then record the correction against the name the model produced.
+    const custom: Ingredient = {
+      id: 'custom:rice-1',
+      name: 'Ryż jaśminowy',
+      aliases: [],
+      state: 'raw',
+      per100g: { kcal: 356, protein: 6.7, carbs: 79, fat: 0.6 },
+      source: 'custom'
+    };
+    await repo.putIngredient(custom);
+    index.invalidate();
+    await rememberCorrection(at(before.items).sourceName ?? '', custom.id, repo);
+
+    const second = fakeGemini({ recipe: RICE, matches: { matches: [] } });
+    const after = await importRecipe(PANCAKES_TEXT, deps(second.fetchImpl));
+
+    expect(at(after.items).ingredientId).toBe(custom.id);
+    expect(after.ingredientsById[custom.id]?.name).toBe('Ryż jaśminowy');
+    expect(after.unmatched).toBe(0);
+    // Settled locally — the model was never asked about it again.
+    expect(second.calls.some((call) => call.system.startsWith('Dopasowujesz'))).toBe(false);
+  });
+
+  it('finds a custom ingredient by name even with no correction stored', async () => {
+    // The second safety net: a custom row whose name matches exactly is an `exact` hit, so a
+    // correction is not the only thing holding this together.
+    const custom: Ingredient = {
+      id: 'custom:rice-2',
+      name: 'Ryż jaśminowy',
+      aliases: [],
+      state: 'raw',
+      per100g: { kcal: 356, protein: 6.7, carbs: 79, fat: 0.6 },
+      source: 'custom'
+    };
+    await repo.putIngredient(custom);
+    index.invalidate();
+
+    const run = fakeGemini({
+      recipe: { ...PANCAKES_JSON, ingredients: [{ name: 'ryż jaśminowy', amount: 200, unit: 'g', state: 'raw' }] },
+      matches: { matches: [] }
+    });
+    const result = await importRecipe(PANCAKES_TEXT, deps(run.fetchImpl));
+
+    expect(at(result.items).ingredientId).toBe(custom.id);
+    expect(run.calls.some((call) => call.system.startsWith('Dopasowujesz'))).toBe(false);
+  });
+
+  it('misses when the model names the same ingredient differently next time', async () => {
+    // The honest limit of a correction: it is keyed on the name the model produced, and the
+    // model does not name things identically every run (STATE.md open question 21).
+    // A rice row has to exist, or the drifted name would find no candidates at all and the
+    // test would pass for the wrong reason.
+    await repo.putIngredient({
+      id: 'usda:rice',
+      name: 'Ryż biały',
+      aliases: [],
+      state: 'raw',
+      per100g: { kcal: 360, protein: 7, carbs: 79, fat: 0.6 },
+      source: 'usda'
+    });
+    index.invalidate();
+    await rememberCorrection('ryż jaśminowy', 'usda:rice', repo);
+
+    const drifted = fakeGemini({
+      recipe: { ...PANCAKES_JSON, ingredients: [{ name: 'ryż jaśminowy do sushi', amount: 200, unit: 'g', state: 'raw' }] },
+      matches: { matches: [] }
+    });
+    const result = await importRecipe(PANCAKES_TEXT, deps(drifted.fetchImpl));
+
+    // The stored correction does not cover the new spelling, so the row is offered to the
+    // model — and lands empty when it declines, rather than silently taking the wrong id.
+    expect(at(result.items).ingredientId).toBe('');
+    expect(drifted.calls.some((call) => call.system.startsWith('Dopasowujesz'))).toBe(true);
   });
 
   it('stores the correction under the normalized name', async () => {
