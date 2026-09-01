@@ -139,6 +139,9 @@ export const MATCH_SYSTEM = [
   'Jeśli żadna pozycja nie jest tym samym produktem, zwróć null. Lepiej null niż zła pozycja:',
   'użytkownik poprawi brak w dwie sekundy, a złego dopasowania może nie zauważyć.',
   'Kieruj się produktem, nie słowem: „ser żółty” to nie „ser biały”, a „masło” to nie „masło orzechowe”.',
+  'Ale gdy kilka pozycji to TEN SAM produkt w innej postaci (świeży/suszony, biały/pełnoziarnisty,',
+  'surowy/gotowany), nie zwracaj null — wybierz postać najbardziej podstawową i najczęściej używaną.',
+  'Inny gatunek lub inna część rośliny to już inny produkt: „kolendra” to zioło, nie „nasiona kolendry”.',
   'Zwracasz wyłącznie JSON zgodny ze schematem, w tej samej kolejności co składniki na wejściu.'
 ].join('\n');
 

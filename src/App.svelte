@@ -5,12 +5,26 @@
   import ConflictDialog from './lib/components/ConflictDialog.svelte';
   import VaultUnlock from './lib/components/VaultUnlock.svelte';
   import { ensureNutritionImported } from './lib/nutrition/status.svelte';
-  import { resolveConflicts, resumeSync, startAutoSync, syncState } from './lib/sync/state.svelte';
+  import { migrateRetiredDefaultModel } from './lib/gemini/migrate';
+  import {
+    resolveConflicts,
+    resumeSync,
+    scheduleSync,
+    startAutoSync,
+    syncState
+  } from './lib/sync/state.svelte';
   import { loadVault } from './lib/vault/session.svelte';
 
   // First run loads the bundled USDA subset into IndexedDB; every later load reads a meta
   // flag and skips it. Deliberately not awaited: the app is usable while it runs.
   void ensureNutritionImported();
+
+  // A profile written by an earlier build still names the model Google has since retired, and
+  // would fail every import with a 404. Nothing else about the profile is touched; a sync is
+  // scheduled only when something actually changed.
+  void migrateRetiredDefaultModel().then((changed) => {
+    if (changed) scheduleSync();
+  });
 
   // The vault is read from IndexedDB (never unlocked) so the settings screen knows whether one
   // exists. Drive sync then resumes silently — it opens no popup and shows no error when the

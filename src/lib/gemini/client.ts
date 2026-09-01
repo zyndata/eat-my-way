@@ -74,13 +74,54 @@ export interface GeminiRequest {
  */
 const DETERMINISTIC = { temperature: 0, topK: 1, seed: 7 } as const;
 
+/** One `google.rpc` detail off an error. Only `QuotaFailure` and `RetryInfo` are read. */
+interface ErrorDetail {
+  '@type'?: string;
+  violations?: { quotaId?: string; quotaValue?: string; quotaMetric?: string }[];
+  retryDelay?: string;
+}
+
 interface GeminiResponse {
   candidates?: {
     content?: { parts?: { text?: string }[] };
     finishReason?: string;
   }[];
   promptFeedback?: { blockReason?: string };
-  error?: { message?: string; status?: string };
+  error?: { message?: string; status?: string; details?: ErrorDetail[] };
+  /** Token counts Google reports for a successful call. */
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+}
+
+/**
+ * What a 429 actually says, reduced to two facts. Google puts real numbers in the response —
+ * the limit that was hit, whether it is a per-day or a per-minute quota, and how long to wait —
+ * and „spróbuj za kilka minut" throws all of it away. On the free tier the daily cap is small
+ * enough (20 requests per model at the time of writing) that „wait a moment" is actively
+ * misleading: the answer is „tomorrow".
+ *
+ * Only an integer and a boolean are taken. Nothing else from the body is read, so a message
+ * that quotes the request cannot reach the user.
+ */
+function readQuota(details: readonly ErrorDetail[] | undefined): {
+  limit?: number;
+  perDay: boolean;
+  retryAfterSeconds?: number;
+} {
+  let limit: number | undefined;
+  let perDay = false;
+  let retryAfterSeconds: number | undefined;
+
+  for (const detail of details ?? []) {
+    for (const violation of detail.violations ?? []) {
+      if (/perday/i.test(violation.quotaId ?? '')) perDay = true;
+      const value = Number.parseInt(violation.quotaValue ?? '', 10);
+      if (Number.isFinite(value) && value > 0 && limit === undefined) limit = value;
+    }
+    const delay = /^(\d+(?:\.\d+)?)s$/.exec(detail.retryDelay ?? '');
+    if (delay !== null) retryAfterSeconds = Math.ceil(Number.parseFloat(delay[1] ?? '0'));
+  }
+
+  return { perDay, ...(limit === undefined ? {} : { limit }), ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }) };
 }
 
 /** Concatenate the text parts of the first candidate. Non-text parts are ignored. */
@@ -110,7 +151,12 @@ function suggestedModel(reason: string, requested: string): string | undefined {
  * Map an HTTP status onto a Polish sentence. The response body is never quoted; the one thing
  * read out of it is a suggested model name, under the bounded pattern above.
  */
-function httpError(status: number, reason: string, model: string): GeminiError {
+function httpError(
+  status: number,
+  reason: string,
+  model: string,
+  details?: readonly ErrorDetail[]
+): GeminiError {
   if (status === 400 || status === 401 || status === 403) {
     return new GeminiError(
       'rejected',
@@ -119,10 +165,20 @@ function httpError(status: number, reason: string, model: string): GeminiError {
     );
   }
   if (status === 429) {
-    return new GeminiError(
-      'quota',
-      'Limit zapytań Gemini został wyczerpany. Spróbuj ponownie za kilka minut.'
-    );
+    const quota = readQuota(details);
+    const cap = quota.limit === undefined ? '' : ` (${quota.limit} zapytań na dobę na model)`;
+    if (quota.perDay) {
+      return new GeminiError(
+        'quota',
+        `Wyczerpał się dzienny limit darmowego Gemini${cap}. Odnowi się jutro — do tego czasu ` +
+          'możesz dodać przepis ręcznie albo wpisać w Ustawieniach inny model.'
+      );
+    }
+    const wait =
+      quota.retryAfterSeconds === undefined
+        ? 'za chwilę'
+        : `za około ${Math.max(1, quota.retryAfterSeconds)} s`;
+    return new GeminiError('quota', `Za dużo zapytań do Gemini naraz. Spróbuj ponownie ${wait}.`);
   }
   if (status === 404) {
     // Seen for real: a model the key can still *list* but no longer call (decision 120).
@@ -197,7 +253,7 @@ export async function generateText(request: GeminiRequest): Promise<string> {
 
   if (!response.ok) {
     const failed = (await response.json().catch(() => ({}))) as GeminiResponse;
-    throw httpError(response.status, failed.error?.message ?? '', model);
+    throw httpError(response.status, failed.error?.message ?? '', model, failed.error?.details);
   }
 
   const parsed = (await response.json().catch(() => ({}))) as GeminiResponse;

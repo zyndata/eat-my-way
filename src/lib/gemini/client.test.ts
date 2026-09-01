@@ -175,6 +175,76 @@ describe('the Gemini client', () => {
     expect((failure as GeminiError).message).not.toContain('x-goog-api-key');
   });
 
+  it('turns a daily quota 429 into "tomorrow", not "in a moment"', async () => {
+    // The body Google actually returns on the free tier, trimmed to the parts that are read.
+    const { fetchImpl } = recorder(
+      {
+        error: {
+          message: 'You exceeded your current quota',
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+              violations: [
+                {
+                  quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                  quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier',
+                  quotaValue: '20'
+                }
+              ]
+            },
+            { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '0s' }
+          ]
+        }
+      },
+      429
+    );
+
+    const failure = await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl }).catch(
+      (error: unknown) => error as GeminiError
+    );
+
+    expect((failure as GeminiError).kind).toBe('quota');
+    expect((failure as GeminiError).message).toContain('dzienny');
+    expect((failure as GeminiError).message).toContain('20');
+    expect((failure as GeminiError).message).toContain('jutro');
+  });
+
+  it('names the wait for a short-window 429', async () => {
+    const { fetchImpl } = recorder(
+      {
+        error: {
+          message: 'Please retry in 41.05s.',
+          details: [
+            {
+              '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+              violations: [{ quotaId: 'GenerateRequestsPerMinutePerProject-FreeTier', quotaValue: '10' }]
+            },
+            { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '41.055669712s' }
+          ]
+        }
+      },
+      429
+    );
+
+    const failure = await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl }).catch(
+      (error: unknown) => error as GeminiError
+    );
+
+    expect((failure as GeminiError).message).toContain('42 s');
+    expect((failure as GeminiError).message).not.toContain('jutro');
+  });
+
+  it('still says something when a 429 carries no details at all', async () => {
+    const { fetchImpl } = recorder({ error: { message: 'slow down' } }, 429);
+
+    const failure = await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl }).catch(
+      (error: unknown) => error as GeminiError
+    );
+
+    expect((failure as GeminiError).kind).toBe('quota');
+    expect((failure as GeminiError).message).toContain('Za dużo zapytań');
+  });
+
   it('marks an overloaded Gemini as worth retrying', async () => {
     const { fetchImpl } = recorder({ error: { message: 'high demand' } }, 503);
 

@@ -954,6 +954,60 @@ one of which broke the feature outright.
      **7 of 7 matched**, with the oil quantified and named concretely enough to match a database
      row („olej rzepakowy"). No nutrition value appeared in any response.
 
+### 2026-09-01 — Second live run: hpba.pl, and what the free tier actually allows
+
+123. **A profile written by an earlier build is migrated off the retired default, once.**
+     Decision 120 changed `DEFAULT_GEMINI_MODEL`, which fixes new profiles and reaches nobody
+     else: a stored `profile.json` always wins over `DEFAULT_PROFILE`, so every existing device
+     kept `gemini-2.5-flash` and kept 404-ing. `migrateRetiredDefaultModel` runs at start-up and
+     rewrites **that exact string and nothing else** — a model the user typed, including a
+     deliberate `gemini-2.5-pro`, is left alone. This is not a catalogue of Google's retired
+     models (PLAN.md forbids that); it is this app correcting a default it shipped itself.
+     Idempotent, one read on a normal start, and it schedules a sync only when it changed
+     something.
+
+124. **The free tier is 20 requests per day, per model — and a 429 says so.** Measured: the
+     quota body carries `quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
+     `quotaValue: 20`, and a `RetryInfo.retryDelay`. Fourteen polls over six minutes never
+     recovered, which settles that it is the daily cap and not the per-minute one.
+
+     This matters more than it looks. A paste import costs **2 requests** and a link import
+     **3**, so the free tier is roughly **6–10 recipe imports a day** — and the old message,
+     „spróbuj ponownie za kilka minut", was simply wrong about that. `client.ts` now reads the
+     two facts it needs out of the response (an integer and a per-day flag, nothing else) and
+     says either „Wyczerpał się dzienny limit… odnowi się jutro" or „spróbuj za około N s".
+
+     One consequence worth knowing: the quota is per *model*, so a different model name in
+     Settings has its own separate daily allowance. That is a workaround, not a fix.
+
+125. **Two prompt rules came out of real pages, and one is only half-verified.** Both were
+     found on hpba.pl imports. „Woda" arrived as an ingredient row — a macro-free item that can
+     never match anything and only clutters the draft — so the parse prompt now skips water and
+     ice. And the matcher was returning `null` for „kolendra", „seler" and „bazylia", all three
+     of which *are* in the bundled subset, but each in a fresh and a dried variant: decision
+     114's „lepiej null niż zła pozycja" was reading as „decline whenever there is more than one
+     form". The rule is now split — a different product still returns `null`, but the same
+     product in a different *form* (świeży/suszony, surowy/gotowany) must pick the plainest one.
+     Re-running the same page took it from 14/16 matched to **15/16**, with „kolendra" landing on
+     „Kolendra świeża".
+
+     **The caveat:** the daily quota for `gemini-3.6-flash` was exhausted, so both the problem
+     and the fix were observed on `gemini-flash-lite-latest`. The default model matched 6/6 and
+     7/7 on the earlier run and may never have needed this. The change is low-risk either way —
+     a wrong pick and an empty row both cost the user one tap — but it has not been measured on
+     the model the app actually ships with.
+
+126. **`hpba.pl` is retrievable; that makes two sites out of three.** Every URL tried came back
+     `URL_RETRIEVAL_STATUS_SUCCESS`, and both recipes imported: „Tajski bowl z kurczakiem"
+     (16 ingredients, 15 matched, divided from 2 portions) and „Burgery warzywne" (15
+     ingredients, 12 matched, divided from 4). The scoreboard so far — kwestiasmaku.com and
+     hpba.pl read fine, aniagotuje.pl blocks Google's fetcher and needs the paste fallback.
+
+     The one row that stayed unmatched on the tajski bowl is the right answer, not a miss:
+     „ryż jaśminowy" is a varietal the bundled USDA subset does not carry, so it lands in the
+     editor as an empty row, the user picks „Ryż biały" once, and decision 116's correction
+     makes every later import of that name resolve without asking the model.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the

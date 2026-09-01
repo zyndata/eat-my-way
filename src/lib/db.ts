@@ -31,6 +31,18 @@ export const DEFAULT_GOALS: Macros = { kcal: 2000, protein: 100, carbs: 250, fat
  */
 export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 
+/**
+ * The default this app shipped before `gemini-3.6-flash`, and the only model name it will ever
+ * overwrite on its own (STATE.md decision 123).
+ *
+ * A profile created by an earlier build stores `gemini-2.5-flash` because *this app* put it
+ * there, not because anyone chose it — and it now 404s, so that profile can never import
+ * anything until someone edits the field by hand. Migrating exactly this one value is a fix to
+ * our own bad default; a model the user actually typed is never touched, and no catalogue of
+ * Google's retired models is hardcoded anywhere (PLAN.md: „free-tier catalogs change").
+ */
+export const PREVIOUS_DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+
 export const DEFAULT_PROFILE: Profile = {
   goals: DEFAULT_GOALS,
   geminiModel: DEFAULT_GEMINI_MODEL,

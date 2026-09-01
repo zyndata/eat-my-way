@@ -95,7 +95,8 @@ export const PARSE_SYSTEM = [
   '5. state = "cooked" tylko wtedy, gdy przepis wyraźnie podaje ilość produktu już ugotowanego',
   '   (np. „300 g ugotowanego ryżu”). W każdym innym wypadku "raw".',
   '6. portions to liczba porcji, której dotyczą podane ilości. Jeśli przepis nie mówi, wpisz 1.',
-  '7. Nie wymyślaj składników, których w przepisie nie ma.'
+  '7. Nie wymyślaj składników, których w przepisie nie ma.',
+  '8. Pomiń wodę i lód — nie wnoszą wartości odżywczych, a zaśmiecają listę składników.'
 ].join('\n');
 
 export function parsePrompt(recipeText: string): string {

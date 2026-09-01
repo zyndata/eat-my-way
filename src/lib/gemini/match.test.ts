@@ -5,6 +5,7 @@ import { MatchTier } from '../search';
 import { at, chicken, egg, oil } from '../../test/fixtures';
 import {
   MATCH_SCHEMA,
+  MATCH_SYSTEM,
   attachMatches,
   classifyName,
   correctionMap,
@@ -86,6 +87,14 @@ describe('matchPrompt', () => {
     ]);
     expect(prompt).not.toContain('900');
     expect(prompt).not.toContain('kcal');
+  });
+
+  it('asks for the plainest form rather than a null when the forms are the same product', () => {
+    // A live import returned null for „kolendra", „seler" and „bazylia" — all three present in
+    // the database, but each in a fresh and a dried variant (STATE.md decision 125).
+    expect(MATCH_SYSTEM).toContain('TEN SAM produkt w innej postaci');
+    // …without collapsing the distinction that actually matters.
+    expect(MATCH_SYSTEM).toContain('inny produkt');
   });
 
   it('lets the model say "none"', () => {

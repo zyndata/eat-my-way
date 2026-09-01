@@ -23,6 +23,10 @@ describe('the import schema and prompt', () => {
     expect(PARSE_SYSTEM).toContain('odrobina oliwy');
     expect(PARSE_SYSTEM).toContain('Tłuszcze');
   });
+
+  it('drops water, which a live import showed arriving as a macro-free row', () => {
+    expect(PARSE_SYSTEM).toContain('Pomiń wodę');
+  });
 });
 
 describe('readParsedRecipe', () => {
