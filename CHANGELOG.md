@@ -25,9 +25,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 6 — Drive sync & encrypted vault
 - Phase 7 — import a recipe from a link or pasted text with Gemini
 - Show what this account has spent on Gemini today
+- Pick the Gemini model from a list, and count usage per model
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
