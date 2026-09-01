@@ -22,8 +22,14 @@ export const PROFILE_KEY = 1;
 /** Defaults for a profile the user has not filled in yet (PLAN.md first-run wizard). */
 export const DEFAULT_GOALS: Macros = { kcal: 2000, protein: 100, carbs: 250, fat: 70 };
 
-/** Free-tier catalogs change, so this is a default, never a hardcoded assumption. */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+/**
+ * Free-tier catalogs change, so this is a default, never a hardcoded assumption — and it has
+ * already changed once. PLAN.md named `gemini-2.5-flash`; against a key issued now, that model
+ * is still listed by `models.list` but `generateContent` answers 404 „no longer available to
+ * new users", so the import failed every time (STATE.md decision 120). Settings still override
+ * it, and `client.ts` reads Google's own replacement out of a 404 and names it to the user.
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.6-flash';
 
 export const DEFAULT_PROFILE: Profile = {
   goals: DEFAULT_GOALS,

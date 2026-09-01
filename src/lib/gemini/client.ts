@@ -25,6 +25,8 @@ export type GeminiErrorKind =
   | 'network'
   /** Google answered, but not with something usable. */
   | 'bad-response'
+  /** Google is up but overloaded — worth retrying, unlike everything above. */
+  | 'unavailable'
   /** Anything else. */
   | 'unknown';
 
@@ -90,8 +92,25 @@ function candidateText(body: GeminiResponse): string {
     .join('');
 }
 
-/** Map an HTTP status onto a Polish sentence. Never quotes the response body. */
-function httpError(status: number): GeminiError {
+/**
+ * The model Google names as the replacement in a 404, when it names one.
+ *
+ * A retired model answers „This model models/X is no longer available to new users. Please
+ * update your code to use models/Y" — the fix is in the error and it would be perverse to
+ * throw it away. Only a `models/…` token is taken, and only one that is not the model just
+ * asked for, so what reaches the user is a model name and nothing else: an API key cannot
+ * match this shape, and no other part of the body is read.
+ */
+function suggestedModel(reason: string, requested: string): string | undefined {
+  const named = [...reason.matchAll(/models\/([a-z0-9][a-z0-9.-]{2,48})/gi)].map((match) => match[1]);
+  return named.find((name) => name !== undefined && name !== requested);
+}
+
+/**
+ * Map an HTTP status onto a Polish sentence. The response body is never quoted; the one thing
+ * read out of it is a suggested model name, under the bounded pattern above.
+ */
+function httpError(status: number, reason: string, model: string): GeminiError {
   if (status === 400 || status === 401 || status === 403) {
     return new GeminiError(
       'rejected',
@@ -106,9 +125,20 @@ function httpError(status: number): GeminiError {
     );
   }
   if (status === 404) {
+    // Seen for real: a model the key can still *list* but no longer call (decision 120).
+    const suggestion = suggestedModel(reason, model);
     return new GeminiError(
       'rejected',
-      'Gemini nie zna modelu ustawionego w Ustawieniach. Wpisz inną nazwę modelu i spróbuj ponownie.'
+      suggestion === undefined
+        ? `Gemini nie udostępnia już modelu „${model}”. Wpisz w Ustawieniach inną nazwę modelu.`
+        : `Gemini nie udostępnia już modelu „${model}”. Google podpowiada „${suggestion}” — ` +
+          'wpisz tę nazwę w Ustawieniach, w polu „Model Gemini”.'
+    );
+  }
+  if (status === 500 || status === 502 || status === 503 || status === 504) {
+    return new GeminiError(
+      'unavailable',
+      'Gemini jest chwilowo przeciążony. To zwykle mija po kilku minutach — spróbuj ponownie.'
     );
   }
   return new GeminiError(
@@ -165,7 +195,10 @@ export async function generateText(request: GeminiRequest): Promise<string> {
     );
   }
 
-  if (!response.ok) throw httpError(response.status);
+  if (!response.ok) {
+    const failed = (await response.json().catch(() => ({}))) as GeminiResponse;
+    throw httpError(response.status, failed.error?.message ?? '', model);
+  }
 
   const parsed = (await response.json().catch(() => ({}))) as GeminiResponse;
 

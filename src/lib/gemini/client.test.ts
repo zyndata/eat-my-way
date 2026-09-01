@@ -90,7 +90,8 @@ describe('the Gemini client', () => {
       { status: 403, kind: 'rejected' },
       { status: 404, kind: 'rejected' },
       { status: 429, kind: 'quota' },
-      { status: 500, kind: 'unknown' }
+      { status: 503, kind: 'unavailable' },
+      { status: 418, kind: 'unknown' }
     ];
 
     for (const { status, kind } of cases) {
@@ -107,6 +108,82 @@ describe('the Gemini client', () => {
       expect((failure as GeminiError).message).not.toContain('AIza-secret');
       expect((failure as GeminiError).message).toMatch(/[ąćęłńóśźż]|Gemini|Limit/);
     }
+  });
+
+  it('names the replacement model Google suggests when one is retired', async () => {
+    // Verbatim shape of the 404 a key issued in September 2026 gets for gemini-2.5-flash.
+    const { fetchImpl } = recorder(
+      {
+        error: {
+          message:
+            'This model models/gemini-2.5-flash is no longer available to new users. Please ' +
+            'update your code to use models/gemini-3.6-flash for the latest features.'
+        }
+      },
+      404
+    );
+
+    const failure = await generateText({
+      apiKey: 'AIza-secret',
+      model: 'gemini-2.5-flash',
+      prompt: 'hi',
+      fetchImpl
+    }).catch((error: unknown) => error as GeminiError);
+
+    expect((failure as GeminiError).kind).toBe('rejected');
+    // The dead model is named as the problem and the live one as the fix — not the reverse.
+    expect((failure as GeminiError).message).toContain('„gemini-2.5-flash”');
+    expect((failure as GeminiError).message).toContain('„gemini-3.6-flash”');
+    expect((failure as GeminiError).message).toContain('Ustawieniach');
+  });
+
+  it('still says something useful when the 404 suggests nothing', async () => {
+    const { fetchImpl } = recorder({ error: { message: 'not found' } }, 404);
+
+    const failure = await generateText({
+      apiKey: 'k',
+      model: 'gemini-nieistniejacy',
+      prompt: 'hi',
+      fetchImpl
+    }).catch((error: unknown) => error as GeminiError);
+
+    expect((failure as GeminiError).message).toContain('„gemini-nieistniejacy”');
+    expect((failure as GeminiError).message).toContain('Ustawieniach');
+  });
+
+  it('reads nothing but a model name out of an error body', async () => {
+    // A body that quotes the request. Only the `models/…` token may ever come through.
+    const { fetchImpl } = recorder(
+      {
+        error: {
+          message:
+            'request to models/old failed with x-goog-api-key: AIza-secret; use models/new instead'
+        }
+      },
+      404
+    );
+
+    const failure = await generateText({
+      apiKey: 'AIza-secret',
+      model: 'old',
+      prompt: 'hi',
+      fetchImpl
+    }).catch((error: unknown) => error as GeminiError);
+
+    expect((failure as GeminiError).message).toContain('„new”');
+    expect((failure as GeminiError).message).not.toContain('AIza-secret');
+    expect((failure as GeminiError).message).not.toContain('x-goog-api-key');
+  });
+
+  it('marks an overloaded Gemini as worth retrying', async () => {
+    const { fetchImpl } = recorder({ error: { message: 'high demand' } }, 503);
+
+    const failure = await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl }).catch(
+      (error: unknown) => error as GeminiError
+    );
+
+    expect((failure as GeminiError).kind).toBe('unavailable');
+    expect((failure as GeminiError).message).toContain('przeciążony');
   });
 
   it('reports a lost connection without quoting the request', async () => {

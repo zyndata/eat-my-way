@@ -903,6 +903,57 @@ filtered flat list). Her decisions on each point follow.
      page — so a name that ranks empty is retried word by word and the results unioned in word
      order. Both are pure functions with their own tests.
 
+### 2026-09-01 — First live Gemini run (after Phase 7)
+
+Driven against the real API with a real key, on real pages from `kwestiasmaku.com` and
+`aniagotuje.pl`. This is what open questions 21 and 22 asked for, and it found three things —
+one of which broke the feature outright.
+
+120. **PLAN.md's default model is dead, and the key check cannot see it.** `gemini-2.5-flash`
+     is still returned by `models.list` — so „Sprawdź i zapisz klucz" says „Klucz działa." and
+     the wizard goes green — but `generateContent` answers **404: „This model is no longer
+     available to new users. Please update your code to use models/gemini-3.6-flash."** Every
+     import therefore failed, on both the paste and the link path, with a key issued today.
+     `DEFAULT_GEMINI_MODEL` is now `gemini-3.6-flash`, which was verified working end to end.
+
+     This is a deviation from PLAN.md, which names `gemini-2.5-flash` — and it is the deviation
+     PLAN.md itself predicted („free-tier catalogs change, never hardcode"). The mechanism held:
+     one constant, one settings field, no other code touched.
+
+     A cheaper live check than a real `generateContent` call was looked for and does not exist:
+     the list endpoint is the only free probe and it is the one that lies here. Rather than
+     spend a generation on every key test, the 404 was made self-solving (decision 121).
+
+121. **A retired model now tells the user which model to type.** Google puts the fix in the
+     error — „use models/gemini-3.6-flash" — and throwing that away would leave „Gemini nie zna
+     modelu" as a dead end, which matters because **an existing profile keeps the stored
+     `gemini-2.5-flash` and the new default never reaches it.** `client.ts` reads exactly one
+     `models/…` token out of a 404 body, ignores the one it just asked for, and names the other:
+     „Gemini nie udostępnia już modelu „gemini-2.5-flash”. Google podpowiada „gemini-3.6-flash”
+     — wpisz tę nazwę w Ustawieniach". Verified against the real 404.
+
+     The pattern is deliberately narrow — `models/` plus a lowercase name — so no other part of
+     a body that may quote the request can come through. A test feeds it a body containing
+     `x-goog-api-key: <key>` and asserts only the model name survives. 503/502/504 also gained
+     their own `unavailable` kind and a „przeciążony, spróbuj ponownie" message; the real API
+     returned 503 twice during this run and the generic „błąd (503)" read like a bug.
+
+122. **`aniagotuje.pl` blocks Google's fetcher; `kwestiasmaku.com` does not.** Three URLs each,
+     and the split is total: every `kwestiasmaku.com` page came back `URL_RETRIEVAL_STATUS_
+     SUCCESS`, every `aniagotuje.pl` page `URL_RETRIEVAL_STATUS_ERROR`. This is not a bug and
+     nothing was changed for it — it is exactly the case decision 63 reserved the paste fallback
+     for, and the app does the right thing: the retrieval step fails, and the user is told to
+     copy the recipe and paste it. Worth knowing which of the two sites needs that, because it
+     will be the more common of the two failures in daily use.
+
+     What the successful path produced is worth recording, because it is the first evidence the
+     prompts work at all: kwestiasmaku's „Kotlety z kurczaka w panierce kukurydzianej" came back
+     with 6 ingredients, **6 of 6 matched** against the bundled USDA subset, divided from 4
+     portions to 1, with „masło klarowane" quantified at 7.5 g. The pasted „placki ziemniaczane"
+     — deliberately written with „olej do smażenia" and „sól i pieprz do smaku" — came back
+     **7 of 7 matched**, with the oil quantified and named concretely enough to match a database
+     row („olej rzepakowy"). No nutrition value appeared in any response.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -1005,21 +1056,32 @@ filtered flat list). Her decisions on each point follow.
     a silent path that reaches for a popup is a silent path that can fail without a gesture.
     Seen once, not investigated.
 
-21. **The model half of import determinism is unverified, and unverifiable from here.**
-    Decision 115: every request goes out with `temperature: 0`, `topK: 1` and a fixed seed, and
-    everything downstream of the model — unit normalization, candidate selection, correction
-    lookup, draft assembly — is pure and asserted twice over. What is *not* established is that
-    Gemini returns byte-identical JSON for the same prompt across serving revisions; Google
-    contracts no such thing. The practical consequence is small and self-limiting: a name the
-    model waffles on is a name the user corrects once, after which it never reaches the model
-    again. Worth re-checking against the real API on the first live import.
+21. **Import determinism does NOT hold against the real model — the acceptance criterion
+    fails, honestly.** Measured, not assumed. Two identical pastes of the same recipe text
+    through the full app prompt produced different drafts: „2 łyżki mąki" came back as 30 g
+    once and 25 g the next time, „olej do smażenia" as 30 ml then 40 ml, and „pieprz czarny"
+    became „pieprz". `temperature: 0`, `topK: 1` and a fixed `seed` are all sent and are not
+    enough. A shorter prompt was stable across four runs, which points at the wobble living in
+    the judgement calls the prompt *asks* for — converting household measures — rather than in
+    decoding noise.
 
-22. **The prompts have never met the real model.** Every test in this phase answers with a
-    canned or prompt-derived response, so what is verified is that the app handles a
-    well-formed answer, a malformed one, a refusal and each HTTP failure — not that
-    `gemini-2.5-flash` actually obeys „no nutrition numbers", actually quantifies „skropić
-    oliwą", or actually retrieves a Polish recipe blog through `url_context`. The structure
-    defends the first of those on its own (there is nowhere in the schema to put a calorie, and
-    the reader drops unknown fields), and the second and third fail visibly rather than
-    silently. Still: the first real import against a real key on a real recipe page is the test
-    that has not been run, and it is the same kind of gap open question 15 named for Drive.
+    So PLAN.md's „importing the same text twice yields identical drafts" is met by everything
+    the app controls (unit normalization, candidate selection, correction lookup, draft
+    assembly are pure and asserted) and **not** by the model. Three things make this survivable
+    rather than serious: the draft is reviewed before it is saved, a saved recipe never
+    recomputes (`macroSnapshot` is frozen), and a name the user corrects once stops reaching the
+    model at all. What it costs is that re-importing a page is not a way to reproduce a recipe.
+    Not worth chasing with retries or self-consistency voting for a single-user planner; worth
+    revisiting only if the amounts turn out to drift enough to notice in daily use.
+
+22. **The prompts have met the real model, and they work — answered.** First live run,
+    decision 122: 6/6 and 7/7 ingredients matched on real pages, fats quantified where the
+    source said only „olej do smażenia", amounts divided from 4 portions to 1, instructions
+    carried over, and **no nutrition value in any response**. The rules that were guesses are
+    now observations. What this did not cover: only two sites, only one model
+    (`gemini-3.6-flash`), and only a handful of recipes — nothing here says a page with a
+    two-column ingredient table or a „wersja wegańska" variant section parses cleanly. The free
+    tier also rate-limited the run at around a dozen calls a minute (429), which is the first
+    time that limit has been visible; a user importing several recipes back to back will meet
+    it, and the message for it already exists.
+
