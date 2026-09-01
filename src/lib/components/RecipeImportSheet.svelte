@@ -84,7 +84,10 @@
         onstage: (next) => (stage = STAGES[next]),
         // The tally travels in profile.json so the free tier's 20/day is counted across every
         // device on the account, not per browser (STATE.md decision 127).
-        onusage: (spent) => void recordGeminiUsage(spent).then(() => scheduleSync())
+        // Tallied against the model that was actually called: the quota is charged per model,
+        // and the per-model limits differ by more than 20x (STATE.md decision 129).
+        onusage: (spent) =>
+          void recordGeminiUsage(spent, profile.geminiModel).then(() => scheduleSync())
       });
 
       onimport(result);

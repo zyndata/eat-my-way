@@ -10,7 +10,7 @@ import {
   PROFILE_FILE,
   RECIPES_FILE,
   daysFileName,
-  totalGeminiUsage
+  modelGeminiUsage
 } from './documents';
 
 /**
@@ -276,7 +276,7 @@ describe('two devices', () => {
       const profile = await device.repository.getProfile();
       await device.repository.saveProfile({
         ...profile,
-        geminiUsage: { day, devices: { [id]: { requests, tokens } } }
+        geminiUsage: { day, models: { 'gemini-3.6-flash': { [id]: { requests, tokens } } } }
       });
     };
 
@@ -291,7 +291,7 @@ describe('two devices', () => {
 
     for (const device of [a, b]) {
       const usage = (await device.repository.getProfile()).geminiUsage;
-      expect(totalGeminiUsage(usage)).toEqual({ requests: 7, tokens: 700 });
+      expect(modelGeminiUsage(usage, 'gemini-3.6-flash')).toEqual({ requests: 7, tokens: 700 });
     }
   });
 
@@ -301,21 +301,21 @@ describe('two devices', () => {
     const stale = await a.repository.getProfile();
     await a.repository.saveProfile({
       ...stale,
-      geminiUsage: { day: '2026-08-31', devices: { 'dev-a': { requests: 19, tokens: 9000 } } }
+      geminiUsage: { day: '2026-08-31', models: { m: { 'dev-a': { requests: 19, tokens: 9000 } } } }
     });
     await a.engine.sync({ resolveConflicts: neverAsks });
 
     const fresh = await b.repository.getProfile();
     await b.repository.saveProfile({
       ...fresh,
-      geminiUsage: { day: '2026-09-01', devices: { 'dev-b': { requests: 2, tokens: 200 } } }
+      geminiUsage: { day: '2026-09-01', models: { m: { 'dev-b': { requests: 2, tokens: 200 } } } }
     });
     await b.engine.sync({ resolveConflicts: neverAsks });
     await a.engine.sync({ resolveConflicts: neverAsks });
 
     const usage = (await a.repository.getProfile()).geminiUsage;
     expect(usage?.day).toBe('2026-09-01');
-    expect(totalGeminiUsage(usage)).toEqual({ requests: 2, tokens: 200 });
+    expect(modelGeminiUsage(usage, 'm')).toEqual({ requests: 2, tokens: 200 });
   });
 
   it('carries a name correction across, so a repeat import matches the same way', async () => {

@@ -1047,6 +1047,53 @@ one of which broke the feature outright.
      existed, so they misspell 2-4 too. They were not touched here — that is a sweep of its own,
      recorded as open question 23 rather than folded into a commit about API quotas.
 
+### 2026-09-01 — Quota is per model, and so is the counter
+
+129. **„20 zapytań na dobę" was wrong as a general claim, and the counter I had just shipped
+     aggregated across models.** Google's own dashboard (`ai.dev/rate-limit`, screenshot from the
+     user's project) settles both:
+
+     | Model | RPM | RPD |
+     |-------|-----|-----|
+     | Gemini 3.6 Flash | 3 / 5 | **23 / 20** — exceeded |
+     | Gemini 3.7 Flash | 1 / 5 | 2 / **20** |
+     | Gemini 3.5 Flash Lite | 5 / 15 | 10 / **500** |
+
+     Limits are charged per model, which decision 124 had already established from a 429 body —
+     but they differ by **25×**, which it had not. A single „20" printed as fact is wrong for
+     most models, and one counter spanning every model becomes meaningless the moment someone
+     switches, which is exactly what a person does when a model runs out.
+
+     So `GeminiUsage` gained a model dimension: `models[model][deviceId]`. The merge rule is
+     unchanged in spirit — union by model, then the larger value per device — and the screen now
+     shows this model's count, with the other models spent on today listed underneath so
+     switching away does not hide what it cost. The „20" is gone from the copy, replaced by the
+     fact that matters: limits differ per model, and switching model gives a fresh allowance.
+
+     No constant records a per-model limit, because nothing in the API reports one until a 429
+     arrives. `REQUESTS_PER_IMPORT` stays, since that is the app's own arithmetic.
+
+     The brief `devices`-only shape from decision 127 is read as `undefined` rather than
+     migrated — it existed on `dev` for under an hour, and the worst case is one device losing
+     one day of its own tally.
+
+130. **The model field is a dropdown built from `models.list`, with hand entry kept.** Asked
+     for. A hardcoded `<option>` list would be decision 120 all over again — this app's default
+     was retired out from under it — so the list is fetched from the user's own key and carries
+     Google's `displayName`. Gemini models sort newest-first (their names carry the version), and
+     other products (`lyria-`, `nano-banana-`) fall below; that prefix is presentation only,
+     nothing is filtered out except models that do not support `generateContent`.
+
+     Three cases the UI has to survive, all covered: no key or offline, where the list is empty
+     and the field stays a text input; a stored model Google no longer lists, which is prepended
+     so that opening Settings cannot silently switch the user's model; and a model too new to be
+     listed, reachable through „Wpisz nazwę ręcznie". The e2e run asserts the options come from
+     the key rather than the bundle, and that a typed name survives a reload.
+
+     One bug found while testing it: the list-loading effect fires when the vault unlocks, which
+     is *before* the first key is ever saved, so the dropdown stayed empty until the next page
+     load. `saveKey` now reloads it.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -1183,3 +1230,10 @@ one of which broke the feature outright.
     wrong for 2, 3 and 4. `pluralPl` exists now and each is a one-line change; it is a small
     sweep across `RecipeEditor`, `DayScreen` and `MealCard`, deliberately not bundled into a
     commit about Gemini quotas. Worth doing before anyone else reads the UI closely.
+
+24. **Which model should be the default is now a real trade-off, not an obvious answer**
+    (decision 129). `gemini-3.6-flash` allows 20 requests a day — about six link imports —
+    while `gemini-3.5-flash-lite` allows 500. The lite model is what the hpba.pl runs used, and
+    it matched 15/16 and 12/15 ingredients on real pages; `gemini-3.6-flash` matched 6/6 and
+    7/7, but on shorter recipes, so the two have never been compared on the same input. Worth
+    settling with one deliberate A/B on the same three pages before changing the default again.

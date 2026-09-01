@@ -109,18 +109,39 @@ export function readGeminiUsage(value: unknown): GeminiUsage | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const doc = value as Partial<GeminiUsage>;
   if (typeof doc.day !== 'string' || doc.day === '') return undefined;
-  if (typeof doc.devices !== 'object' || doc.devices === null) return undefined;
+  if (typeof doc.models !== 'object' || doc.models === null) return undefined;
 
-  const devices: Record<string, DeviceUsage> = {};
-  for (const [id, tally] of Object.entries(doc.devices)) {
-    const usage = readDeviceUsage(tally);
-    if (usage !== undefined) devices[id] = usage;
+  const models: Record<string, Record<string, DeviceUsage>> = {};
+  for (const [model, byDevice] of Object.entries(doc.models)) {
+    if (typeof byDevice !== 'object' || byDevice === null) continue;
+    const devices: Record<string, DeviceUsage> = {};
+    for (const [id, tally] of Object.entries(byDevice as Record<string, unknown>)) {
+      const usage = readDeviceUsage(tally);
+      if (usage !== undefined) devices[id] = usage;
+    }
+    if (Object.keys(devices).length > 0) models[model] = devices;
   }
-  return { day: doc.day, devices };
+  return { day: doc.day, models };
+}
+
+/** Union two device maps for one model, taking the larger count per device. */
+function mergeDevices(
+  local: Record<string, DeviceUsage>,
+  remote: Record<string, DeviceUsage>
+): Record<string, DeviceUsage> {
+  const devices: Record<string, DeviceUsage> = { ...remote };
+  for (const [id, mine] of Object.entries(local)) {
+    const theirs = devices[id];
+    devices[id] =
+      theirs === undefined
+        ? mine
+        : { requests: Math.max(mine.requests, theirs.requests), tokens: Math.max(mine.tokens, theirs.tokens) };
+  }
+  return devices;
 }
 
 /**
- * Union two tallies for the same quota day, taking the larger count per device.
+ * Union two tallies for the same quota day, model by model and device by device.
  *
  * The counter only ever grows within a day and each device writes only its own entry, so the
  * larger of two values for the same device is the later one — no clock and no ordering needed.
@@ -135,25 +156,38 @@ export function mergeGeminiUsage(
   if (remote === undefined) return local;
   if (local.day !== remote.day) return local.day > remote.day ? local : remote;
 
-  const devices: Record<string, DeviceUsage> = { ...remote.devices };
-  for (const [id, mine] of Object.entries(local.devices)) {
-    const theirs = devices[id];
-    devices[id] =
-      theirs === undefined
-        ? mine
-        : { requests: Math.max(mine.requests, theirs.requests), tokens: Math.max(mine.tokens, theirs.tokens) };
+  const models: Record<string, Record<string, DeviceUsage>> = { ...remote.models };
+  for (const [model, mine] of Object.entries(local.models)) {
+    const theirs = models[model];
+    models[model] = theirs === undefined ? mine : mergeDevices(mine, theirs);
   }
-  return { day: local.day, devices };
+  return { day: local.day, models };
 }
 
-/** What the whole account has spent in the day this tally covers. */
-export function totalGeminiUsage(usage: GeminiUsage | undefined): DeviceUsage {
+function sumDevices(devices: Record<string, DeviceUsage> | undefined): DeviceUsage {
   const total: DeviceUsage = { requests: 0, tokens: 0 };
-  for (const tally of Object.values(usage?.devices ?? {})) {
+  for (const tally of Object.values(devices ?? {})) {
     total.requests += tally.requests;
     total.tokens += tally.tokens;
   }
   return total;
+}
+
+/**
+ * What the whole account has spent on ONE model in the day this tally covers. This is the
+ * number that can be compared against a quota, because the quota is charged per model.
+ */
+export function modelGeminiUsage(usage: GeminiUsage | undefined, model: string): DeviceUsage {
+  return sumDevices(usage?.models[model]);
+}
+
+/** Every model this tally knows about, spent-most first. */
+export function geminiUsageByModel(
+  usage: GeminiUsage | undefined
+): { model: string; usage: DeviceUsage }[] {
+  return Object.entries(usage?.models ?? {})
+    .map(([model, devices]) => ({ model, usage: sumDevices(devices) }))
+    .sort((a, b) => b.usage.requests - a.usage.requests || a.model.localeCompare(b.model));
 }
 
 /** `profile.json`. Unknown or missing fields fall back to what the caller already had. */

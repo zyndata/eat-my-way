@@ -211,11 +211,14 @@ test('correcting a mismatch once makes the next import of that name match itself
   expect(asked[1]?.prompt).not.toContain('mąka pszenna');
 });
 
-test('the Gemini usage counter records what an import spent', async ({ device, gemini }) => {
+test('the Gemini usage counter records what an import spent, per model', async ({
+  device,
+  gemini
+}) => {
   gemini.script.recipe = PARSED;
 
   await setUpKey(device);
-  await expect(device.getByText('Dziś: 0 zapytań')).toBeVisible();
+  await expect(device.getByText(/Dziś, model .*: 0 zapytań/)).toBeVisible();
 
   await openEditor(device);
   await device.getByRole('button', { name: 'Wklej przepis z internetu' }).click();
@@ -225,9 +228,39 @@ test('the Gemini usage counter records what an import spent', async ({ device, g
 
   // A pasted import is two requests: parse, then match.
   await device.getByRole('link', { name: 'Ustawienia' }).click();
-  await expect(device.getByText('Dziś: 2 zapytania')).toBeVisible();
+  await expect(device.getByText(/Dziś, model .*: 2 zapytania/)).toBeVisible();
 
   // It survives a reload, because it lives in the profile rather than in memory.
   await device.reload();
-  await expect(device.getByText('Dziś: 2 zapytania')).toBeVisible();
+  await expect(device.getByText(/Dziś, model .*: 2 zapytania/)).toBeVisible();
+
+  // The quota is charged per model, so switching shows a fresh count — and the spend on the
+  // model just left is still listed underneath rather than vanishing.
+  await device.getByLabel('Model Gemini').selectOption('gemini-3.5-flash-lite');
+  await expect(device.getByText(/Dziś, model gemini-3\.5-flash-lite: 0 zapytań/)).toBeVisible();
+  await expect(device.getByText('gemini-3.6-flash: 2 zapytania')).toBeVisible();
+});
+
+test('the model field is a list built from the key, and still accepts a typed name', async ({
+  device
+}) => {
+  await setUpKey(device);
+
+  // Populated from models.list, not from a constant in the bundle.
+  const field = device.getByLabel('Model Gemini');
+  await expect(field).toHaveValue('gemini-3.6-flash');
+  await expect(field.locator('option')).toHaveText([
+    'Gemini 3.6 Flash — gemini-3.6-flash',
+    'Gemini 3.5 Flash Lite — gemini-3.5-flash-lite'
+  ]);
+
+  // A model too new to be listed must still be reachable, or PLAN.md's "never hardcode a
+  // catalogue" would just move the hardcoding into Google's listing.
+  await device.getByRole('button', { name: 'Wpisz nazwę ręcznie' }).click();
+  await device.getByLabel('Model Gemini').fill('gemini-9.9-przyszly');
+  await device.getByRole('button', { name: 'Zapisz model' }).click();
+  await expect(device.getByText('Zapisano.')).toBeVisible();
+
+  await device.reload();
+  await expect(device.getByLabel('Model Gemini')).toHaveValue('gemini-9.9-przyszly');
 });

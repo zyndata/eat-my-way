@@ -67,7 +67,21 @@ export async function installFakeGemini(context: BrowserContext, fake: FakeGemin
       return route.fulfill({
         status: fake.script.status ?? 200,
         contentType: 'application/json',
-        body: JSON.stringify({ models: [{ name: 'models/gemini-2.5-flash' }] })
+        // Shaped like the real listing: Settings builds its model dropdown from this.
+        body: JSON.stringify({
+          models: [
+            {
+              name: 'models/gemini-3.6-flash',
+              displayName: 'Gemini 3.6 Flash',
+              supportedGenerationMethods: ['generateContent']
+            },
+            {
+              name: 'models/gemini-3.5-flash-lite',
+              displayName: 'Gemini 3.5 Flash Lite',
+              supportedGenerationMethods: ['generateContent']
+            }
+          ]
+        })
       });
     }
 

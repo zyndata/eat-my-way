@@ -6,8 +6,9 @@
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
   import { testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
-  import { FREE_TIER_DAILY_REQUESTS, quotaDay } from '../lib/gemini/usage';
-  import { totalGeminiUsage } from '../lib/sync/documents';
+  import { REQUESTS_PER_IMPORT, quotaDay } from '../lib/gemini/usage';
+  import { listGeminiModels, withCurrentModel, type GeminiModel } from '../lib/gemini/models';
+  import { geminiUsageByModel, modelGeminiUsage } from '../lib/sync/documents';
   import { pluralPl } from '../lib/text';
   import {
     connectDrive,
@@ -69,11 +70,36 @@
    * device, because the free tier counts per project (STATE.md decision 127). A tally left over
    * from a previous day is shown as zero rather than as today's spend.
    */
-  const usage = $derived(
-    profile?.geminiUsage?.day === quotaDay()
-      ? totalGeminiUsage(profile.geminiUsage)
-      : { requests: 0, tokens: 0 }
+  const todaysUsage = $derived(
+    profile?.geminiUsage?.day === quotaDay() ? profile.geminiUsage : undefined
   );
+  /** The number that can be compared against a quota: this model's, not every model's. */
+  const usage = $derived(modelGeminiUsage(todaysUsage, model));
+  /** The other models spent on today, so switching away does not hide what it cost. */
+  const otherModels = $derived(
+    geminiUsageByModel(todaysUsage).filter((row) => row.model !== model)
+  );
+
+  /**
+   * The model list comes from the key, never from a constant (PLAN.md: „free-tier catalogs
+   * change"). An empty list is a normal state — offline, no key yet — and the free-text field
+   * below is what keeps a brand-new model reachable in that case.
+   */
+  let models = $state<GeminiModel[]>([]);
+  let typingModel = $state(false);
+  const modelOptions = $derived(withCurrentModel(models, model));
+
+  async function loadModels(): Promise<void> {
+    if (vaultState.status !== 'unlocked') return;
+    const key = geminiApiKey();
+    if (key === undefined || key.trim() === '') return;
+    models = await listGeminiModels(key);
+  }
+
+  // Runs once the vault opens, which is when a key first becomes readable.
+  $effect(() => {
+    if (vaultState.status === 'unlocked' && models.length === 0) void loadModels();
+  });
 
   /**
    * The key field follows the vault, not the screen: unlocking happens after this screen has
@@ -113,6 +139,10 @@
     testingKey = false;
     if (keyResult.status !== 'ok') return;
     await saveSecrets({ geminiApiKey: apiKey.trim() });
+    // The model list needs a key, and the effect below already ran — when the vault opened,
+    // which is before the very first key exists. Without this the dropdown would stay empty
+    // until the next page load.
+    void loadModels();
     void syncNow();
   }
 
@@ -359,38 +389,47 @@
         </p>
       {/if}
 
-      <label class="block pt-4 text-sm font-medium">
-        Model Gemini
-        <input class={inputClass} type="text" bind:value={model} onchange={() => (modelSaved = false)} />
-      </label>
-      <p class="pt-1 text-xs text-(--color-ink-muted)">
-        Domyślnie {DEFAULT_GEMINI_MODEL}. Katalog modeli się zmienia — nazwę można tu wpisać ręcznie.
-      </p>
-
-      <h3 class="pt-6 text-sm font-semibold">Zużycie Gemini</h3>
-      <p class="pt-2 text-sm">
-        Dziś: <span class="font-medium">{usage.requests}</span>
-        {pluralPl(usage.requests, { one: 'zapytanie', few: 'zapytania', many: 'zapytań' })}
-        {#if usage.tokens > 0}
-          · {usage.tokens.toLocaleString('pl-PL')} tokenów
+      <label class="block pt-4 text-sm font-medium" for="gemini-model">Model Gemini</label>
+      {#if typingModel || modelOptions.length === 0}
+        <input
+          id="gemini-model"
+          class={inputClass}
+          type="text"
+          bind:value={model}
+          onchange={() => (modelSaved = false)}
+        />
+        {#if modelOptions.length > 0}
+          <button
+            type="button"
+            class="pt-1 text-sm text-(--color-accent) underline"
+            onclick={() => (typingModel = false)}
+          >
+            Wybierz z listy
+          </button>
         {/if}
-      </p>
+      {:else}
+        <select
+          id="gemini-model"
+          class={inputClass}
+          bind:value={model}
+          onchange={() => (modelSaved = false)}
+        >
+          {#each modelOptions as option (option.id)}
+            <option value={option.id}>{option.label} — {option.id}</option>
+          {/each}
+        </select>
+        <button
+          type="button"
+          class="pt-1 text-sm text-(--color-accent) underline"
+          onclick={() => (typingModel = true)}
+        >
+          Wpisz nazwę ręcznie
+        </button>
+      {/if}
       <p class="pt-1 text-xs text-(--color-ink-muted)">
-        Darmowy limit to zwykle {FREE_TIER_DAILY_REQUESTS} zapytań na dobę dla jednego modelu, a
-        jeden import kosztuje 2 zapytania (wklejony tekst) albo 3 (link) — czyli około
-        {Math.floor(FREE_TIER_DAILY_REQUESTS / 3)}–{Math.floor(FREE_TIER_DAILY_REQUESTS / 2)} przepisów dziennie.
-        Licznik obejmuje wszystkie Twoje urządzenia i zeruje się o północy czasu pacyficznego.
-      </p>
-      <p class="pt-1 text-xs text-(--color-ink-muted)">
-        To jest licznik tej aplikacji, nie odczyt z Google: zapytania wysłane skądinąd na ten sam
-        klucz nie są tu widoczne. Prawdziwe limity i zużycie pokazuje
-        <a
-          class="font-medium text-(--color-accent) underline"
-          href="https://ai.dev/rate-limit"
-          target="_blank"
-          rel="noreferrer noopener"
-        >ai.dev/rate-limit</a>. Limit liczy się osobno dla każdego modelu, więc inna nazwa modelu
-        wyżej ma własną pulę.
+        Domyślnie {DEFAULT_GEMINI_MODEL}. Lista pochodzi z Twojego klucza, więc zawiera to, co
+        Google właśnie udostępnia — ale bywa, że model jest na liście, a mimo to nie da się go
+        już wywołać. Wtedy komunikat błędu podpowie nazwę zamiennika.
       </p>
       <button type="button" class="{secondaryClass} mt-3" onclick={() => void saveModel()}>
         Zapisz model
@@ -398,6 +437,43 @@
       {#if modelSaved}
         <span class="pl-2 text-sm text-(--color-ink-muted)">Zapisano.</span>
       {/if}
+
+      <h3 class="pt-6 text-sm font-semibold">Zużycie Gemini</h3>
+      <p class="pt-2 text-sm">
+        Dziś, model <span class="font-medium">{model}</span>:
+        <span class="font-medium">{usage.requests}</span>
+        {pluralPl(usage.requests, { one: 'zapytanie', few: 'zapytania', many: 'zapytań' })}
+        {#if usage.tokens > 0}
+          · {usage.tokens.toLocaleString('pl-PL')} tokenów
+        {/if}
+      </p>
+      {#if otherModels.length > 0}
+        <ul class="pt-1 text-xs text-(--color-ink-muted)">
+          {#each otherModels as row (row.model)}
+            <li>
+              {row.model}: {row.usage.requests}
+              {pluralPl(row.usage.requests, { one: 'zapytanie', few: 'zapytania', many: 'zapytań' })}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+      <p class="pt-2 text-xs text-(--color-ink-muted)">
+        Limit liczy się <strong>osobno dla każdego modelu</strong> i bardzo się między nimi różni
+        — jeden model może mieć 20 zapytań na dobę, inny 500. Gdy jeden się wyczerpie, wybierz
+        wyżej inny i pracuj dalej. Jeden import to
+        {REQUESTS_PER_IMPORT.paste} zapytania (wklejony tekst) albo {REQUESTS_PER_IMPORT.link} (link).
+      </p>
+      <p class="pt-1 text-xs text-(--color-ink-muted)">
+        To licznik tej aplikacji, nie odczyt z Google: zapytania wysłane skądinąd na ten sam
+        klucz nie są tu widoczne, a licznik zeruje się o północy czasu pacyficznego. Prawdziwe
+        limity i zużycie pokazuje
+        <a
+          class="font-medium text-(--color-accent) underline"
+          href="https://ai.dev/rate-limit"
+          target="_blank"
+          rel="noreferrer noopener"
+        >ai.dev/rate-limit</a>.
+      </p>
 
       <h3 class="pt-6 text-sm font-semibold">
         {vaultState.encrypted ? 'Zmiana hasła' : 'Włączenie szyfrowania'}

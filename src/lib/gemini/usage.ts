@@ -21,8 +21,16 @@ import { repository as defaultRepository, type Repository } from '../repository'
  */
 const QUOTA_TIMEZONE = 'America/Los_Angeles';
 
-/** The free-tier daily request cap, for the sentence the screen shows. Not enforced anywhere. */
-export const FREE_TIER_DAILY_REQUESTS = 20;
+/**
+ * Requests one import costs: two for pasted text (parse, match), three for a link (retrieval
+ * first). Used only to turn a request count into „about N recipes" on screen.
+ *
+ * There is deliberately no constant for the daily cap. It is **not** one number: Google's own
+ * dashboard shows 20 requests a day for `gemini-3.6-flash` and 500 for `gemini-3.5-flash-lite`,
+ * and nothing in the API reports it until a 429 arrives (STATE.md decision 129). Printing „20"
+ * as a fact would be wrong for most models.
+ */
+export const REQUESTS_PER_IMPORT = { paste: 2, link: 3 } as const;
 
 /** `YYYY-MM-DD` of the current quota window. `en-CA` is ISO order by definition. */
 export function quotaDay(now: Date = new Date()): string {
@@ -54,15 +62,20 @@ export function addUsage(
   usage: GeminiUsage | undefined,
   id: string,
   spent: { requests: number; tokens: number },
-  day: string
+  day: string,
+  model: string
 ): GeminiUsage {
-  const current = usage?.day === day ? usage : { day, devices: {} };
-  const mine = current.devices[id] ?? { requests: 0, tokens: 0 };
+  const current = usage?.day === day ? usage : { day, models: {} };
+  const byDevice = current.models[model] ?? {};
+  const mine = byDevice[id] ?? { requests: 0, tokens: 0 };
   return {
     day,
-    devices: {
-      ...current.devices,
-      [id]: { requests: mine.requests + spent.requests, tokens: mine.tokens + spent.tokens }
+    models: {
+      ...current.models,
+      [model]: {
+        ...byDevice,
+        [id]: { requests: mine.requests + spent.requests, tokens: mine.tokens + spent.tokens }
+      }
     }
   };
 }
@@ -73,12 +86,13 @@ export function addUsage(
  */
 export async function recordGeminiUsage(
   spent: { requests: number; tokens: number },
+  model: string,
   options: { repository?: Repository; now?: Date } = {}
 ): Promise<Profile | undefined> {
-  if (spent.requests <= 0) return undefined;
+  if (spent.requests <= 0 || model.trim() === '') return undefined;
   const repository = options.repository ?? defaultRepository;
 
   const [profile, id] = await Promise.all([repository.getProfile(), deviceId(repository)]);
-  const geminiUsage = addUsage(profile.geminiUsage, id, spent, quotaDay(options.now));
+  const geminiUsage = addUsage(profile.geminiUsage, id, spent, quotaDay(options.now), model.trim());
   return repository.saveProfile({ ...profile, geminiUsage });
 }

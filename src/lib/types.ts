@@ -94,23 +94,29 @@ export interface DeviceUsage {
 }
 
 /**
- * Gemini spend for a single quota day, tallied **per device**.
+ * Gemini spend for a single quota day, tallied **per model and per device**.
  *
- * Google's free tier counts per project, not per device, so a useful number has to add up
- * across every device on the account. That rules out one shared integer: `profile.json`
- * resolves a conflict by taking this device's whole document (engine.ts), which would quietly
- * drop whatever the other device had counted.
+ * Two dimensions, each forced by something real. Google's free tier counts per *project*, so a
+ * useful number has to add up across every device on the account — but `profile.json` resolves
+ * a conflict by taking this device's whole document (engine.ts), so one shared integer would
+ * let a device quietly erase another's count. Hence a grow-only counter keyed by device: each
+ * writes only its own entry, merging is a union taking the larger value, and no coordinator or
+ * clock is needed.
  *
- * So this is a grow-only counter. A device only ever writes its own entry, merging is the
- * union of the entries keyed by device, and the total is their sum — which is correct with no
- * coordinator and no ordering assumption. `day` is the quota window the counts belong to; a
- * newer day replaces an older one wholesale, because yesterday's tallies are not spend.
+ * And the quota is charged **per model**, with limits that differ by more than an order of
+ * magnitude — 20 requests a day for `gemini-3.6-flash` against 500 for `gemini-3.5-flash-lite`
+ * at the time of writing (STATE.md decision 129). One number spanning every model would be
+ * meaningless the moment a user switched, which is exactly what someone does when a model runs
+ * out. So the model is the outer key.
+ *
+ * `day` is the quota window; a newer day replaces an older one wholesale, because yesterday's
+ * tallies are not spend against today.
  */
 export interface GeminiUsage {
   /** `YYYY-MM-DD` in Google's quota reset zone. */
   day: string;
-  /** Keyed by a device id that never leaves this account's own files. */
-  devices: Record<string, DeviceUsage>;
+  /** Model name → device id → what that device spent on that model. */
+  models: Record<string, Record<string, DeviceUsage>>;
 }
 
 export interface Profile {
