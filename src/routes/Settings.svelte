@@ -6,6 +6,9 @@
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
   import { testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
+  import { FREE_TIER_DAILY_REQUESTS, quotaDay } from '../lib/gemini/usage';
+  import { totalGeminiUsage } from '../lib/sync/documents';
+  import { pluralPl } from '../lib/text';
   import {
     connectDrive,
     disconnectDrive,
@@ -59,6 +62,18 @@
     goals = loaded.goals;
     model = loaded.geminiModel;
   }
+
+  /**
+   * What this account has spent on Gemini in the current quota window. Counted by the app
+   * itself — Google exposes no endpoint for the real remaining quota — and summed across every
+   * device, because the free tier counts per project (STATE.md decision 127). A tally left over
+   * from a previous day is shown as zero rather than as today's spend.
+   */
+  const usage = $derived(
+    profile?.geminiUsage?.day === quotaDay()
+      ? totalGeminiUsage(profile.geminiUsage)
+      : { requests: 0, tokens: 0 }
+  );
 
   /**
    * The key field follows the vault, not the screen: unlocking happens after this screen has
@@ -350,6 +365,32 @@
       </label>
       <p class="pt-1 text-xs text-(--color-ink-muted)">
         Domyślnie {DEFAULT_GEMINI_MODEL}. Katalog modeli się zmienia — nazwę można tu wpisać ręcznie.
+      </p>
+
+      <h3 class="pt-6 text-sm font-semibold">Zużycie Gemini</h3>
+      <p class="pt-2 text-sm">
+        Dziś: <span class="font-medium">{usage.requests}</span>
+        {pluralPl(usage.requests, { one: 'zapytanie', few: 'zapytania', many: 'zapytań' })}
+        {#if usage.tokens > 0}
+          · {usage.tokens.toLocaleString('pl-PL')} tokenów
+        {/if}
+      </p>
+      <p class="pt-1 text-xs text-(--color-ink-muted)">
+        Darmowy limit to zwykle {FREE_TIER_DAILY_REQUESTS} zapytań na dobę dla jednego modelu, a
+        jeden import kosztuje 2 zapytania (wklejony tekst) albo 3 (link) — czyli około
+        {Math.floor(FREE_TIER_DAILY_REQUESTS / 3)}–{Math.floor(FREE_TIER_DAILY_REQUESTS / 2)} przepisów dziennie.
+        Licznik obejmuje wszystkie Twoje urządzenia i zeruje się o północy czasu pacyficznego.
+      </p>
+      <p class="pt-1 text-xs text-(--color-ink-muted)">
+        To jest licznik tej aplikacji, nie odczyt z Google: zapytania wysłane skądinąd na ten sam
+        klucz nie są tu widoczne. Prawdziwe limity i zużycie pokazuje
+        <a
+          class="font-medium text-(--color-accent) underline"
+          href="https://ai.dev/rate-limit"
+          target="_blank"
+          rel="noreferrer noopener"
+        >ai.dev/rate-limit</a>. Limit liczy się osobno dla każdego modelu, więc inna nazwa modelu
+        wyżej ma własną pulę.
       </p>
       <button type="button" class="{secondaryClass} mt-3" onclick={() => void saveModel()}>
         Zapisz model

@@ -30,6 +30,8 @@ interface Canned {
   matches?: unknown;
   /** When set, every call fails with this HTTP status instead. */
   status?: number;
+  /** `totalTokenCount` to report on each answered call. */
+  tokens?: number;
 }
 
 function fakeGemini(canned: Canned) {
@@ -64,7 +66,10 @@ function fakeGemini(canned: Canned) {
         : JSON.stringify(canned.recipe ?? {});
 
     return new Response(
-      JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] })
+      JSON.stringify({
+        candidates: [{ content: { parts: [{ text }] } }],
+        ...(canned.tokens === undefined ? {} : { usageMetadata: { totalTokenCount: canned.tokens } })
+      })
     );
   }) as typeof fetch;
 
@@ -277,6 +282,70 @@ describe('what the user is told while it runs', () => {
     });
 
     expect(stages).toEqual(['parsing', 'matching']);
+  });
+});
+
+describe('what an import spends', () => {
+  it('reports one request per answered call, with the tokens Google charged', async () => {
+    const spent: { requests: number; tokens: number }[] = [];
+    const { fetchImpl } = fakeGemini({
+      page: PANCAKES_TEXT,
+      recipe: PANCAKES_JSON,
+      matches: PANCAKES_MATCHES,
+      tokens: 120
+    });
+
+    await importRecipe('https://example.com/nalesniki', {
+      ...deps(fetchImpl),
+      onusage: (usage) => spent.push(usage)
+    });
+
+    // Retrieval, parse, match — a link import is three, which is what makes the free tier's
+    // 20 a day work out to about six link imports.
+    expect(spent).toEqual([{ requests: 3, tokens: 360 }]);
+  });
+
+  it('charges a paste two requests, not three', async () => {
+    const spent: { requests: number; tokens: number }[] = [];
+    const { fetchImpl } = fakeGemini({
+      recipe: PANCAKES_JSON,
+      matches: PANCAKES_MATCHES,
+      tokens: 50
+    });
+
+    await importRecipe(PANCAKES_TEXT, { ...deps(fetchImpl), onusage: (usage) => spent.push(usage) });
+
+    expect(spent).toEqual([{ requests: 2, tokens: 100 }]);
+  });
+
+  it('still reports what a failed import already paid for', async () => {
+    const spent: { requests: number; tokens: number }[] = [];
+    // The page is read, then the parse comes back with nothing usable.
+    const { fetchImpl } = fakeGemini({
+      page: PANCAKES_TEXT,
+      recipe: { name: '', portions: 1, instructions: '', ingredients: [] },
+      tokens: 80
+    });
+
+    await importRecipe('https://example.com/nalesniki', {
+      ...deps(fetchImpl),
+      onusage: (usage) => spent.push(usage)
+    }).catch(() => undefined);
+
+    // Two calls were answered before it gave up; both cost quota.
+    expect(spent).toEqual([{ requests: 2, tokens: 160 }]);
+  });
+
+  it('reports nothing when no request ever reached Google', async () => {
+    const spent: unknown[] = [];
+    const { fetchImpl } = fakeGemini({ status: 403 });
+
+    await importRecipe(PANCAKES_TEXT, {
+      ...deps(fetchImpl),
+      onusage: (usage) => spent.push(usage)
+    }).catch(() => undefined);
+
+    expect(spent).toEqual([]);
   });
 });
 

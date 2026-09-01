@@ -44,7 +44,11 @@ function pickFirstCandidates(
 }
 
 function answer(text: string): string {
-  return JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] });
+  // A real answer carries token counts; the usage counter in Settings is built on them.
+  return JSON.stringify({
+    candidates: [{ content: { parts: [{ text }] } }],
+    usageMetadata: { totalTokenCount: 100 }
+  });
 }
 
 export function createFakeGemini(script: GeminiScript = {}): FakeGemini {

@@ -1008,6 +1008,45 @@ one of which broke the feature outright.
      editor as an empty row, the user picks „Ryż biały" once, and decision 116's correction
      makes every later import of that name resolve without asking the model.
 
+### 2026-09-01 — Gemini usage counter (asked for, outside the phase sequence)
+
+127. **The usage tally is a grow-only per-device counter inside `profile.json`.** Asked for
+     explicitly, with the requirement that it sum across devices. That requirement is what
+     dictated the shape: the profile merge resolves a conflict by taking **this device's whole
+     document** (engine.ts, decision from Phase 6), so a single shared integer would have let
+     one device silently erase the other's count — the exact failure the feature exists to avoid.
+
+     So `Profile.geminiUsage` is `{ day, devices: { [deviceId]: { requests, tokens } } }`. A
+     device only ever writes its own entry; merging is a union taking the larger value per
+     device, which is correct without a clock or an ordering assumption because the counter only
+     grows within a day. The total is the sum. `engine.ts` unions this one field explicitly
+     rather than letting `localWins` decide it, and everything else on the profile still follows
+     the winning document. An `engine.test.ts` case asserts 3 + 4 = 7 across two devices, and it
+     was confirmed to **fail** with that union removed — the guard is real, not decorative.
+
+     Three deliberate limits, all stated on the screen. It counts what *this app* sent, so a
+     request made from AI Studio on the same key is invisible. It counts answered requests only,
+     because a call that never reached Google costs no quota — but it does count the calls a
+     *failed* import already paid for, reported from a `finally`, since a three-call import that
+     dies on the third has still spent two. And the day boundary follows **Pacific** time, not
+     the user's: Google resets at midnight Pacific, nine hours off Poland, so bucketing locally
+     would zero the counter at the wrong hour and show „0" through a morning still charged to
+     yesterday's exhausted window.
+
+     The device id is a random local value in `meta`, minted once. It is a map key, never an
+     identity: it never leaves this account's own `appDataFolder`.
+
+128. **Polish has three plural forms and the app was using two.** Found by an e2e assertion that
+     would not match: the counter rendered „2 zapytań", and the correct form for 2-4 is
+     „2 zapytania". `pluralPl` in `text.ts` now implements the real rule — `one` for 1, `few`
+     for a last digit of 2-4 **except** the teens (12-14 take `many`, so „22 zapytania" but
+     „12 zapytań"), `many` otherwise, including 0.
+
+     Worth knowing that the existing screens have the same bug in a milder form: „{n} razy",
+     „{n} posiłków" and „{n} składników" are all one/many splits written before this helper
+     existed, so they misspell 2-4 too. They were not touched here — that is a sweep of its own,
+     recorded as open question 23 rather than folded into a commit about API quotas.
+
 ## Open questions
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
@@ -1139,3 +1178,8 @@ one of which broke the feature outright.
     time that limit has been visible; a user importing several recipes back to back will meet
     it, and the message for it already exists.
 
+23. **The older screens still use two Polish plural forms where there are three** (decision 128).
+    „{n} razy", „{n} posiłków", „{n} składników" and the „zaplanowany raz/razy" line all read
+    wrong for 2, 3 and 4. `pluralPl` exists now and each is a one-line change; it is a small
+    sweep across `RecipeEditor`, `DayScreen` and `MealCard`, deliberately not bundled into a
+    commit about Gemini quotas. Worth doing before anyone else reads the UI closely.

@@ -64,6 +64,11 @@ export interface GeminiRequest {
   schema?: ResponseSchema;
   /** Let the model retrieve the URLs mentioned in the prompt (server-side, decision 113). */
   urlContext?: boolean;
+  /**
+   * Called once per call that Google actually answered, with the tokens it reported. Only a
+   * 200 reaches it: a request that failed is not spend the user should be shown.
+   */
+  onusage?: (tokens: number) => void;
   fetchImpl?: typeof fetch;
 }
 
@@ -265,6 +270,9 @@ export async function generateText(request: GeminiRequest): Promise<string> {
       'Gemini odmówił przetworzenia tej treści. Spróbuj wkleić sam przepis, bez reszty strony.'
     );
   }
+
+  // Reported before the emptiness check below: Google answered, so the quota was spent.
+  request.onusage?.(parsed.usageMetadata?.totalTokenCount ?? 0);
 
   const text = candidateText(parsed);
   if (text.trim() === '') {

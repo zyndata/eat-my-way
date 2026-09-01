@@ -5,7 +5,13 @@ import { createSyncEngine, type DayConflict, type SyncEngine } from './engine';
 import { FakeDrive, fakeBackend } from '../../test/fake-drive';
 import { freshDb, macros, makeRecipe } from '../../test/fixtures';
 import type { Day, PlannedMeal } from '../types';
-import { INGREDIENTS_FILE, PROFILE_FILE, RECIPES_FILE, daysFileName } from './documents';
+import {
+  INGREDIENTS_FILE,
+  PROFILE_FILE,
+  RECIPES_FILE,
+  daysFileName,
+  totalGeminiUsage
+} from './documents';
 
 /**
  * Two `Device`s over one `FakeDrive` are the two browsers PLAN.md's first acceptance
@@ -259,6 +265,57 @@ describe('two devices', () => {
     await b.engine.sync({ resolveConflicts: neverAsks });
     expect((await b.repository.getIngredient('custom:1'))?.name).toBe('Sos babci');
     expect(await b.repository.getIngredient('usda:999')).toBeUndefined();
+  });
+
+  it('sums the Gemini tally from both devices instead of letting one overwrite the other', async () => {
+    const [a, b] = await paired();
+    const day = '2026-09-01';
+
+    // Each device counts only its own spend, which is what makes the union safe.
+    const spend = async (device: typeof a, id: string, requests: number, tokens: number) => {
+      const profile = await device.repository.getProfile();
+      await device.repository.saveProfile({
+        ...profile,
+        geminiUsage: { day, devices: { [id]: { requests, tokens } } }
+      });
+    };
+
+    await spend(a, 'dev-a', 3, 300);
+    await spend(b, 'dev-b', 4, 400);
+
+    // Both edited the profile, so this is exactly the conflict `localWins` would resolve by
+    // discarding one side's count.
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+    await a.engine.sync({ resolveConflicts: neverAsks });
+
+    for (const device of [a, b]) {
+      const usage = (await device.repository.getProfile()).geminiUsage;
+      expect(totalGeminiUsage(usage)).toEqual({ requests: 7, tokens: 700 });
+    }
+  });
+
+  it('does not resurrect a tally from a closed quota day', async () => {
+    const [a, b] = await paired();
+
+    const stale = await a.repository.getProfile();
+    await a.repository.saveProfile({
+      ...stale,
+      geminiUsage: { day: '2026-08-31', devices: { 'dev-a': { requests: 19, tokens: 9000 } } }
+    });
+    await a.engine.sync({ resolveConflicts: neverAsks });
+
+    const fresh = await b.repository.getProfile();
+    await b.repository.saveProfile({
+      ...fresh,
+      geminiUsage: { day: '2026-09-01', devices: { 'dev-b': { requests: 2, tokens: 200 } } }
+    });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+    await a.engine.sync({ resolveConflicts: neverAsks });
+
+    const usage = (await a.repository.getProfile()).geminiUsage;
+    expect(usage?.day).toBe('2026-09-01');
+    expect(totalGeminiUsage(usage)).toEqual({ requests: 2, tokens: 200 });
   });
 
   it('carries a name correction across, so a repeat import matches the same way', async () => {

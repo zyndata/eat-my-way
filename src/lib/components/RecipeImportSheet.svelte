@@ -4,6 +4,8 @@
   import { GeminiError } from '../gemini/client';
   import { importRecipe, type ImportStage, type ImportedRecipe } from '../gemini/import';
   import { looksLikeUrl } from '../gemini/parse';
+  import { recordGeminiUsage } from '../gemini/usage';
+  import { scheduleSync } from '../sync/state.svelte';
   import { geminiApiKey, requestUnlock, vaultState } from '../vault/session.svelte';
 
   /**
@@ -79,7 +81,10 @@
         apiKey,
         model: profile.geminiModel,
         nextKey,
-        onstage: (next) => (stage = STAGES[next])
+        onstage: (next) => (stage = STAGES[next]),
+        // The tally travels in profile.json so the free tier's 20/day is counted across every
+        // device on the account, not per browser (STATE.md decision 127).
+        onusage: (spent) => void recordGeminiUsage(spent).then(() => scheduleSync())
       });
 
       onimport(result);

@@ -210,3 +210,24 @@ test('correcting a mismatch once makes the next import of that name match itself
   expect(asked[0]?.prompt).toContain('mąka pszenna');
   expect(asked[1]?.prompt).not.toContain('mąka pszenna');
 });
+
+test('the Gemini usage counter records what an import spent', async ({ device, gemini }) => {
+  gemini.script.recipe = PARSED;
+
+  await setUpKey(device);
+  await expect(device.getByText('Dziś: 0 zapytań')).toBeVisible();
+
+  await openEditor(device);
+  await device.getByRole('button', { name: 'Wklej przepis z internetu' }).click();
+  await device.getByLabel('Link do przepisu albo jego treść').fill(PANCAKES);
+  await device.getByRole('button', { name: 'Importuj' }).click();
+  await expect(device.getByText('Przepis wczytany.')).toBeVisible();
+
+  // A pasted import is two requests: parse, then match.
+  await device.getByRole('link', { name: 'Ustawienia' }).click();
+  await expect(device.getByText('Dziś: 2 zapytania')).toBeVisible();
+
+  // It survives a reload, because it lives in the profile rather than in memory.
+  await device.reload();
+  await expect(device.getByText('Dziś: 2 zapytania')).toBeVisible();
+});

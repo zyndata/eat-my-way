@@ -1,4 +1,4 @@
-import type { Day, Ingredient, Profile, Recipe, Tag } from '../types';
+import type { Day, DeviceUsage, GeminiUsage, Ingredient, Profile, Recipe, Tag } from '../types';
 
 /**
  * The `appDataFolder` file layout from PLAN.md, and the JSON that goes inside each file.
@@ -95,6 +95,67 @@ export function readDaysDocument(value: unknown): DaysDocument {
   return days;
 }
 
+/** A tally is only a tally if both numbers are finite and not negative. */
+function readDeviceUsage(value: unknown): DeviceUsage | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const row = value as Partial<DeviceUsage>;
+  const requests = typeof row.requests === 'number' && Number.isFinite(row.requests) ? row.requests : 0;
+  const tokens = typeof row.tokens === 'number' && Number.isFinite(row.tokens) ? row.tokens : 0;
+  if (requests < 0 || tokens < 0) return undefined;
+  return { requests, tokens };
+}
+
+export function readGeminiUsage(value: unknown): GeminiUsage | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const doc = value as Partial<GeminiUsage>;
+  if (typeof doc.day !== 'string' || doc.day === '') return undefined;
+  if (typeof doc.devices !== 'object' || doc.devices === null) return undefined;
+
+  const devices: Record<string, DeviceUsage> = {};
+  for (const [id, tally] of Object.entries(doc.devices)) {
+    const usage = readDeviceUsage(tally);
+    if (usage !== undefined) devices[id] = usage;
+  }
+  return { day: doc.day, devices };
+}
+
+/**
+ * Union two tallies for the same quota day, taking the larger count per device.
+ *
+ * The counter only ever grows within a day and each device writes only its own entry, so the
+ * larger of two values for the same device is the later one — no clock and no ordering needed.
+ * Different days do not merge at all: the newer window replaces the older, because a tally from
+ * yesterday is not spend against today's quota.
+ */
+export function mergeGeminiUsage(
+  local: GeminiUsage | undefined,
+  remote: GeminiUsage | undefined
+): GeminiUsage | undefined {
+  if (local === undefined) return remote;
+  if (remote === undefined) return local;
+  if (local.day !== remote.day) return local.day > remote.day ? local : remote;
+
+  const devices: Record<string, DeviceUsage> = { ...remote.devices };
+  for (const [id, mine] of Object.entries(local.devices)) {
+    const theirs = devices[id];
+    devices[id] =
+      theirs === undefined
+        ? mine
+        : { requests: Math.max(mine.requests, theirs.requests), tokens: Math.max(mine.tokens, theirs.tokens) };
+  }
+  return { day: local.day, devices };
+}
+
+/** What the whole account has spent in the day this tally covers. */
+export function totalGeminiUsage(usage: GeminiUsage | undefined): DeviceUsage {
+  const total: DeviceUsage = { requests: 0, tokens: 0 };
+  for (const tally of Object.values(usage?.devices ?? {})) {
+    total.requests += tally.requests;
+    total.tokens += tally.tokens;
+  }
+  return total;
+}
+
 /** `profile.json`. Unknown or missing fields fall back to what the caller already had. */
 export function readProfileDocument(value: unknown, fallback: Profile): Profile {
   if (typeof value !== 'object' || value === null) return fallback;
@@ -108,6 +169,10 @@ export function readProfileDocument(value: unknown, fallback: Profile): Profile 
     encryptVault:
       typeof doc.encryptVault === 'boolean' ? doc.encryptVault : fallback.encryptVault,
     locale: 'pl',
-    ...(typeof doc.googleSub === 'string' ? { googleSub: doc.googleSub } : {})
+    ...(typeof doc.googleSub === 'string' ? { googleSub: doc.googleSub } : {}),
+    ...(() => {
+      const usage = readGeminiUsage(doc.geminiUsage);
+      return usage === undefined ? {} : { geminiUsage: usage };
+    })()
   };
 }

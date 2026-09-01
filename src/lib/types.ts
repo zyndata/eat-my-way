@@ -85,6 +85,34 @@ export interface Day {
   goalSnapshot?: Macros;
 }
 
+/** What one device has spent on Gemini during one quota day. */
+export interface DeviceUsage {
+  /** `generateContent` calls that came back 200. */
+  requests: number;
+  /** Tokens Google reported for them. */
+  tokens: number;
+}
+
+/**
+ * Gemini spend for a single quota day, tallied **per device**.
+ *
+ * Google's free tier counts per project, not per device, so a useful number has to add up
+ * across every device on the account. That rules out one shared integer: `profile.json`
+ * resolves a conflict by taking this device's whole document (engine.ts), which would quietly
+ * drop whatever the other device had counted.
+ *
+ * So this is a grow-only counter. A device only ever writes its own entry, merging is the
+ * union of the entries keyed by device, and the total is their sum — which is correct with no
+ * coordinator and no ordering assumption. `day` is the quota window the counts belong to; a
+ * newer day replaces an older one wholesale, because yesterday's tallies are not spend.
+ */
+export interface GeminiUsage {
+  /** `YYYY-MM-DD` in Google's quota reset zone. */
+  day: string;
+  /** Keyed by a device id that never leaves this account's own files. */
+  devices: Record<string, DeviceUsage>;
+}
+
 export interface Profile {
   goals: Macros;
   geminiModel: string;
@@ -92,4 +120,6 @@ export interface Profile {
   locale: 'pl';
   /** Google account subject id, so a wrong account can be detected on sync. */
   googleSub?: string;
+  /** Gemini spend for the current quota day. Absent until the first import (Phase 7). */
+  geminiUsage?: GeminiUsage;
 }

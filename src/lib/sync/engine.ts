@@ -19,6 +19,7 @@ import {
   monthOf,
   readDaysDocument,
   readIngredientsDocument,
+  mergeGeminiUsage,
   readProfileDocument,
   readRecipesDocument,
   type DaysDocument,
@@ -282,7 +283,18 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
       // user. It is four numbers and two settings, all of them re-enterable in one screen.
       localWins<Profile>()
     );
-    const mergedProfile = profileMerge.merged.get(key.profile) ?? localProfile;
+    const winner = profileMerge.merged.get(key.profile) ?? localProfile;
+
+    // The one field that must not follow "local wins": the Gemini tally is a grow-only counter
+    // per device, and taking one side's whole document would drop the other device's spend.
+    // Unioning it here keeps every other profile field on the winning document (types.ts).
+    const remoteUsage =
+      remoteProfile.content === undefined
+        ? undefined
+        : readProfileDocument(remoteProfile.content, DEFAULT_PROFILE).geminiUsage;
+    const mergedUsage = mergeGeminiUsage(localProfile.geminiUsage, remoteUsage);
+    const mergedProfile: Profile =
+      mergedUsage === undefined ? winner : { ...winner, geminiUsage: mergedUsage };
 
     const recipesDoc = remoteRecipes.content === undefined ? undefined : readRecipesDocument(remoteRecipes.content);
     const recipeMerge = mergeAgainst(

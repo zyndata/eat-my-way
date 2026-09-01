@@ -75,6 +75,12 @@ export interface MetaValues {
   vaultFile: string;
   /** Display name of the connected Drive account. Identity itself lives in `Profile.googleSub`. */
   driveAccountLabel: string;
+  /**
+   * Random id for this device, minted on first use and never sent anywhere except into this
+   * account's own `profile.json`, as the key of its Gemini usage tally. It identifies a browser
+   * profile to its own owner and nothing else — no fingerprinting, no cross-account meaning.
+   */
+  deviceId: string;
 }
 
 export type MetaKey = keyof MetaValues;

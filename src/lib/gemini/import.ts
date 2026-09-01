@@ -61,6 +61,12 @@ export interface ImportDeps {
   nextKey: () => string;
   /** Told what is happening, so a three-call import does not look frozen. */
   onstage?: (stage: ImportStage) => void;
+  /**
+   * Called once per answered request. `importRecipe` reports through this even when a later
+   * step throws — a request Google answered has already cost quota, whether or not the import
+   * finished (STATE.md decision 127).
+   */
+  onusage?: (spent: { requests: number; tokens: number }) => void;
 }
 
 export interface ImportedRecipe {
@@ -76,8 +82,19 @@ export interface ImportedRecipe {
   sourcePortions: number;
 }
 
+/** Counts what the three calls actually spent, so a partial run still reports honestly. */
+interface Tally {
+  requests: number;
+  tokens: number;
+}
+
+const countInto = (tally: Tally) => (tokens: number) => {
+  tally.requests += 1;
+  tally.tokens += tokens;
+};
+
 /** The retrieval step. Throws a `bad-response` when the model could not read the page. */
-async function fetchRecipeText(url: string, deps: ImportDeps): Promise<string> {
+async function fetchRecipeText(url: string, deps: ImportDeps, tally: Tally): Promise<string> {
   deps.onstage?.('reading-page');
   const text = await generateText({
     apiKey: deps.apiKey,
@@ -85,6 +102,7 @@ async function fetchRecipeText(url: string, deps: ImportDeps): Promise<string> {
     system: FETCH_SYSTEM,
     prompt: fetchPrompt(url),
     urlContext: true,
+    onusage: countInto(tally),
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
   });
 
@@ -99,7 +117,7 @@ async function fetchRecipeText(url: string, deps: ImportDeps): Promise<string> {
 }
 
 /** The parse step. Everything after this point is pure. */
-async function parseRecipeText(text: string, deps: ImportDeps): Promise<ParsedRecipe> {
+async function parseRecipeText(text: string, deps: ImportDeps, tally: Tally): Promise<ParsedRecipe> {
   deps.onstage?.('parsing');
   const answer = await generateJson<unknown>({
     apiKey: deps.apiKey,
@@ -107,6 +125,7 @@ async function parseRecipeText(text: string, deps: ImportDeps): Promise<ParsedRe
     system: PARSE_SYSTEM,
     prompt: parsePrompt(text),
     schema: RECIPE_SCHEMA,
+    onusage: countInto(tally),
     ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
   });
   return readParsedRecipe(answer);
@@ -118,7 +137,8 @@ async function parseRecipeText(text: string, deps: ImportDeps): Promise<ParsedRe
  */
 async function resolveIngredients(
   recipe: ParsedRecipe,
-  deps: ImportDeps
+  deps: ImportDeps,
+  tally: Tally
 ): Promise<MatchedIngredient[]> {
   const index = deps.index ?? defaultIndex;
   const repository = deps.repository ?? defaultRepository;
@@ -151,6 +171,7 @@ async function resolveIngredients(
       system: MATCH_SYSTEM,
       prompt: matchPrompt(targets),
       schema: MATCH_SCHEMA,
+      onusage: countInto(tally),
       ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
     });
     resolved.push(...readMatchResponse(answer, targets));
@@ -192,11 +213,26 @@ export async function importRecipe(input: string, deps: ImportDeps): Promise<Imp
     throw new GeminiError('bad-response', 'Wklej link albo treść przepisu.');
   }
 
+  // Reported in `finally`: three calls can fail at the third, and the first two were still
+  // paid for. A user staring at a spent quota deserves to see where it went.
+  const tally: Tally = { requests: 0, tokens: 0 };
+  try {
+    return await importWithTally(trimmed, deps, tally);
+  } finally {
+    if (tally.requests > 0) deps.onusage?.({ ...tally });
+  }
+}
+
+async function importWithTally(
+  trimmed: string,
+  deps: ImportDeps,
+  tally: Tally
+): Promise<ImportedRecipe> {
   const text = looksLikeUrl(trimmed)
-    ? await fetchRecipeText(normalizeUrl(trimmed), deps)
+    ? await fetchRecipeText(normalizeUrl(trimmed), deps, tally)
     : trimmed;
 
-  const source = await parseRecipeText(text, deps);
+  const source = await parseRecipeText(text, deps, tally);
   // Recipes are stored per portion, so a page's „na 4 porcje" is divided down here.
   const recipe = toSinglePortion(source);
   if (recipe.ingredients.length === 0) {
@@ -206,7 +242,7 @@ export async function importRecipe(input: string, deps: ImportDeps): Promise<Imp
     );
   }
 
-  const matched = await resolveIngredients(recipe, deps);
+  const matched = await resolveIngredients(recipe, deps, tally);
 
   const repository = deps.repository ?? defaultRepository;
   const ids = matched
