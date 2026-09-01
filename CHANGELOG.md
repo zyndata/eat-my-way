@@ -8,13 +8,28 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- Save daily goals, which a $state proxy had always prevented
+
 ### Documentation
 
 - Record the OAuth client ID as configured
+- Record the goals bug and the first live Drive round trip
+- The COOP window.closed warning does not break dismissal detection
 
 ### Features
 
 - Phase 6 — Drive sync & encrypted vault
+- Phase 7 — import a recipe from a link or pasted text with Gemini
+
+### Miscellaneous
+
+- Update CHANGELOG
+
+### Tests
+
+- Cover the Drive login and sync flows end to end
 
 ## [0.2.0] - 2026-08-31
 
