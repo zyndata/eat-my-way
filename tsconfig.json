@@ -26,6 +26,8 @@
   },
   "include": [
     "src/**/*.ts",
+    "e2e/**/*.ts",
+    "playwright.config.ts",
     "src/**/*.svelte",
     "vite.config.ts",
     "vitest.config.ts",

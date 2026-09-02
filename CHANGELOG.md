@@ -6,6 +6,67 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Bug Fixes
+
+- Save daily goals, which a $state proxy had always prevented
+- Default to gemini-3.6-flash, which a new key can actually call
+- Migrate profiles off the retired model and report the real quota
+- Offer the right ingredients for a multi-word name, and drop import from the edit screen
+
+### Documentation
+
+- Record the OAuth client ID as configured
+- Record the goals bug and the first live Drive round trip
+- The COOP window.closed warning does not break dismissal detection
+- Settle open questions 6 and 8-12 after the phase-8 review
+- Record where the open-questions review stopped
+- Settle open question 14 as decision 148
+- Settle open question 15 as decision 149
+- Settle open question 18 as decision 151
+- Settle open question 20 as decision 152
+- Settle open question 21 as decision 153
+- Write the model A/B protocol and close the open-questions pass
+
+### Features
+
+- Phase 6 — Drive sync & encrypted vault
+- Phase 7 — import a recipe from a link or pasted text with Gemini
+- Show what this account has spent on Gemini today
+- Pick the Gemini model from a list, and count usage per model
+- Phase 8 — installable offline PWA, data backup and the 1.0 polish
+- **vault:** Keep the vault Drive overwrote, so the swap can be undone
+- **backup:** Say what a restore replaces, not only what it brings in
+- Phase 9 — daily-use comfort
+
+### Miscellaneous
+
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+
+### Performance
+
+- **recipes:** Count usage over a trailing year instead of the whole history
+
+### Tests
+
+- Cover the Drive login and sync flows end to end
+- Cover the loop that turns an unmatched row into a permanent match
+- Drive the meal-card swipe as a real touch gesture
+
 ## [0.2.0] - 2026-08-31
 
 ### Bug Fixes

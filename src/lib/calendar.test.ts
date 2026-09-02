@@ -9,6 +9,7 @@ import {
   monthStart,
   monthWeeks,
   nextWeekDates,
+  remainingGoals,
   summarizeDates,
   summarizeDay,
   weekDates,
@@ -203,5 +204,32 @@ describe('dayBudget', () => {
 
   it('hitting the goal exactly counts as exhausted', () => {
     expect(dayBudget(macros(2000, 0, 0, 0), goals).exhausted).toBe(true);
+  });
+});
+
+describe('remainingGoals', () => {
+  it('lists what is left of every goal that is actually set', () => {
+    const left = remainingGoals(macros(1380, 80, 100, 40), macros(2000, 120, 250, 70));
+    expect(left.map((goal) => [goal.label, goal.remaining])).toEqual([
+      ['kcal', 620],
+      ['g białka', 40],
+      ['g węglowodanów', 150],
+      ['g tłuszczu', 30]
+    ]);
+  });
+
+  it('a goal of zero is not a goal and produces no entry', () => {
+    const left = remainingGoals(macros(500, 30, 0, 0), macros(2000, 0, 0, 0));
+    expect(left.map((goal) => goal.key)).toEqual(['kcal']);
+  });
+
+  it('reports a passed goal as a negative rather than clamping it at zero', () => {
+    // „−40 g białka" is the honest reading; zero would claim the day is exactly on target.
+    const left = remainingGoals(macros(2200, 160, 0, 0), macros(2000, 120, 0, 0));
+    expect(left.map((goal) => goal.remaining)).toEqual([-200, -40]);
+  });
+
+  it('a day with no goals at all says nothing', () => {
+    expect(remainingGoals(macros(500, 10, 10, 10), macros(0, 0, 0, 0))).toEqual([]);
   });
 });

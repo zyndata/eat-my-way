@@ -501,8 +501,12 @@ Progress is tracked in [STATE.md](STATE.md).
       and quantified fat; nutrition values come only from the local DB.
 - [ ] A link to that same recipe produces the same draft as its pasted text; a URL the model cannot
       read fails with a Polish message that points at pasting the text, and `connect-src` is
-      unchanged.
-- [ ] Importing the same text twice yields identical drafts (determinism).
+      unchanged. *(Measured: the second half holds; „the same draft" does not, for the reason
+      below — a link is resolved into text and then imported by a second model call.)*
+- [ ] Importing the same text twice yields identical drafts (determinism). *(Measured and **not
+      met** — STATE.md decision 153. Everything the app controls is deterministic and asserted
+      by tests; the model is not, and two identical pastes differ on household measures. Left
+      worded as intended rather than rewritten to what was achieved.)*
 - [ ] Correcting a mismatch once makes the next import of that name match automatically.
 - [ ] Invalid/revoked key → clear Polish error; the key string appears in no console output,
       no error object, no network log statement (code audit + grep).
@@ -557,8 +561,14 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
 
 1. **Grouped library view** `/recipes`: a toggle between the current flat, activity-ranked list
    (decision 46) and a view grouped by tag with section headers and counts („Śniadanie (7)").
-   Inside a section the existing ranking applies. Settle open question 11 first: untagged recipes
-   get their own section, and a recipe carrying three tags appears under each of them.
+   Inside a section the existing ranking applies; untagged recipes get their own section, and a
+   recipe carrying three tags appears under each of them — so the header counts deliberately sum
+   to more than the number of recipes.
+
+   One thing left to settle while building it (STATE.md decision 145): the order of the sections
+   themselves — alphabetical, by the tag's `useCount`, or by recent activity. „Bez tagu" goes
+   last whichever wins, because it is the absence of a category rather than one of them.
+   *Settled while building: the tag's `useCount`, descending — STATE.md decision 157.*
 2. **Tag management in Settings**: rename (the `label` changes, the `key` is recomputed and
    recipes are rewritten), delete (removed from every recipe), merge two tags into one. `useCount`
    is recomputed after each operation, never patched.
@@ -570,15 +580,46 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
    The chosen order persists in the meta table.
 5. **Reorder ingredient rows** in the recipe editor, following the `reorderMeals` pattern in
    `day.ts` (drag & drop, ~200 ms touch delay).
-6. **Smarter fitting to the day's budget** (STATE.md decision 65): suggest a portion size when a
-   recipe fits the remaining kcal only below one portion („zmieści się przy 0,75 porcji"), and rank
-   by the remaining protein / carbs / fat rather than kcal alone. Both build on the Phase 5 filter.
+6. **Smarter fitting to the day's budget** (STATE.md decisions 65 and 148). Both halves build on
+   the Phase 5 filter (`filterByBudget`, `dayBudget`) and both are now settled:
+
+   - **Half a portion is the only suggestion.** A recipe that does not fit whole but fits at half
+     is offered as „zmieści się przy pół porcji"; anything that needs less than half is not
+     offered at all. One rule, one fraction, nothing to misread on a plate — quarters were
+     considered and rejected (decision 148).
+   - **The remaining macros are shown, not ranked on.** The sheet header states what is left of
+     each goal („zostało 620 kcal · 40 g białka"); the list keeps the decision 46 order. The app
+     reports the gap and lets the user choose, rather than recommending a recipe because of it.
 7. **Shopping-list export** next to the `cookingScale` control in the meal view (decision 62):
    the scaled ingredient list, with the same ingredient summed when the scope covers more than one
-   meal. Decide and record before writing code: the scope (meal / day / week), the transport
-   (share sheet, clipboard, plain-text download, or an authenticated call to the user's own Home
-   Assistant `todo.add_item`), and — if anything talks to a host directly — the `connect-src`
-   consequence, which a header baked into the image cannot express for a per-user URL.
+   meal.
+
+   The transport is settled (STATE.md decision 144): **`navigator.share()`, falling back to the
+   clipboard** where the browser has no Web Share. Neither is a network request, so **the CSP is
+   unchanged** and nothing here may widen it. A direct authenticated call to the user's own Home
+   Assistant `todo.add_item` is **rejected** — a per-user host cannot be expressed in a policy
+   baked into the image, and the ways around that are worse than the feature.
+
+   What is still to decide, and must be recorded before the code: the **scope** — one meal, a
+   whole day or a week — with the same ingredient summed across meals inside it.
+   *Settled before the code: all three, with the meal scope in the meal view and the day and
+   week scopes in the day screen's menu — STATE.md decision 158.*
+8. **Audit the Polish ingredient mapping for silently wrong entries** (STATE.md open question 9
+   and decision 143). Not a comfort feature, and worth doing *first* in this phase: it is the
+   only item here that changes the numbers the app exists to produce, and every day of use adds
+   meals computed from whatever is wrong. The work is data, not code.
+
+   Go through the highest-traffic Polish staples — dairy, meats, groats and rice, bread, flours,
+   fats — and compare each bundled per-100 g figure against what that product actually is in
+   Poland. A wrong entry is fixed in `data/pl-ingredients.tsv` (a different `fdcId`, a corrected
+   Polish name, a misleading alias removed, or the name split into the variants a shopper
+   actually distinguishes), then `npm run build:nutrition` regenerates the bundle and
+   `DATA_VERSION` is bumped so existing installs re-import.
+
+   The known case to start from: „twaróg" resolves to `172181 Twaróg chudy` at 72 kcal, 10.3 g
+   protein and 6.7 g carbohydrate — neither the fat level a Polish shopper means by „twaróg",
+   nor a plausible profile for twaróg chudy at all. Frozen `macroSnapshot`s are not rewritten by
+   any of this, so the audit corrects the future without touching recorded history.
 
 ### Acceptance criteria
 
@@ -588,10 +629,15 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
       tags leaves one tag whose `useCount` equals the number of recipes that now carry it (test).
 - [ ] A duplicated recipe is independent: editing the copy provably leaves the original and every
       existing `macroSnapshot` untouched.
-- [ ] A recipe that exceeds the remaining budget at one portion is offered with the portion that
-      fits, and never with a portion that does not.
+- [ ] A recipe that exceeds the remaining budget at one portion but fits at half is offered as
+      „zmieści się przy pół porcji"; one that does not fit at half is not offered at all.
+- [ ] The picker header states what is left of every goal macro, and turning the budget filter on
+      provably does not reorder the list.
 - [ ] The shopping list sums the same ingredient across meals in the chosen scope and reflects
       `cookingScale`, not `portionsEaten`.
+- [ ] Every staple the audit examined is recorded in STATE.md as either confirmed or corrected,
+      with the „twaróg" case among the corrected ones; `check:nutrition` passes against the
+      regenerated bundle and `DATA_VERSION` is bumped.
 - [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero console
       violations under `npm run docker:up`.
 - [ ] All UI text in Polish; code/comments in English.

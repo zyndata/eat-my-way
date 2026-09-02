@@ -85,6 +85,40 @@ export interface Day {
   goalSnapshot?: Macros;
 }
 
+/** What one device has spent on Gemini during one quota day. */
+export interface DeviceUsage {
+  /** `generateContent` calls that came back 200. */
+  requests: number;
+  /** Tokens Google reported for them. */
+  tokens: number;
+}
+
+/**
+ * Gemini spend for a single quota day, tallied **per model and per device**.
+ *
+ * Two dimensions, each forced by something real. Google's free tier counts per *project*, so a
+ * useful number has to add up across every device on the account — but `profile.json` resolves
+ * a conflict by taking this device's whole document (engine.ts), so one shared integer would
+ * let a device quietly erase another's count. Hence a grow-only counter keyed by device: each
+ * writes only its own entry, merging is a union taking the larger value, and no coordinator or
+ * clock is needed.
+ *
+ * And the quota is charged **per model**, with limits that differ by more than an order of
+ * magnitude — 20 requests a day for `gemini-3.6-flash` against 500 for `gemini-3.5-flash-lite`
+ * at the time of writing (STATE.md decision 129). One number spanning every model would be
+ * meaningless the moment a user switched, which is exactly what someone does when a model runs
+ * out. So the model is the outer key.
+ *
+ * `day` is the quota window; a newer day replaces an older one wholesale, because yesterday's
+ * tallies are not spend against today.
+ */
+export interface GeminiUsage {
+  /** `YYYY-MM-DD` in Google's quota reset zone. */
+  day: string;
+  /** Model name → device id → what that device spent on that model. */
+  models: Record<string, Record<string, DeviceUsage>>;
+}
+
 export interface Profile {
   goals: Macros;
   geminiModel: string;
@@ -92,4 +126,6 @@ export interface Profile {
   locale: 'pl';
   /** Google account subject id, so a wrong account can be detected on sync. */
   googleSub?: string;
+  /** Gemini spend for the current quota day. Absent until the first import (Phase 7). */
+  geminiUsage?: GeminiUsage;
 }

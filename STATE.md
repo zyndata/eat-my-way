@@ -12,12 +12,16 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 3     | Nutrition DB & autocomplete | done    | 2026-08-29 |
 | 4     | Recipes                     | done    | 2026-08-31 |
 | 5     | Calendar & day view         | done    | 2026-08-31 |
-| 6     | Drive sync & vault          | pending | —         |
-| 7     | Gemini import               | pending | —         |
-| 8     | PWA & polish                | pending | —         |
-| 9     | Daily-use comfort           | pending | —         |
+| 6     | Drive sync & vault          | done    | 2026-08-31 |
+| 7     | Gemini import               | done    | 2026-09-01 |
+| 8     | PWA & polish                | done    | 2026-09-01 |
+| 9     | Daily-use comfort           | done    | 2026-09-02 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 8 is done except for its ninth task, `v1.0.0` — releasing is a separate act through the
+`/release` skill, not something a phase does (decision 141). The app is feature-complete for
+1.0 and waiting on that tag.
 
 ## Decisions
 
@@ -564,12 +568,1368 @@ filtered flat list). Her decisions on each point follow.
     both pages and the stylesheet return 200 with no inline style or script. `public/` did not
     exist before this change.
 
+### 2026-08-31 — Phase 6
+
+85. **One new dependency: `hash-wasm` 4.12.0**, named in PLAN.md's stack, and the only package
+    added. AES-GCM comes from native WebCrypto; nothing else was needed.
+
+86. **CSP and COOP widened in exactly the three places open question 3 predicted.**
+    `script-src` and `frame-src` now allow `https://accounts.google.com` (Google Identity
+    Services and its frames), and `Cross-Origin-Opener-Policy` moved from `same-origin` to
+    `same-origin-allow-popups`. Verified in the browser: with the stricter COOP a popup's
+    `opener` reference is severed, and GIS hands the token back through exactly that
+    reference. `connect-src` is **unchanged** — still `'self'` plus the same three Google
+    hosts.
+
+87. **`script-src 'wasm-unsafe-eval'` — a fourth widening PLAN.md did not anticipate.**
+    Chrome refuses to compile *any* WebAssembly under a CSP whose `script-src` lacks either
+    `'wasm-unsafe-eval'` or `'unsafe-eval'`, and PLAN.md's Argon2id (hash-wasm) is
+    WebAssembly. The alternative was dropping Argon2id for PBKDF2, which would have been a
+    real weakening of the vault to avoid a token that permits WebAssembly compilation and
+    nothing else — not `eval()`, not inline script. Checked that the cost is only that: the
+    built worker contains no `fetch`, no `importScripts` and no network reference, because
+    hash-wasm carries its wasm inline as base64. Recorded in SECURITY.md so it is not
+    mistaken for an `unsafe-eval` regression.
+
+88. **One CSP violation remains, and it is Google's, inside Google's own frame.** After the
+    user clicks „Połącz Dysk Google", `gsi/client` applies an inline style that
+    `style-src 'self'` blocks. It is not our code: hooking `setAttribute('style')` and the
+    `cssText` setter in the main frame caught nothing, so GIS is doing it inside the transient
+    iframe it creates, which inherits our policy. Four seconds later there is no such element
+    in the DOM and the page's scroll size is unchanged, and the sign-in popup opens and reaches
+    `accounts.google.com/v3/signin/identifier` regardless. The fixes available were
+    `style-src 'unsafe-inline'` (giving up the property this project has protected since Phase
+    1, for a warning with no observed effect) or `'unsafe-hashes'` plus a hash of a minified
+    string Google can change without telling us. Neither is worth it. **`style-src 'self'`
+    stays**, the warning is documented in docs/DEVELOPMENT.md so the next person does not read
+    it as a regression, and it is worth rechecking whenever GIS is updated.
+
+89. **`Profile.googleSub` holds the Drive `permissionId`, not an OpenID `sub`.** PLAN.md asks
+    for the Google `sub`, but there is no path to one: `drive.appdata` yields an access token
+    and no ID token, and asking for `openid`/`profile` would widen the scope past what PLAN.md
+    allows. `about.get(fields=user)` is inside the appdata grant and returns a stable
+    per-account `permissionId`, which answers the only question that matters — "is this the
+    account this data belongs to". The field keeps its name so the wire format does not churn;
+    the account's e-mail, when Drive returns one, is display-only and lives in the local
+    `driveAccountLabel` meta key, never in the synced profile.
+
+90. **There is no refresh token in the browser, so "revoked or expired refresh token" is
+    simply "the next silent request fails".** A static bundle has nowhere to keep a client
+    secret, so the app uses the GIS *token* flow: a one-hour access token, held in memory
+    only, never in `localStorage` or IndexedDB. Every load re-requests it silently
+    (`prompt: ''`), which succeeds when the user's Google session is alive and their consent
+    stands, and fails invisibly when it does not. A 401 from Drive drops the token and
+    surfaces as `NotAuthenticatedError`, which the UI turns into „Połącz konto ponownie" —
+    and, as PLAN.md requires, that path touches no IndexedDB row.
+
+    **Amended by decision 173.** „Every load re-requests it silently" turned out not to work:
+    GIS may need a window, and a page load has no user gesture to open one with, so every
+    reload signed the user out. The token is now mirrored into `sessionStorage` — still never
+    `localStorage`, still never IndexedDB or Drive — and a failed renewal waits for the next
+    tap. Everything else in this decision stands.
+
+91. **`days/2026-09.json` is a literal file name containing a slash.** `appDataFolder` is
+    flat and Drive names are arbitrary strings, so a real subfolder would only add a round
+    trip and an id to keep in step. The layout on Drive reads exactly as PLAN.md writes it.
+
+92. **The merge is three-way, against a baseline of content hashes.** "The two sides differ"
+    cannot say *which* side moved, and without that the merge is guessing. Every entity's
+    content hash as of the last successful sync is kept in a `syncBaseline` table (schema v3),
+    so `only local moved -> take local`, `only remote moved -> take remote`, `both moved ->
+    the caller decides`. Deletions fall out of the same rule at no extra cost: an entity that
+    was in the baseline and is now absent has changed like any other, so clearing a day on one
+    device does not get resurrected by the other device that still has the row. Hashes rather
+    than a stored copy of the last-synced data: FNV-1a over a canonical JSON rendering, 16 hex
+    digits per entity instead of a second copy of the database. It is a change detector, not a
+    security primitive, and both sides of every comparison are the user's own data.
+
+93. **Only *days* raise the conflict prompt. Everything else has a rule.** PLAN.md reserves
+    "never guess" for the same day, and that is where the loss would be a day's plan.
+    Recipes carry `updatedAt`, so the newer edit wins. Custom ingredients and name corrections
+    are effectively additive; local wins. The profile is six re-enterable values; local wins.
+    `vault.json` is opaque ciphertext with nothing to merge, so the copy on Drive wins and the
+    user is told in Polish that it replaced the local one — a silent swap of the file holding
+    the Gemini key is not something to discover later.
+
+94. **Tag `useCount` is recomputed from the merged recipes rather than merged.** It is derived
+    data; merging it lets two devices drift apart and then makes every sync look like a
+    change. Recomputing means both devices always arrive at the same number.
+
+95. **The bundled USDA rows never travel.** `ingredients.json` on Drive carries only
+    `source: 'custom'` entries and the Polish-name corrections. The 1343-entry subset ships in
+    the build and is identical on every device; uploading it would be a few hundred kB of
+    redundant public data per account.
+
+96. **A missing `days/*.json` means "no days that month"; a missing `profile.json`,
+    `recipes.json` or `ingredients.json` means "Drive has no opinion".** The engine deletes a
+    month file when the month empties, so it has to be able to read that deletion back. It
+    never deletes the other three, so their absence is unexpected, and the safe reading is to
+    keep the local side and recreate the file rather than wipe the device. This was found by a
+    failing test, not by inspection: the first version treated every absent file as "did not
+    move", and a day cleared on one device came straight back on the other.
+
+97. **`StorageBackend` has `list`, `isAuthenticated`, `signOut` and `remove` beyond PLAN.md's
+    four.** `list` is unavoidable — the engine has to discover which months exist on Drive and
+    the wizard has to ask whether the folder is empty. The other three are the session and
+    deletion the four-method sketch left implicit.
+
+98. **The app makes no request to Google until the user connects Drive, on any code path.**
+    The GIS script is loaded on demand rather than from `index.html`, and every silent sync
+    path — the resume on load, the visibility handler, the periodic timer — is gated on the
+    device having connected at least once (`Profile.googleSub`). This was a real bug first:
+    the browser check showed `accounts.google.com/gsi/client` being fetched on a fresh profile
+    that had never seen a Google account, because the visibility handler called `syncNow`
+    without that check.
+
+99. **Sync runs on a debounce after an edit, on focus, on `online`, and every five minutes.**
+    Drive offers no push channel, so those are the only cheap approximations of "something may
+    have changed elsewhere". A successful sync is silent; the indicator in the shell appears
+    only while syncing, on an error, or on a foreign account, because a badge that is always
+    lit is a badge nobody reads.
+
+100. **The unlock screen is a modal, not a route.** PLAN.md lists it under "Screens" but the
+     routes table has no entry for it, and it interrupts something — Phase 7's recipe import —
+     that must be handed control straight back. A route would lose the half-filled editor
+     behind it. `requestUnlock()` returns a promise that resolves `true` when the vault opens
+     and `false` when the user answers „Nie teraz", which is a first-class answer.
+
+101. **The vault file format carries `iv` and `verifier` on top of PLAN.md's sketch.** AES-GCM
+     needs a nonce per ciphertext, and PLAN.md separately requires an encrypted known verifier;
+     both are stored beside the parameters. A password change draws a fresh salt, so the old
+     file's ciphertext is unrelated to the new one — checked in the browser: after re-encrypting
+     with a second password the first one is rejected as wrong, and the Gemini key is still
+     there.
+
+102. **„Nie pamiętam hasła" discards the vault and shows the creation form again — it does not
+     invent a replacement.** An earlier version created the new vault immediately, which meant
+     creating an *encrypted* vault with an empty password whenever the reset was reached from
+     the locked or corrupted state, since those screens have no password field. It also does
+     not trigger a sync while the device has no vault: that would fetch the old one back from
+     Drive. Creating the replacement uploads it and overwrites the old.
+
+103. **Adopting a vault from Drive drops the key held in memory.** `loadVault` compares the
+     stored text against what it last parsed; a different file is a different key, and keeping
+     the old one would leave the vault reading as "open" while nothing in it could be decrypted.
+
+104. **The Gemini key travels in `x-goog-api-key`, never in a URL.** A query string ends up in
+     history, in referrers and in every error message that quotes a URL. Nothing in
+     `key-test.ts` logs, throws or returns the key, the caught network error is deliberately
+     *not* included in the message (it can quote the request), and a test asserts the key
+     appears in no message across four failure modes. Confirmed in the browser too: the request
+     the app actually made was `https://generativelanguage.googleapis.com/v1beta/models` with
+     the key in the header.
+
+105. **Phase 6 verified in a real browser under the production CSP, and the two-browser
+     criterion against an in-memory Drive.** `npm run docker:up` plus headless Chrome on a
+     fresh profile, driving the real UI through CDP.
+
+     *The vault, end to end:* creating an encrypted vault ran Argon2id in the Web Worker in
+     503 ms and wrote `{"v":1,"kdf":"argon2id","params":{"memorySize":65536,"iterations":3,
+     "parallelism":1,"hashLength":32},…}` to IndexedDB — the parameters are in the file, as
+     PLAN.md requires. A key saved through the form did not appear in plaintext on disk. After
+     a real reload the vault came back **locked** while the calendar and the recipe library
+     both still rendered. A wrong password said „Nieprawidłowe hasło"; the third wrong attempt
+     added the explanation that the password cannot be recovered and that only the vault's
+     contents are lost. Disabling encryption asked twice and only then wrote the plain file,
+     which still held the key; re-encrypting with a second password rejected the first and kept
+     the key. A `vault.json` with malformed base64 produced „Plik sejfu jest uszkodzony" and
+     *not* a wrong-password message. „Nie pamiętam hasła" left the calendar and recipes intact.
+     Zero CSP violations and zero external requests across that whole run.
+
+     *OAuth:* before any click, the app made **no** request to Google at all. After clicking
+     „Połącz Dysk Google" on `http://localhost:8080`, GIS loaded with no `script-src`
+     violation and the real consent popup opened at
+     `accounts.google.com/v3/signin/identifier` within two seconds; a popup opened from the
+     page kept `opener === window`, which is the COOP change doing its job. The one violation
+     is decision 88.
+
+     *What could not be verified here:* completing a real Google sign-in, and therefore the
+     live Drive round trip and the foreign-account and revoked-token paths against Google
+     itself — this environment has no Google credentials. Those are covered by tests against an
+     in-memory `appDataFolder` (`src/test/fake-drive.ts`), which is also where the two-browser
+     acceptance criterion is checked: two repositories over one fake folder, edits to different
+     days merging with a resolver that *fails the test if it is ever called*, edits to the same
+     day raising the prompt with both versions attached and honouring either answer, a
+     dismissed prompt leaving both sides byte-for-byte unchanged, and a foreign account
+     refusing to sync before anything is read or written. The Drive client's own promise — a
+     `files.get` immediately before every write, and a refusal rather than an overwrite when
+     the version moved — is checked against a scripted `fetch` that asserts the metadata read
+     happens *before* the upload.
+
+### 2026-09-01 — Automated coverage for login and sync (outside the phase sequence)
+
+106. **Playwright joins as a dev dependency, which partly reverses decision 22.** That decision
+     rejected browser-mode testing because it would pull a browser download into CI "for one
+     test file". The trade has changed: Phase 6 added an OAuth flow, a token lifecycle, a
+     Drive client and an app-wide sync state machine, none of which can be exercised from
+     Node, and the first two had no tests at all. `@playwright/test` is dev-only, never
+     reaches the bundle, and CI installs Chromium alone behind a lockfile-keyed cache in a
+     job separate from the `check → test → build` gate. Decision 22's reasoning still holds
+     for the data layer, which keeps using `fake-indexeddb`.
+
+107. **Google is faked at the network boundary, never inside `src/`.** The suite answers
+     `accounts.google.com/gsi/client` with a stub implementing `initTokenClient` and `revoke`,
+     and `www.googleapis.com/**` with an in-memory `appDataFolder` behind the real Drive REST
+     surface (`e2e/fake-google.ts`). The app under test is the shipped app: real
+     `google-auth.ts`, real `drive.ts`, real engine, no `?e2e=1` flag and no test-only seam.
+     Serving the GIS stub from Google's own URL means the run happens under the production
+     `script-src` rather than a relaxed one — `npm run test:e2e:csp` points the same 17 specs
+     at the Caddy container, and all of them pass with zero CSP violations.
+
+     This also gives PLAN.md's two-browser criterion a real second browser: two Playwright
+     contexts, two IndexedDBs, one shared `FakeDrive`. `src/test/fake-drive.ts` and its
+     two-repository version stay — they are faster and they cover the merge rules — but the
+     acceptance criterion is no longer approximated.
+
+108. **`google-auth.ts` and `state.svelte.ts` had zero tests; they now have 46.** Between them
+     they hold ~430 lines of token lifecycle and orchestration on the path from a click to a
+     sync, and neither is reachable from the engine's suite. The new unit tests cover the
+     expiry margin, request coalescing, silent versus interactive prompts, recovery after a
+     rejected or failed script load, and — on the state side — `silentAllowed`, the Polish
+     message for each outcome, the conflict prompt's round trip, the debounce, the three
+     background triggers and their teardown. Two consequences worth recording: `vitest.config.ts`
+     now runs `vite-plugin-svelte` so a rune module (`*.svelte.ts`) can be imported at all, and
+     the tests stub the handful of `window`/`document` members those two modules touch rather
+     than adding jsdom.
+
+109. **The wizard redirect after connecting to an empty folder is deliberate, and is now
+     asserted both ways.** It is the first thing the e2e run walked into: connecting to a fresh
+     `appDataFolder` navigates away from Settings to `/setup`, which reads as a bug until you
+     find PLAN.md's condition for it. One spec asserts the redirect happens on an empty folder
+     and another asserts it does *not* happen when the folder already holds data.
+
+
+110. **„Zapisz cele" never saved anything, and decision 56 is the reason it was predictable.**
+     Reported as „synchronizacja trwała w nieskończoność" and reproduced in a real browser
+     against real Google: clicking „Zapisz cele" threw
+     `DataCloneError: #<Object> could not be cloned` inside a `void`-ed promise, wrote nothing
+     to IndexedDB, and left the button on „Zapisywanie…" — disabled — until the page was
+     reloaded. The wizard's „Cele" step has the same call and freezes on step 5 instead.
+
+     The cause is exactly what decision 56 said would recur: `goals` is `bind:goals` in
+     `GoalsForm`, so `repository.setGoals` receives a `$state` proxy, and
+     `{ ...current, goals }` unwraps only the top level while the proxy stays nested. Nothing
+     caught it because `repository.test.ts` calls these methods with object literals, and
+     every real caller passes something that came out of a rune.
+
+     Fixed at the repository boundary rather than at the call site — `plain()`, a JSON round
+     trip, applied in `saveProfile`, `setGoals`, `putIngredient`, `putIngredients`,
+     `saveRecipe`, `storeDay` (which every day write funnels through) and `putCorrection`.
+     Decision 56 asked callers to be careful and a caller was not; a guard that cannot be
+     forgotten is the answer. JSON is the right copy here because everything stored is already
+     JSON-serialisable — that property is what keeps the Drive documents byte-identical to the
+     spec — and the only thing lost is `undefined` properties, which IndexedDB stores as absent
+     anyway.
+
+     Two guards now exist. `repository.proxy.test.ts` pushes a deep proxy through every write
+     the UI can reach; when it was written, **five of seven failed** (`setGoals`,
+     `saveProfile`, `putIngredient`, `saveRecipe`, `saveDay`/`addMealToDay`), even though the
+     recipe and day paths happen to work today because their callers pass plain objects — the
+     margin was luck, not design. `e2e/goals.spec.ts` covers the screen itself: the save
+     finishes, says „Zapisano.", survives a reload and reaches `profile.json` on Drive.
+
+111. **The first real sign-in against Google happened, and the sync design held.** Driven by
+     hand in Chrome over CDP on `http://localhost:8080` under the production headers, with the
+     traffic recorded. GIS loaded, the consent screen completed, `about.get` returned the
+     account, the empty folder was listed and `profile.json`, `recipes.json` and
+     `ingredients.json` were uploaded; a later pass wrote `vault.json` and two `days/*.json`.
+     An **idle sync costs exactly two requests** — `about.get` plus one listing, no downloads
+     — so the `driveFiles`/`modifiedTime` skip in `engine.ts` does what its comment claims
+     against real Drive, not just against the fake. This is what open question 15 asked for on
+     the upload path, the identity read and real `modifiedTime` behaviour.
+
+
+### 2026-09-01 — Phase 7
+
+112. **No new dependencies.** The Gemini REST API is one `fetch` against
+     `generativelanguage.googleapis.com`; `@google/genai` would add a dependency that holds the
+     user's API key for the sake of a URL string and a JSON body. `connect-src` already lists
+     the host (Phase 1), so nothing in the CSP changes and the „link" input costs no widening —
+     the page is retrieved on Google's side, never by the browser (decision 63).
+
+113. **A link is resolved into text first, then imported exactly like pasted text.** PLAN.md
+     task 3 asks that a link and its pasted text produce the same draft. The cheapest way to
+     *guarantee* that rather than hope for it is to make the link path a strict prefix of the
+     text path: call one, with the `url_context` tool, asking only for the recipe's text as it
+     appears on the page; then feed that text into the very same parse call the paste path uses.
+     Two consequences, both wanted. The failure is localized — a page the model cannot read
+     fails in step one, where the message can honestly say „nie udało się otworzyć strony,
+     wklej treść przepisu", instead of surfacing as a mysteriously empty ingredient list. And
+     structured output never has to be combined with a tool call, a combination the API
+     restricts on some models and which could not be verified from here. The cost is one extra
+     request per link import.
+
+114. **Ingredient matching is a second call over a controlled vocabulary, and corrections
+     short-circuit it.** For each parsed name the app ranks its own IndexedDB index (the Phase 3
+     ranker, unchanged) and offers Gemini at most eight candidates as `{id, name}`; the model may
+     answer only with an id from that list or `null`. It never sees the nutrition numbers and
+     cannot invent an ingredient — the fallback for `null` is the manual autocomplete, which is
+     the state a hand-written recipe row starts in anyway. A stored correction for the name
+     (`corrections`, the table and Drive document Phase 6 already built) wins before the call is
+     made and its name is not even sent, so a name the user has fixed once is matched by lookup
+     from then on and costs nothing.
+
+115. **Determinism is bought where it can be, and stated where it cannot.** `temperature: 0`,
+     `topK: 1` and a fixed `seed` go on every request, and everything after the model —
+     unit normalization, candidate selection, correction lookup, draft assembly — is pure and
+     covered by tests. That makes the app's half of „the same text twice yields the same draft"
+     an assertion rather than an aspiration. Google does not contract greedy decoding to be
+     bit-identical across serving revisions, so the criterion is verified over the deterministic
+     half plus a fixed-response test, and the model half is honest guesswork. Recorded as open
+     question 21.
+
+116. **The parsed name rides along in the editor draft, and picking an ingredient records a
+     correction.** `DraftItem` gains `sourceName: string | null` — editor-local, never written to
+     a `Recipe`, never sent to Drive. A row that came from an import carries the Polish name the
+     model produced, so when the user changes or fills that row the editor stores
+     `normalizeKey(sourceName) → ingredientId` as an `IngredientCorrection`. That is the whole of
+     PLAN.md task 5: the correction is a by-product of the fix the user was making anyway, with
+     no extra screen and no „czy zapamiętać?" prompt.
+
+117. **The import is a sheet over the editor and never writes anything.** „Wklej przepis z
+     internetu" opens a `BottomSheet` with one field (link or text) and lands its result in the
+     open editor draft — name, tags untouched, ingredient rows, instructions — leaving the
+     ordinary „Zapisz przepis" as the only path to IndexedDB, exactly as PLAN.md task 6 asks.
+     Importing into an editor that already has rows *appends*; it never silently discards work.
+     The vault unlock is requested through `requestUnlock()` at the moment the key is needed and
+     not before, which is the trigger PLAN.md reserves for Gemini.
+
+118. **The import is faked at the network boundary too, and runs under the production CSP.**
+     `e2e/fake-gemini.ts` answers `generativelanguage.googleapis.com` for a browser context the
+     same way `fake-google.ts` answers Drive and GIS (decision 107): real `client.ts`, real
+     prompts, real readers, no test-only seam in `src/`. Its matching answer is not canned — it
+     parses the controlled-vocabulary prompt and picks the first id actually offered for each
+     name, so a test cannot pass by agreeing with a hard-coded id the app never sent. Six specs
+     cover the paste, the link, an unreadable page, a refused key, an app with no key at all and
+     the correction round trip. `npm run test:e2e:csp` runs all 25 specs against the Caddy
+     container and reports zero CSP violations, which is what makes „a link import needs no
+     policy change" a measurement rather than a claim.
+
+119. **Two rules were needed that PLAN.md does not state, both discovered by building it.**
+     A recipe page says „na 4 porcje" and the app stores one, so the amounts are divided on
+     import — including `szt` rows, where a quarter of an egg is honest and four eggs would be
+     wrong by 4×. And the Phase 3 ranker, which requires every query word to hit the same name,
+     finds nothing for „oliwa do smażenia" — right for a person typing, useless for a name off a
+     page — so a name that ranks empty is retried word by word and the results unioned in word
+     order. Both are pure functions with their own tests.
+
+### 2026-09-01 — First live Gemini run (after Phase 7)
+
+Driven against the real API with a real key, on real pages from `kwestiasmaku.com` and
+`aniagotuje.pl`. This is what open questions 21 and 22 asked for, and it found three things —
+one of which broke the feature outright.
+
+120. **PLAN.md's default model is dead, and the key check cannot see it.** `gemini-2.5-flash`
+     is still returned by `models.list` — so „Sprawdź i zapisz klucz" says „Klucz działa." and
+     the wizard goes green — but `generateContent` answers **404: „This model is no longer
+     available to new users. Please update your code to use models/gemini-3.6-flash."** Every
+     import therefore failed, on both the paste and the link path, with a key issued today.
+     `DEFAULT_GEMINI_MODEL` is now `gemini-3.6-flash`, which was verified working end to end.
+
+     This is a deviation from PLAN.md, which names `gemini-2.5-flash` — and it is the deviation
+     PLAN.md itself predicted („free-tier catalogs change, never hardcode"). The mechanism held:
+     one constant, one settings field, no other code touched.
+
+     A cheaper live check than a real `generateContent` call was looked for and does not exist:
+     the list endpoint is the only free probe and it is the one that lies here. Rather than
+     spend a generation on every key test, the 404 was made self-solving (decision 121).
+
+121. **A retired model now tells the user which model to type.** Google puts the fix in the
+     error — „use models/gemini-3.6-flash" — and throwing that away would leave „Gemini nie zna
+     modelu" as a dead end, which matters because **an existing profile keeps the stored
+     `gemini-2.5-flash` and the new default never reaches it.** `client.ts` reads exactly one
+     `models/…` token out of a 404 body, ignores the one it just asked for, and names the other:
+     „Gemini nie udostępnia już modelu „gemini-2.5-flash”. Google podpowiada „gemini-3.6-flash”
+     — wpisz tę nazwę w Ustawieniach". Verified against the real 404.
+
+     The pattern is deliberately narrow — `models/` plus a lowercase name — so no other part of
+     a body that may quote the request can come through. A test feeds it a body containing
+     `x-goog-api-key: <key>` and asserts only the model name survives. 503/502/504 also gained
+     their own `unavailable` kind and a „przeciążony, spróbuj ponownie" message; the real API
+     returned 503 twice during this run and the generic „błąd (503)" read like a bug.
+
+122. **`aniagotuje.pl` blocks Google's fetcher; `kwestiasmaku.com` does not.** Three URLs each,
+     and the split is total: every `kwestiasmaku.com` page came back `URL_RETRIEVAL_STATUS_
+     SUCCESS`, every `aniagotuje.pl` page `URL_RETRIEVAL_STATUS_ERROR`. This is not a bug and
+     nothing was changed for it — it is exactly the case decision 63 reserved the paste fallback
+     for, and the app does the right thing: the retrieval step fails, and the user is told to
+     copy the recipe and paste it. Worth knowing which of the two sites needs that, because it
+     will be the more common of the two failures in daily use.
+
+     What the successful path produced is worth recording, because it is the first evidence the
+     prompts work at all: kwestiasmaku's „Kotlety z kurczaka w panierce kukurydzianej" came back
+     with 6 ingredients, **6 of 6 matched** against the bundled USDA subset, divided from 4
+     portions to 1, with „masło klarowane" quantified at 7.5 g. The pasted „placki ziemniaczane"
+     — deliberately written with „olej do smażenia" and „sól i pieprz do smaku" — came back
+     **7 of 7 matched**, with the oil quantified and named concretely enough to match a database
+     row („olej rzepakowy"). No nutrition value appeared in any response.
+
+### 2026-09-01 — Second live run: hpba.pl, and what the free tier actually allows
+
+123. **A profile written by an earlier build is migrated off the retired default, once.**
+     Decision 120 changed `DEFAULT_GEMINI_MODEL`, which fixes new profiles and reaches nobody
+     else: a stored `profile.json` always wins over `DEFAULT_PROFILE`, so every existing device
+     kept `gemini-2.5-flash` and kept 404-ing. `migrateRetiredDefaultModel` runs at start-up and
+     rewrites **that exact string and nothing else** — a model the user typed, including a
+     deliberate `gemini-2.5-pro`, is left alone. This is not a catalogue of Google's retired
+     models (PLAN.md forbids that); it is this app correcting a default it shipped itself.
+     Idempotent, one read on a normal start, and it schedules a sync only when it changed
+     something.
+
+124. **The free tier is 20 requests per day, per model — and a 429 says so.** Measured: the
+     quota body carries `quotaId: GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
+     `quotaValue: 20`, and a `RetryInfo.retryDelay`. Fourteen polls over six minutes never
+     recovered, which settles that it is the daily cap and not the per-minute one.
+
+     This matters more than it looks. A paste import costs **2 requests** and a link import
+     **3**, so the free tier is roughly **6–10 recipe imports a day** — and the old message,
+     „spróbuj ponownie za kilka minut", was simply wrong about that. `client.ts` now reads the
+     two facts it needs out of the response (an integer and a per-day flag, nothing else) and
+     says either „Wyczerpał się dzienny limit… odnowi się jutro" or „spróbuj za około N s".
+
+     One consequence worth knowing: the quota is per *model*, so a different model name in
+     Settings has its own separate daily allowance. That is a workaround, not a fix.
+
+125. **Two prompt rules came out of real pages, and one is only half-verified.** Both were
+     found on hpba.pl imports. „Woda" arrived as an ingredient row — a macro-free item that can
+     never match anything and only clutters the draft — so the parse prompt now skips water and
+     ice. And the matcher was returning `null` for „kolendra", „seler" and „bazylia", all three
+     of which *are* in the bundled subset, but each in a fresh and a dried variant: decision
+     114's „lepiej null niż zła pozycja" was reading as „decline whenever there is more than one
+     form". The rule is now split — a different product still returns `null`, but the same
+     product in a different *form* (świeży/suszony, surowy/gotowany) must pick the plainest one.
+     Re-running the same page took it from 14/16 matched to **15/16**, with „kolendra" landing on
+     „Kolendra świeża".
+
+     **The caveat:** the daily quota for `gemini-3.6-flash` was exhausted, so both the problem
+     and the fix were observed on `gemini-flash-lite-latest`. The default model matched 6/6 and
+     7/7 on the earlier run and may never have needed this. The change is low-risk either way —
+     a wrong pick and an empty row both cost the user one tap — but it has not been measured on
+     the model the app actually ships with.
+
+126. **`hpba.pl` is retrievable; that makes two sites out of three.** Every URL tried came back
+     `URL_RETRIEVAL_STATUS_SUCCESS`, and both recipes imported: „Tajski bowl z kurczakiem"
+     (16 ingredients, 15 matched, divided from 2 portions) and „Burgery warzywne" (15
+     ingredients, 12 matched, divided from 4). The scoreboard so far — kwestiasmaku.com and
+     hpba.pl read fine, aniagotuje.pl blocks Google's fetcher and needs the paste fallback.
+
+     The one row that stayed unmatched on the tajski bowl is the right answer, not a miss:
+     „ryż jaśminowy" is a varietal the bundled USDA subset does not carry, so it lands in the
+     editor as an empty row, the user picks „Ryż biały" once, and decision 116's correction
+     makes every later import of that name resolve without asking the model.
+
+### 2026-09-01 — Gemini usage counter (asked for, outside the phase sequence)
+
+127. **The usage tally is a grow-only per-device counter inside `profile.json`.** Asked for
+     explicitly, with the requirement that it sum across devices. That requirement is what
+     dictated the shape: the profile merge resolves a conflict by taking **this device's whole
+     document** (engine.ts, decision from Phase 6), so a single shared integer would have let
+     one device silently erase the other's count — the exact failure the feature exists to avoid.
+
+     So `Profile.geminiUsage` is `{ day, devices: { [deviceId]: { requests, tokens } } }`. A
+     device only ever writes its own entry; merging is a union taking the larger value per
+     device, which is correct without a clock or an ordering assumption because the counter only
+     grows within a day. The total is the sum. `engine.ts` unions this one field explicitly
+     rather than letting `localWins` decide it, and everything else on the profile still follows
+     the winning document. An `engine.test.ts` case asserts 3 + 4 = 7 across two devices, and it
+     was confirmed to **fail** with that union removed — the guard is real, not decorative.
+
+     Three deliberate limits, all stated on the screen. It counts what *this app* sent, so a
+     request made from AI Studio on the same key is invisible. It counts answered requests only,
+     because a call that never reached Google costs no quota — but it does count the calls a
+     *failed* import already paid for, reported from a `finally`, since a three-call import that
+     dies on the third has still spent two. And the day boundary follows **Pacific** time, not
+     the user's: Google resets at midnight Pacific, nine hours off Poland, so bucketing locally
+     would zero the counter at the wrong hour and show „0" through a morning still charged to
+     yesterday's exhausted window.
+
+     The device id is a random local value in `meta`, minted once. It is a map key, never an
+     identity: it never leaves this account's own `appDataFolder`.
+
+128. **Polish has three plural forms and the app was using two.** Found by an e2e assertion that
+     would not match: the counter rendered „2 zapytań", and the correct form for 2-4 is
+     „2 zapytania". `pluralPl` in `text.ts` now implements the real rule — `one` for 1, `few`
+     for a last digit of 2-4 **except** the teens (12-14 take `many`, so „22 zapytania" but
+     „12 zapytań"), `many` otherwise, including 0.
+
+     Worth knowing that the existing screens have the same bug in a milder form: „{n} razy",
+     „{n} posiłków" and „{n} składników" are all one/many splits written before this helper
+     existed, so they misspell 2-4 too. They were not touched here — that is a sweep of its own,
+     recorded as open question 23 rather than folded into a commit about API quotas.
+
+### 2026-09-01 — Quota is per model, and so is the counter
+
+129. **„20 zapytań na dobę" was wrong as a general claim, and the counter I had just shipped
+     aggregated across models.** Google's own dashboard (`ai.dev/rate-limit`, screenshot from the
+     user's project) settles both:
+
+     | Model | RPM | RPD |
+     |-------|-----|-----|
+     | Gemini 3.6 Flash | 3 / 5 | **23 / 20** — exceeded |
+     | Gemini 3.7 Flash | 1 / 5 | 2 / **20** |
+     | Gemini 3.5 Flash Lite | 5 / 15 | 10 / **500** |
+
+     Limits are charged per model, which decision 124 had already established from a 429 body —
+     but they differ by **25×**, which it had not. A single „20" printed as fact is wrong for
+     most models, and one counter spanning every model becomes meaningless the moment someone
+     switches, which is exactly what a person does when a model runs out.
+
+     So `GeminiUsage` gained a model dimension: `models[model][deviceId]`. The merge rule is
+     unchanged in spirit — union by model, then the larger value per device — and the screen now
+     shows this model's count, with the other models spent on today listed underneath so
+     switching away does not hide what it cost. The „20" is gone from the copy, replaced by the
+     fact that matters: limits differ per model, and switching model gives a fresh allowance.
+
+     No constant records a per-model limit, because nothing in the API reports one until a 429
+     arrives. `REQUESTS_PER_IMPORT` stays, since that is the app's own arithmetic.
+
+     The brief `devices`-only shape from decision 127 is read as `undefined` rather than
+     migrated — it existed on `dev` for under an hour, and the worst case is one device losing
+     one day of its own tally.
+
+130. **The model field is a dropdown built from `models.list`, with hand entry kept.** Asked
+     for. A hardcoded `<option>` list would be decision 120 all over again — this app's default
+     was retired out from under it — so the list is fetched from the user's own key and carries
+     Google's `displayName`. Gemini models sort newest-first (their names carry the version), and
+     other products (`lyria-`, `nano-banana-`) fall below; that prefix is presentation only,
+     nothing is filtered out except models that do not support `generateContent`.
+
+     Three cases the UI has to survive, all covered: no key or offline, where the list is empty
+     and the field stays a text input; a stored model Google no longer lists, which is prepended
+     so that opening Settings cannot silently switch the user's model; and a model too new to be
+     listed, reachable through „Wpisz nazwę ręcznie". The e2e run asserts the options come from
+     the key rather than the bundle, and that a typed name survives a reload.
+
+     One bug found while testing it: the list-loading effect fires when the vault unlocks, which
+     is *before* the first key is ever saved, so the dropdown stayed empty until the next page
+     load. `saveKey` now reloads it.
+
+### 2026-09-01 — A reported bad import, diagnosed without spending a request
+
+131. **The candidate fallback tried words in the wrong order, and „mięso" swamped everything.**
+     Reported from a real import of kwestiasmaku's „Cukinia faszerowana mięsem i ricottą":
+     empty ingredient rows, minced meat missing. „Mięso mielone wieprzowe" *is* in the bundled
+     subset, so this was a matching failure, not a data gap — and it was reproducible **locally
+     against the real bundle with no API call at all**, which is how it was found.
+
+     Decision 125's fallback retried a name word by word *in the order the words appear*,
+     assuming the Polish head noun comes first. That holds for „oliwa do smażenia" and fails
+     badly for „mięso mielone wołowo-wieprzowe": „mięso" is the least selective word in the
+     language for this database, matches goat, bison, goose and duck through their aliases, and
+     filled all eight candidate slots before „mielone" was ever tried. The model was then asked
+     to choose minced meat from a list containing no minced meat, and correctly refused.
+
+     `gatherCandidates` now tries **adjacent pairs first** — a Polish ingredient name is
+     typically noun plus qualifier, and „mięso mielone" identifies the product where „mięso"
+     does not — and only falls back to single words **rarest first**, so a generic noun can no
+     longer crowd out the word that carries the meaning. Same input, after: the five minced-meat
+     rows, in place of Koza and Bizon.
+
+     Worth noting what this says about the earlier evidence. Decision 125 read three `null`s as
+     the model being over-cautious and softened the prompt; at least some of that was the model
+     being handed a list with no right answer in it. The prompt change stands, but the candidate
+     list was the larger fault, and it was invisible while only short recipes were tried.
+
+132. **„Wklej przepis z internetu" is gone from the edit screen.** Asked about, and the question
+     was the right one. Import *creates* a recipe: on an existing one the button appended rows to
+     work already done, which duplicates ingredients, and saving then offers to rewrite the
+     frozen macros of every future day that plans it. There is no case where that is what someone
+     wanted. The button — and the sheet behind it — now appear only while creating.
+
+### 2026-09-01 — Phase 8
+
+133. **One new dependency: `vite-plugin-pwa` 1.3.0**, named in PLAN.md's stack, pinned exactly
+     like every other package. Nothing else was added: the icons are drawn by a script over
+     Node's own `zlib`, the screenshots use the Playwright the e2e suite already depends on, and
+     the export is a `Blob` and a file input.
+
+     Two settings in it are not defaults and must not drift back:
+     `injectRegister: null`, because the plugin's own registration snippet is an inline
+     `<script>` that `script-src 'self'` blocks — `main.ts` imports `virtual:pwa-register`
+     instead, so registration lands inside the hashed bundle (the same reasoning as decision
+     10's module-preload polyfill); and `runtimeCaching: []`, which is the answer to open
+     question 4 and is discussed in decision 136.
+
+134. **The PWA icons are generated and committed, like the nutrition bundle.**
+     `scripts/build-icons.mjs` (`npm run build:icons`) writes `public/icons/*.png` with a
+     hand-rolled PNG encoder — `zlib.deflateSync`, a CRC table and three chunks — plus an
+     OKLCH→sRGB conversion so the brand colour is literally the `--color-accent` token from
+     `app.css` rather than a hex somebody eyeballed. No image library, no design-tool export
+     nobody can reproduce. The files are committed because the production image is built from
+     `dist/` in CI, which must not depend on this script having run.
+
+     The set is a 192 and a 512 with rounded corners for `purpose: any`, a full-bleed 512 with
+     the mark shrunk into Android's 80 % safe zone for `purpose: maskable`, a 180 for iOS and a
+     32 for the tab.
+
+135. **The update flow asks; it never swaps under the user's hands.** `registerType: 'prompt'`,
+     and `UpdatePrompt.svelte` is a bar — not a dialog — offering „Odśwież" and „Później".
+     A meal-planning app is used mid-edit, with a half-typed recipe on screen; an auto-reloading
+     service worker would throw that away to deliver a change nobody was waiting for. The
+     waiting worker costs nothing while it waits, and a closed-and-reopened tab picks it up by
+     itself.
+
+136. **The service worker precaches the bundle and the USDA subset, and declares no runtime
+     cache at all** — which answers open questions 4 and 5 together.
+
+     *Question 5:* `globPatterns` includes `json`, so the hashed `ingredients-*.json` is in the
+     precache. A fresh install that goes offline before its first run now has its ingredients;
+     previously it had none. Asserted in `e2e/pwa.spec.ts` by reading the cache contents.
+
+     *Question 4:* with `runtimeCaching: []`, Workbox registers exactly two things —
+     `precacheAndRoute` over the build output, and a `NavigationRoute` bound to `/index.html`.
+     A service worker only ever sees requests inside its own scope, so a navigation to
+     `accounts.google.com` never reaches it, and the OAuth flow has no redirect back to our
+     origin to intercept in the first place (GIS answers through a popup callback, not a
+     redirect URI). `grep` over the generated `sw.js` finds no Google host. Adding any runtime
+     cache means answering this again first, and SECURITY.md now says so.
+
+137. **The data export deliberately does not contain the vault, and PLAN.md's Phase 8 gained an
+     import to go with it.** Task 6 says „data export (single JSON download)"; the acceptance
+     criterion says „export file re-imports cleanly into a fresh profile", which cannot be true
+     without a way in. So *Wczytaj kopię* was built alongside *Zapisz kopię* — recorded here as
+     a deviation, because it is one task's worth of work the task list did not name. It also
+     closes open question 16.
+
+     The file carries the profile, recipes, tags, custom ingredients, name corrections and every
+     planned day. It does **not** carry the vault: a backup ends up in Downloads, in a mail
+     attachment and in someone else's cloud drive, and when the user turned encryption off the
+     vault holds the Gemini key in the clear. Re-entering the key after a restore costs a
+     minute. It also does not carry the bundled USDA rows — they ship in the build.
+
+     A restore **replaces**, it does not merge: the file is a complete picture of a database and
+     merging two of them would silently keep rows the user believes they replaced. It clears the
+     sync baseline for the same reason decision 96's „different account" path does — after a
+     restore this device's data no longer descends from the last sync, and a stale baseline
+     would let the merge read a restored row as a deletion.
+
+138. **Offline is named, not reported as a failure.** `navigator.onLine === false` is trusted in
+     one direction only (certainly offline; `true` proves nothing), and it changes two things.
+     A background sync while offline is skipped rather than attempted, so the indicator does not
+     go red on a train — `startAutoSync` already listens for `online` and picks it up. An
+     interactive attempt still runs and gets „Jesteś offline. Kalendarz i przepisy działają
+     normalnie; synchronizacja ruszy sama, gdy wróci połączenie." Gemini says the equivalent for
+     an import and for the key test.
+
+139. **The Polish plural sweep from open question 23 is done, and portions needed their own
+     rule.** „{n} składnik/składniki/składników", the conflict dialog's meal count and the
+     „{n} posiłek" in the editor's update prompt now go through `pluralPl`. „{n} raz/razy" was
+     already correct — `razy` serves both plural forms — and „w {n} przepisach" is a locative,
+     which does not vary.
+
+     Portions could not use `pluralPl` at all: `portionsEaten` moves in halves, and a fraction
+     in Polish takes the genitive („1,5 porcji"), not a plural, while `pluralPl` truncates and
+     would have produced „1,5 porcja". Hence `portionWord` / `formatPortions` in `text.ts`,
+     which also fixes the decimal separator the old code printed as „1.5".
+
+140. **The empty library states the ownership question in the user's own terms.** Decision 61
+     wrote the copy; this is what shipped. Two buttons — „Nowy przepis" and „Wklej przepis z
+     internetu", the second landing on `#/recipes/new/edit?import` with the sheet already open,
+     because offering a route and then hiding it behind another click is not an offer — then the
+     line the user herself corrected: the app does not *search* for recipes and does not guess
+     calories, never „no recipes from the internet". `/about` gained „Jak to działa" with the
+     four sentences that answer the questions actually asked: the recipes are yours, the
+     calories are not guessed, Drive is a backup and cannot see the rest of your Drive, and the
+     app works offline.
+
+141. **`v1.0.0` is not tagged by this phase.** PLAN.md Phase 8 task 9 says to release; CLAUDE.md
+     says a phase does not deploy and releasing is a separate act through the `/release` skill.
+     The workflow rule wins — the phase ends with the code on `dev`, verified, and the release
+     is the user's next deliberate step. The last acceptance criterion („a `v1.0.0` tag runs the
+     release workflow green") is therefore **not met by this phase** and is met by that release.
+
+142. **Two acceptance criteria were checked differently from how they are worded, and the
+     difference is worth recording.**
+
+     *„Lighthouse PWA checks pass"* — Lighthouse itself was not run; adding it would have meant
+     a large dependency for one number. What was run instead is a check of the criteria
+     Lighthouse reports on, in `e2e/pwa.spec.ts`: a service worker registered *and controlling*,
+     a linked manifest served as `application/manifest+json` with a name, a Polish `lang`,
+     `display: standalone`, a `start_url` in scope and 192/512/maskable icons that all actually
+     answer 200. A real install on a phone remains the one thing only a phone can confirm.
+
+     *„Airplane mode"* — Playwright's `context.setOffline(true)` covers the page but not the
+     service worker's own fetches, so „it loaded" is not by itself proof of a cache hit. The
+     spec therefore also reads the cache and asserts it holds `/index.html` and the hashed
+     `ingredients-*.json`. The container run under the real CSP passes the same spec.
+
+### 2026-09-01 — Reviewing the open questions (after Phase 8)
+
+143. **A bare Polish staple name can resolve to the wrong product, silently — PLAN.md Phase 9
+     gains task 8 to audit it.** Found while walking the open questions, not by a user report,
+     and it changes what open question 9 is about.
+
+     „Twaróg" is not missing from the mapping, as the question claimed. It matches
+     `172181 Twaróg chudy`, at **72 kcal / 10.3 g protein / 6.7 g carbohydrate**. Two things are
+     wrong with that. The obvious one: what a Polish shopper buys as „twaróg" is *półtłusty*,
+     around 133 kcal and 4.7 g fat, so 200 g logged this way understates the day by roughly 120
+     kcal and 9 g of fat. The worse one: those macros are not a plausible twaróg *at all* — twaróg
+     chudy carries about 18–19 g of protein and 3 g of carbohydrate, and 10.3/6.7 is a
+     cottage-cheese profile. Which USDA row `172181` actually is could not be confirmed here:
+     `data/usda/` is empty on this machine, so `check:nutrition` cannot run offline either.
+
+     What makes this worth a task rather than a note is the failure mode. **An absent
+     ingredient is harmless** — nothing matches, the user notices instantly and adds a custom
+     one, and the app is already built for that. **A wrong ingredient is silent**, because
+     something did match. The only thing standing between the user and a wrong number today is
+     the kcal figure shown in the autocomplete row, which helps exactly as much as the user
+     happens to be paying attention.
+
+     Scope of the evidence, stated plainly: **one** case, found by checking the two examples the
+     open question happened to name. Whether it is an outlier or the tip of something is
+     precisely what the audit decides. It landed in Phase 9 by the user's call; the task text
+     says to do it first in the phase, because every day of use adds meals computed from
+     whatever is wrong, and frozen snapshots mean those days are never corrected retroactively.
+
+144. **The shopping list leaves through the share sheet, and Home Assistant is not called
+     directly.** Settling open question 10 early, because the part that was uncertain was the
+     CSP consequence, and that is not a Phase 9 discovery — it is an architectural fact that was
+     already true.
+
+     `navigator.share()` and the clipboard are not network requests, so neither is governed by
+     `connect-src`: the whole feature costs **no policy change at all**. Web Share needs HTTPS
+     and a user gesture, both of which we have; where it is unavailable (most desktop browsers)
+     the list goes to the clipboard instead. On Android the share sheet reaches anything that
+     accepts text, Listonic included if it registers as a share target — which is as close to
+     decision 62's „Listonic preferred" as anything can get, given that Listonic publishes no
+     import API.
+
+     **A direct `todo.add_item` against the user's own Home Assistant is rejected**, and the
+     reason is architectural rather than technical. The CSP is a header baked into the Docker
+     image by the Caddyfile; the HA instance lives at a private address known only to the user.
+     Templating it in at deploy time from a GitHub secret would work, and would mean a private
+     hostname in a public repository's deploy configuration, an HA token held in the browser,
+     and `connect-src` widened for one convenience. That is a poor trade for a shopping list.
+
+     There is a free path to the same place, and it is worth trying before anyone builds
+     anything: if the Home Assistant companion app registers as an Android share target, then
+     „share → HA" reaches the shopping list with no API call, no token and no policy change.
+     **Unverified** — check it on the phone, alongside the install in open question 26.
+
+     PLAN.md Phase 9 task 7 now carries the settled transport; only the scope (meal / day /
+     week) is still open there.
+
+145. **PLAN.md Phase 9 task 1 answered open question 11 and then told the reader to go and
+     settle it.** Wording fixed rather than re-decided: the three points the question called
+     undecided — the ranking inside a section, a section for untagged recipes, and a
+     multi-tagged recipe appearing under each of its tags — were all already written into the
+     task, and the phase's acceptance criterion already checks the last two.
+
+     What genuinely was not decided is the order of the *sections*, and it stays open on purpose:
+     alphabetical, by `useCount`, or by recent activity is a judgement best made looking at the
+     screen. „Bez tagu" goes last regardless — it is the absence of a category, not one of them.
+     Noted in the task text as well: because a recipe appears under each of its tags, the header
+     counts sum to more than the library holds. That is intended, and someone will ask.
+
+146. **The swipe is now driven as a real gesture — and the half that still is not covered was
+     found by trying to break it.** Open question 12 said the card's own swipe could not be
+     automated because a synthesized horizontal drag is not what a browser turns into a click.
+     Half of that is no longer true and half of it is exactly true.
+
+     `e2e/swipe.spec.ts` opens a touch-capable phone context (`devices['Pixel 5']`, through a new
+     `touch` option on the `openDevice` fixture) and sends `Input.dispatchTouchEvent` over a CDP
+     session, so the `TouchEvent`s come out of Chromium's input pipeline rather than from
+     `dispatchEvent` in page script. That covers the gesture rules for real: the 50 px threshold,
+     the 40 px vertical slack, direction, and that the revealed row stops being `inert`.
+
+     `inert` is the assertion, not visibility: the action row is always painted and the card
+     slides over it, so „is it visible" answers nothing about which state the card is in.
+
+     **Still uncovered: that a finished swipe does not also follow the link it crossed.**
+     Chromium synthesizes a click from a tap, not from a CDP touch drag, so nothing is generated
+     for `suppressClick` to swallow. Established by mutation rather than assumed — removing the
+     `event.preventDefault()` from `MealCard` leaves the whole suite green. No assertion was
+     written for it, deliberately: one that cannot fail reads like coverage and is worse than
+     having none. That path remains a hand check on a real phone.
+
+147. **The library ranking counts a trailing year, not the whole history — and says so.** Open
+     question 13 asked whether the day screen's re-read grows with the database. It does not:
+     `DayScreen.load` reads a fixed ~42-date window through a range query over the primary key,
+     so it is bounded by construction. The scan that *did* grow was one the question never
+     mentioned — `recipeUsage()` called `days.toArray()`, every day ever planned, from inside
+     `recipeLibrary()`, which both `/recipes` and `RecipePicker` use. That put an O(history)
+     pass on the most frequent interaction in the app: every „Dodaj posiłek".
+
+     Settled 2026-09-02, and built rather than deferred: `recipeUsage(today)` now takes the day
+     as an argument and reads `days.where('date').aboveOrEqual(usageWindowStart(today))` —
+     `USAGE_WINDOW_YEARS = 1` in `recipes.ts`, one new `addYears` helper in `dates.ts`. The cost
+     is O(window) and no longer grows with age. **The lower bound is the only bound**: everything
+     planned ahead still counts, because decision 46 wants a staple planned for tomorrow to rise.
+
+     **This changes what the user is told, which is why it was a decision and not a refactor.**
+     `plannedCount` is rendered in the library, so the label became „zaplanowany 3 razy w
+     ostatnim roku". Arguably the more correct ranking anyway, and squarely in line with
+     decision 46's „recent activity": a recipe cooked 40 times in 2024 and never since should not
+     outrank one cooked five times last month.
+
+     `recipeReferences()` scans the same way and was deliberately **left alone**. It answers „how
+     many planned meals point at this recipe" for the save and delete prompts, where a windowed
+     answer would be a wrong one — and it runs only when a recipe is opened, saved or deleted.
+
+148. **Both halves of „smarter fitting" are settled before anyone writes them, and one of them
+     shrank.** Open question 14 turned out not to be a question but PLAN.md Phase 9 task 6 — with
+     the portion half already carrying an acceptance criterion and the macro half carrying
+     nothing but a sentence decision 65 itself called „the easy way to build something that
+     recommends nonsense". Settled 2026-09-02, written into the task rather than into code:
+     Phase 9 builds this, not this conversation.
+
+     **Half a portion is the only fraction offered.** A recipe that does not fit whole but fits
+     at half is „zmieści się przy pół porcji"; below half it is not offered at all. Quarters were
+     the alternative and lost: 0,75 porcji is arithmetic, half a portion is something a person
+     actually puts on a plate, and the rule that has one fraction cannot be misread. The cost is
+     accepted — a recipe that would have fitted at 0,75 is simply not suggested.
+
+     **The macro half becomes a readout, not a ranking.** The picker header states what is left
+     of every goal macro („zostało 620 kcal · 40 g białka") and the list keeps its decision 46
+     order. This answers the question that gets asked — „czego mi dziś brakuje" — without the app
+     claiming to know which recipe fixes it. A real ranking needs goals for every macro to be set
+     and meaningful, and degrades into nonsense exactly when they are not; showing the gap
+     degrades into showing nothing, which is honest. Decision 65's worry is therefore closed
+     rather than inherited.
+
+149. **The live Drive round trip is a written hand check, not a `@live` spec.** Open question 15
+     proposed an opt-in Playwright spec against a throwaway Google account as „the obvious next
+     step". Rejected on 2026-09-02, and the reason is not effort: **Google blocks OAuth in
+     browsers it can tell are automated**, so such a spec needs either a hand-harvested
+     `storageState` that expires, or a human in the middle of the run. It could never run in CI,
+     it would need a live account session kept alive to stay useful, and the two most valuable
+     checks — the real consent screen and a token actually expiring after an hour — are precisely
+     the ones it could not make.
+
+     What replaced it is a seven-point checklist in
+     [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it):
+     consent screen, the `about.get` identity label, one round trip, the silent `prompt: ''`
+     grant on reload, token expiry after an hour, a real two-browser same-day conflict against
+     Drive's own `modifiedTime`, and revocation. Run once on production, on a throwaway account
+     and a throwaway day of data, after `v1.0.0` — the same visit installs the PWA on a phone and
+     settles open question 26.
+
+     **The outcome of each point goes into STATE.md**, including the points that behave exactly
+     as the fake predicted. Otherwise this gets re-run by the next person who wonders, and the
+     one thing worth having — a record of how Google actually behaved — is the thing that was
+     never written down.
+
+150. **The vault Drive overwrote is kept, locally, until the user answers for it.** Open question
+     17 called the losing side „silent apart from a sentence in Settings". Reviewing it on
+     2026-09-02 turned up two things the question had wrong in opposite directions.
+
+     **The rule is narrower than stated.** Drive does not simply win: `engine.ts` adopts the
+     remote vault only when the remote moved away from the baseline *and* the local copy also
+     changed. A vault edited on this device alone still uploads. That rule stands unchanged.
+
+     **The loss is larger than the sentence admitted.** After adoption `loadVault()` sees a
+     different text and drops the derived key, so the vault locks — and if the two devices had
+     different master passwords, only the *other* device's password opens it. Settings said
+     „Jeśli klucz Gemini był tu inny, wpisz go ponownie", which describes filling in a field.
+     The user may in fact be locked out of secrets that were theirs a second ago.
+
+     So the fix the question predicted was built, with one change: the losing copy is kept in
+     the local `meta` table as `vaultFileReplaced`, **not** under a second name on Drive. It
+     never leaves the device, costs no upload, and needs no second name for the merge to reason
+     about. Settings states the situation in full and offers „Przywróć poprzedni sejf"; the
+     offer survives a reload, because whoever needs it is unlikely to be looking at Settings at
+     the moment the sync runs. Restoring makes the local file differ from the recorded baseline,
+     so the next sync pushes it and Drive's copy loses in turn — undo has to mean that.
+
+     The offer is retired when it stops meaning anything: on restore, on `forgetVault()`, and on
+     any deliberate write of this device's vault (`persist()`), since a user who has just sealed
+     their own secrets is no longer stranded.
+
+151. **Background sync is not a cost/benefit question — the worker cannot authenticate.** Open
+     question 18 left „whether that is worth the complexity" open. Settled 2026-09-02 by a fact
+     that removes the choice: there is **no refresh token in the browser** (`google-auth.ts`).
+     The access token lives in page memory and comes from a GIS token client that needs a
+     document — a popup, or the silent `prompt: ''` grant in a hidden iframe. A service worker
+     has neither. A `sync` event would wake up with nothing to put in the `Authorization`
+     header.
+
+     Giving it one would mean persisting a long-lived credential in the browser, which is the
+     opposite of what this app does with the Gemini key one table over, and would be a
+     reportable change under SECURITY.md. That is a far worse trade than the thing it buys.
+
+     And it buys little. IndexedDB is the source of truth, a failed sync leaves the baseline
+     untouched so nothing is half-applied, and `App.svelte` syncs on every start. The whole cost
+     of a sync that failed while the app was closed is that the *other* device sees the change
+     later — on a single-user planner opened most days, that is a few hours of staleness, not
+     lost data. Not built, and not to be revisited unless the auth model changes.
+
+152. **The one GIS popup warning is an observation to be made against Google, not a bug to be
+     guessed at.** Open question 20 recorded a single `[GSI_LOGGER]: Failed to open popup
+     window` on a load that should have renewed silently, and then succeeded. Reviewed
+     2026-09-02.
+
+     Two facts bound it. **The failure path is already correct**: a silent renewal that does not
+     produce a token ends as `unauthenticated` without `interactive`, and the user reads
+     „Połączenie z Dyskiem Google wygasło. Połącz konto ponownie — dane na tym urządzeniu są
+     nietknięte." Nothing fails silently. **And the cause cannot be established from here**:
+     whether `prompt: ''` completes in a hidden iframe or reaches for a window is GIS's own
+     behaviour, and every Google response in the suite is a local fake (decision 107).
+
+     So it is neither dismissed as noise nor patched defensively against a hypothesis. It became
+     point 4 of the live checklist (decision 149): reload several times with the popup blocker at
+     its default and record what the console says. If the warning is reproducible, the silent
+     resume on start-up is fragile without a user gesture and that is worth knowing; if it is
+     not, it joins decision 19's COOP warning as GIS noise.
+
+153. **The two Phase 7 criteria the model cannot meet stay worded as intended, and say so.**
+     Reviewing open question 21 on 2026-09-02 turned up a second one nobody had recorded: *„A
+     link to that same recipe produces the same draft as its pasted text"* rests on the same
+     assumption as the determinism criterion. A link is resolved into text and then imported
+     along exactly the same path (decision 113) — but that is a *second call to the model*, so
+     „the same draft" is as unreachable there as it is for two identical pastes. Its other half
+     — the Polish failure message for an unreadable URL, and `connect-src` unchanged — does hold.
+
+     Both criteria keep their original wording in PLAN.md, unchecked, each with a note saying
+     what was measured and pointing here. This follows decision 142: a criterion checked
+     differently from how it is written gets the difference recorded, not the wording quietly
+     adjusted to what was achieved. Rewriting them to the achievable version would make the plan
+     agree with the outcome, which is the one thing a plan must not do.
+
+     What *is* guaranteed is unchanged and worth restating: unit normalization, candidate
+     selection, correction lookup and draft assembly are pure and asserted; the draft is reviewed
+     before it is saved; a saved recipe never recomputes; and a name corrected once stops
+     reaching the model at all.
+
+154. **The restore dialog now says what goes, not only what arrives.** Open question 27 argued
+     the omission was safe because a restore is already a two-step red-button action with the
+     export one click away. True, and beside the point: the dialog was describing the file the
+     user just chose — the half they already know — and staying silent about the device, which
+     is the half that stops the mistake. Reversed on 2026-09-02 and built.
+
+     „Kopia z … zawiera 3 przepisy…" is now followed by „Zastąpi to, co jest teraz na tym
+     urządzeniu: 7 przepisów i 40 zaplanowanych dni (96 posiłków)", counted through
+     `backupInput()` + `summarizeBackup()` — the same path the export takes, so the two numbers
+     are comparable by construction rather than by a second counting rule. A device with nothing
+     on it says so instead of reciting three zeros, which is the case a first restore actually
+     hits. `e2e/backup.spec.ts` covers both branches: the fresh device, then the same device
+     once it holds the restored data.
+
+155. **Open question 28 was open question 18 twice.** Both say nothing re-tries a sync that
+     failed while the app was closed; 28 adds Workbox's Background Sync and the `runtimeCaching`
+     objection from decision 136. Merged into 18 on 2026-09-02 and settled there by decision
+     151, whose reason is stronger than either wording had: the worker could not authenticate
+     even if the plumbing were free.
+
+156. **The model A/B is now a protocol with a budget, not an intention.** Open questions 24 and
+     25 both wait on the same run — the two models have never seen the same page — and the
+     review on 2026-09-02 could not settle them from a keyboard: it needs a real key in the
+     vault and six hand-driven imports. What it could do is remove every reason to get the run
+     wrong, in
+     [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#comparing-two-gemini-models-on-the-same-recipes).
+
+     The trap worth naming: a link import costs 3 requests and `gemini-3.6-flash` allows 20 a
+     day at 5 a minute (decision 129), so three pages on it is 9 of 20 and **the comparison has
+     to happen in one sitting** — there is no second attempt that day. The lite model's 500 make
+     it a non-issue on that side, which is itself part of what is being compared.
+
+     The pages must be fixed and written down before the first import, or the two halves of the
+     A/B are not the same experiment. One is chosen already (the kwestiasmaku cukinia page of
+     open question 25, every row of which exists in the bundle); the other two are named when
+     the run happens. And the winner gets one extra pass: the same page twice, which measures
+     open question 21's determinism on the model that would actually ship.
+
+### 2026-09-02 — Phase 9
+
+157. **The grouped library orders its sections by `useCount`, not alphabetically.** The last
+     undecided point of open question 11 (decision 145). Chosen because `repository.allTags()`
+     already returns exactly that order and the filter chips above the list are already drawn
+     from it: the sections and the chips now read left-to-right and top-to-bottom in the same
+     sequence, so the header a user is looking for is where the chip they just pressed was.
+
+     Alphabetical was the alternative and loses on the same ground — it would put the tag used
+     twice above the tag used forty times. „Recent activity" loses harder: the page would
+     reorder itself between visits, and a list you navigate from memory must not move.
+     „Bez tagu" is last regardless, and the counts sum to more than the library holds because a
+     recipe appears under each of its tags — both already written into PLAN.md task 1.
+
+158. **The shopping list has three scopes and lives in two places.** Settling the one thing
+     PLAN.md task 7 left open. The scopes are **one meal**, **the whole day** and **the whole
+     week** (Monday–Sunday of the day being looked at), which is the full set the task named —
+     none of them was dropped, because the summing is one function over a list of meals and a
+     wider scope costs a different argument, not different code.
+
+     The control appears twice, and that is a deliberate deviation from the task's wording.
+     PLAN.md places the export „next to the `cookingScale` control in the meal view", which is
+     right for the one-meal scope and wrong for the other two: a list covering seven days has no
+     business being reached through one Tuesday breakfast. So the meal view exports that meal,
+     and the day screen's „⋮" menu exports the day or the week.
+
+     Transport is decision 144's, unchanged: `navigator.share()` where the browser has it,
+     the clipboard otherwise. Neither is a network request and **the CSP is untouched**.
+
+159. **The mapping audit: six sections read row by row, four entries corrected, `DATA_VERSION`
+     bumped to 2.** PLAN.md Phase 9 task 8, done first in the phase because it is the only item
+     here that changes the numbers the app exists to produce.
+
+     Method, so it can be repeated: the two pinned archives were downloaded into `data/usda/`
+     and every mapped `fdcId` was joined against its real USDA description and macros, section
+     by section. That is what makes „confirmed" mean something — each row below was read
+     against the product a Polish shopper buys, not skimmed.
+
+     **Corrected (4):**
+
+     - `172181` „Twaróg chudy" → **„Serek wiejski odsączony"**, and the alias `twarog` is gone.
+       See decision 160 — this is the case decision 143 found, and it turned out to be worse
+       than a wrong fat level.
+     - `172207` „Serek śmietankowy light" → **„Serek śmietankowy 0%"**, and `169079`
+       (`Cheese, cream, low fat`, 208 kcal / 16,7 g fat) is **added** as the real
+       „Serek śmietankowy light". The bundle had mapped „light" onto USDA's *fat free* row at
+       105 kcal — half the energy of the product on a Polish shelf, and 1 g of fat against 17.
+       This is the „split the name into the variants a shopper distinguishes" fix.
+     - `169705` „Płatki owsiane" → **„Owies ziarno"**, and `2346396` „Płatki owsiane górskie" →
+       **„Płatki owsiane"**, taking the aliases with it. `169705` is USDA `Oats`, the whole
+       grain, at 16,9 g protein; rolled oats are `2346396` at 13,5 g. The most-eaten breakfast
+       in the file was overstating its protein by a quarter, and the correct row was hiding
+       behind „górskie".
+     - `172686` „Chleb pszenny razowy" → **„Chleb pszenny mieszany"**. USDA `Bread, wheat` is a
+       mixed-flour commercial loaf, not wholemeal; the real wholemeal row is `172688`, which
+       already carries the alias `chleb razowy`. A name only — the macros were never wrong for
+       what the row actually is.
+
+     **Confirmed, section by section.** *Dairy and eggs*: butter (717 kcal) and clarified
+     butter, the whole yellow-cheese family, feta, mozzarella, ricotta, processed cheese, the
+     cream ladder 12/18/30/36 %, śmietana 12 and 18 %, milk 3,2/2/1/0 %, buttermilk, natural
+     and Greek yogurt, cottage cheese (`172179` / `173417`), and every egg row raw and cooked.
+     *Groats, rice, pasta and flours*: all four wheat flours, rye, spelt, buckwheat, oat, corn
+     and rice flours, kasza gryczana / jęczmienna / jaglana raw and cooked, bulgur, couscous,
+     every rice row raw and cooked, wheat and wholemeal pasta raw and cooked, egg noodles.
+     *Bread*: pszenny, żytni, pełnoziarnisty, pumpernikiel, bułka tarta, bułka pszenna, and the
+     pastry rows. *Fats*: every oil at 884 kcal, smalec and łój at 902, margarine at 717 — the
+     least ambiguous rows in the file. *Meat*: pierś z kurczaka 120 kcal raw, schab 127,
+     karkówka 143, polędwiczka 109, boczek 518, mielone wieprzowe 263, all five ground-beef fat
+     levels, kiełbasa polska 325, parówki, szynka gotowana, salami, pasztet. A spot check
+     outside the task's list covered the highest-traffic *vegetables* — ziemniaki, marchew,
+     cebula, kapusta (biała, czerwona, kiszona), ogórki, the tomato family, buraki — all
+     correct.
+
+     **Two things recorded rather than changed.** `170904` „Kefir" maps to a 1 % kefir at 43
+     kcal where the Polish shelf standard is 2 % at about 51 — an 8 kcal/100 g understatement,
+     inside the spread of real products. `174602` „Kabanosy wołowo-wieprzowe" maps to
+     `Bacon and beef sticks` at 517 kcal against about 440 for Polish pork kabanosy; the name
+     already says which product it is, and no closer row exists. Both are written down so they
+     are not re-discovered as findings.
+
+     **„Kasza manna" stays absent, deliberately.** The tempting alias is `2003589`
+     `Flour, semolina, fine`, which is durum at 13,3 g protein against about 10 for Polish
+     kasza manna. Adding it would have created exactly the silent 30 % error this audit exists
+     to remove. An absent ingredient fails loudly and a custom one closes it in a step (open
+     question 9a); a wrong one does not fail at all.
+
+     `DATA_VERSION` is now 2, so every existing install re-imports on its next load.
+     `npm run check:nutrition` passes against the regenerated bundle: 1344 ingredients.
+     **No `macroSnapshot` is rewritten by any of this** — the audit corrects the future and
+     leaves recorded history exactly as it was, which is what the snapshot design is for.
+
+160. **„Twaróg" is not mismapped, it is absent — so the alias goes.** Decision 143 suspected a
+     wrong fat level. The archives say worse: `172181` is
+     `Cheese, cottage, nonfat, uncreamed, dry, large or small curd`. Dry-curd cottage cheese is
+     not twaróg at any fat level, which is why its 10,3 g protein never looked like one.
+
+     There is no twaróg in either pinned release. Every `Cheese, *` row with 14–23 g protein
+     and 2–9 g fat was listed and read: the set holds no farmer cheese, no quark, no twaróg —
+     the product does not exist in FoodData Central. So this is not a case of open question 9b
+     after all; it collapses into 9a, **absent**, and the only honest fix is to stop claiming
+     otherwise. The row now says what it is, and „twaróg" matches nothing.
+
+     The cost is real and accepted: the most ordinary Polish dairy staple now has to be added
+     as a custom ingredient, from the empty search result, in one step. The alternative was
+     leaving 200 g of twaróg logged at 144 kcal instead of about 266 — silently, because
+     something matched. Open Food Facts, already planned as the second source post-1.0
+     (PLAN.md „Nutrition data"), is where twaróg actually lives.
+
+161. **The library's order and grouping live in the meta table, not in `Profile`.** PLAN.md task
+     4 says the chosen order persists in `meta`; the grouping toggle joins it there for the same
+     reason. `meta` never travels to Drive, so this is per device — and that is right rather
+     than merely convenient: how a list is drawn belongs to the screen in front of you, and a
+     phone and a laptop may reasonably disagree. `Profile` is synced and would have forced them
+     to agree. Two new keys, `recipeSort` and `recipeGrouped`; `meta` is an outbound-key
+     key/value store, so neither needs a schema bump (decision 42).
+
+162. **A duplicated recipe inherits its tags and bumps their `useCount`; it does not inherit the
+     photo.** Settling the detail open question 8 left for this phase. Tags: yes to both halves —
+     a variant of „obiad" is still „obiad", and a second recipe really does carry the tag, so a
+     count that did not move would be the drifted one. The copy goes through the ordinary
+     `applyTagDelta`, exactly as saving a new recipe with tags does.
+
+     `photoFileId` is the one field deliberately dropped. It names a separate Drive file; two
+     recipes pointing at one of them would mean deleting either takes the other's photo. Nothing
+     writes that field yet, which is precisely why it is worth getting right before something
+     does.
+
+163. **`DraftItem.key` is now `DraftItem.id`.** `svelte-dnd-action` identifies items by a field
+     literally named `id`, and the only way to tell it otherwise —
+     `overrideItemIdKeyNameBeforeInitialisingDndZones` — is **global**, so using it for the
+     editor's rows would have broken the day's meal list, which uses the default. Renaming an
+     editor-local field is the smaller change, and it makes the two draggable lists in the app
+     look alike. `DraftItem` never reaches IndexedDB or Drive — `toRecipeItem` is the only way
+     out of the editor and it does not copy the field — so nothing stored changes.
+
+164. **A rename that collides with an existing tag is a merge, and it is asked about.** „Sniadanie"
+     and „Śniadanie" are one key (decision 47's normalization), so renaming one onto the other is
+     not a rename at all. `planTagRename` in `tags.ts` sorts the four cases apart — noop,
+     relabel (same key, new spelling), rekey, merge — and the repository's `renameTag`
+     **refuses** a colliding key outright rather than silently folding two tags together; the
+     screen catches that case first and offers „Połącz tagi?".
+
+     All three operations recompute `useCount` from the recipes rather than patching it, which
+     is what PLAN.md task 2 asks for and what the merge case actually needs: a recipe already
+     carrying both tags must count once, and only counting can know that.
+
+165. **Sorting by energy is lightest first, and a recipe with no macros sorts last.** The
+     direction is the one a budget is read in — „what can I fit" — and it matches the picker's
+     „Zmieści się w limicie" right next door. A recipe whose per-portion macros are unknown
+     sorts to the end rather than as zero: „we do not know" is not „it is free", and the same
+     rule already governs `fitToBudget`, which keeps such a recipe rather than hiding it.
+
+     A typed query still overrides the chosen order entirely, exactly as it has always
+     overridden the default one (decision 46): once the user has said what they are looking for,
+     match quality is the only ranking that makes sense. The screen says so in one line rather
+     than leaving the select looking broken.
+
+166. **How Phase 9 was verified, and the two things this machine could not check.**
+
+     Automated: 559 unit tests and **42 Playwright specs**, the latter run twice — once on
+     `vite preview` and once against the `npm run docker:up` container, which serves the real
+     Caddy headers. `e2e/screens.spec.ts` walks every route in that second run and reports
+     **zero CSP violations and zero console errors**, so nothing this phase added needs a
+     policy change: the Caddyfile is byte-identical to what Phase 8 shipped.
+
+     `e2e/library.spec.ts` is new and drives the phase through the actual screens: the grouped
+     view (a two-tag recipe appearing in both sections, the untagged one not lost, the choice
+     surviving a reload), the sort select and its persistence, „Powiel" followed by rewriting
+     the copy and finding the original intact, a tag renamed in Settings following both of its
+     recipes, the shopping list summing 300 g + 100 g across a day while `portionsEaten` is
+     0,25, and the picker header listing every set goal while „Zmieści się w limicie" drops the
+     recipe that cannot fit at half and leaves the survivors **in the order they were already
+     in**.
+
+     One thing came out of that run rather than out of the plan: `ConfirmDialog` had a
+     **hardcoded `aria-labelledby` id**, so the moment Settings held two of them every dialog
+     on the page announced the first one's title. Harmless while one screen had one dialog,
+     wrong the instant this phase added another. Now `$props.id()` per instance. Found because
+     a Playwright accessible-name lookup started resolving to „Połączyć tagi?".
+
+     Also worth noting: the keyboard-drag spec is the **first automated coverage of the drag
+     library's reorder path** in this repo — `MealList` has had none since Phase 5.
+
+     **Not verified here, and honestly so.** `navigator.share()` does not exist in headless
+     Chromium, so the share sheet itself was never exercised; the spec asserts the list the
+     sheet renders, not what the button hands to the system. That path — and with it whether
+     the Home Assistant companion app registers as an Android share target (decision 144) —
+     stays a hand check on the phone, alongside open question 26. Second: the ingredient rows
+     were reordered by **keyboard**, not by a touch drag. The pointer path is the same library
+     and the same `dragHandleZone` configuration the day's meal list has used since Phase 5,
+     but it was not driven here.
+
+### 2026-09-02 — Model A/B, first sitting (and what the free tier did to it)
+
+167. **The model dropdown lists 17 models, not 41.** `models.list` on a real personal key
+     answers with everything the key can reach, and the old filter — „supports
+     `generateContent`" — kept all of it: „Nano Banana" and „Nano Banana Pro" (image
+     generation), two Lyria music models, three text-to-speech models, a transcriber, two Omni
+     models, Gemma, a robotics model, computer-use, Antigravity and three Deep Research agents.
+     Every one of them is an offer to break the import, and picking a picture model is exactly
+     the kind of mistake a dropdown invites.
+
+     Two rules, both read off the API rather than off a name list this repo would have to keep
+     current (PLAN.md: „free-tier catalogs change, never hardcode"): a model must support
+     **`createCachedContent` as well as `generateContent`** — context caching is offered on the
+     mainline text models and on nothing else, which removes the image, speech, music,
+     transcription and agent lines and Gemma with them — and its id must be a `gemini-` name
+     with no capability word in it (`image`, `tts`, `transcribe`, `robotics`, `computer-use`,
+     `embedding`, `audio`, `live`, `omni`). The second rule earns its place twice: caching alone
+     lets `gemini-robotics-er-2-preview` through, and `nano-banana-pro-preview` is not even
+     called `gemini-`.
+
+     Neither rule can tell whether a model still *works* — `gemini-2.5-flash` passes both and
+     answers 404 (decision 120) — and a future text model shipped without caching would be
+     filtered out wrongly. That is what „Wpisz nazwę ręcznie" is for, and why it stays; the hint
+     under the field now says so.
+
+168. **The A/B ran, and only half of it finished: `gemini-3.6-flash` spent its whole day on one
+     page.** The protocol of decision 156, driven through the app's own `importRecipe` — same
+     prompts, same candidate lists, same bundled ingredient table — against the live API on the
+     three fixed pages now written into
+     [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#comparing-two-gemini-models-on-the-same-recipes).
+
+     | Page | `gemini-3.5-flash-lite` | `gemini-3.6-flash` |
+     |------|------------------------|--------------------|
+     | Cukinia faszerowana (kwestiasmaku) | 13/16 rows matched · 3 req · 12 407 tok | **15/16** · 5 req (one retry) · 31 229 tok |
+     | Tajski bowl (hpba.pl) | 16/16 · 3 req · 6 647 tok | never completed — 503 |
+     | Burgery warzywne (hpba.pl) | 14/14 · 3 req · 5 669 tok | never completed — 429, day over |
+
+     On the one page both models saw, the flash model is better and the reason is visible in the
+     parsed names: it keeps the qualifier („oregano suszone", „bulion warzywny", „pomidory w
+     puszce") where the lite model flattens it („oregano", „bulion", „pomidory krojone"), and
+     the qualifier is what the local matcher needs — „Bulion warzywny" and „Papryczki chili
+     suszone" are the two rows lite lost. It also reads household measures the way the page
+     wrote them (1,5 sztuki cukinii at 333 g, pół cebuli at 100 g, a 55 g egg) instead of
+     converting everything to grams up front. It costs about 2,5× the tokens.
+
+     **And it never got to prove that twice.** `gemini-3.6-flash` returned 503 „This model is
+     currently experiencing high demand" on five separate calls across the sitting — confirmed
+     as genuinely intermittent, not a bug on this side: the *same* one-line request sent twice
+     by `curl` answered 200, then 503. Each retry re-pays for the whole import, so the daily 20
+     were gone after one completed page, one abandoned page and two probes, and the third page
+     ended on the 429 with `GenerateRequestsPerDayPerProjectPerModel-FreeTier`.
+
+     Which makes the flakiness part of the answer rather than an accident that interrupted it:
+     a model with 20 requests a day cannot absorb a retry. The lite model ran all three pages
+     back to back without a single failure and spent 9 of its 500. **The A/B is not finished —
+     two pages still owe `gemini-3.6-flash` a fair run** — but the default is not obviously
+     wrong today, and open question 24 now has numbers instead of two separate anecdotes.
+
+169. **The app's usage counter under-reports on a flaky day, and now says so.** The counter
+     records what Google *answered* (decision 127: „a call that never reached Google costs no
+     quota"), which is right for a network failure and wrong for a 503. Measured: the app
+     counted 12 answered requests against `gemini-3.6-flash`; Google's daily 20 fired anyway,
+     because the eight failed attempts counted too. The screen keeps counting answers — it has
+     no way to know which failures Google charged for — but the caveat under it now warns that
+     on a day when a model is overloaded the real usage is higher than the number shown.
+
+170. **„Mięso mielone" is not a miss, and open question 25's premise was wrong about it.** Both
+     models left that row unmatched on the cukinia page, and the candidate list was not the
+     problem — the matcher offered „Mięso mielone wieprzowe" first, checked offline against the
+     real bundle. The page is what is open: it asks for „400 g mielonego mięsa (np. indyka,
+     wieprzowego, wołowego)", so no species is defensible and 263 kcal of pork would be a
+     fabrication. Declining is the correct answer; the row lands in the editor as an empty one,
+     the user picks once, and decision 116's correction settles every later import of that name.
+
+     So the page is still the right regression page, with one row fewer: **15 of 16 rows is a
+     pass on it**, not 16 of 16.
+
+171. **The default model is `gemini-3.5-flash-lite`, chosen for the quota rather than for the
+     parse.** Decision 168 measured the trade and the user made the call the same day: on the
+     one page both models saw, `gemini-3.6-flash` was better (15/16 against 13/16, and better
+     names and household measures), and it is still not the model a fresh profile should start
+     on.
+
+     The two failure modes are not comparable. A row the lite model misses arrives in the editor
+     as an empty ingredient row: one tap, and decision 116 remembers the correction so the next
+     import of that name needs no model at all. A `gemini-3.6-flash` failure is the whole
+     import — 20 requests a day is about six link imports, a 503 retry re-pays all three
+     requests, and decision 168's sitting finished exactly one page out of three. Someone
+     importing an evening's worth of recipes on the old default would meet „limit dzienny już
+     wykorzystany" on their first day; on 500 a day they would not.
+
+     **Nothing is migrated.** `migrateRetiredDefaultModel` still rewrites only `gemini-2.5-flash`,
+     which 404s — a profile already holding `gemini-3.6-flash` keeps it, because that model works
+     and swapping a working model under someone is worse than leaving the choice in Settings.
+     The name is pinned rather than the `gemini-flash-lite-latest` alias: 500 requests a day was
+     measured against this name, and an alias can move under the user, taking its quota and its
+     behaviour with it.
+
+     `e2e/fake-gemini.ts` now serves „Nano Banana 2" alongside the two text models, so
+     `e2e/import.spec.ts` asserts through the real dropdown that decision 167's filter keeps a
+     picture model out of it.
+
+### 2026-09-02 — A reported bug: „Zmień" on an ingredient row was one-way
+
+172. **„Zmień" on a filled ingredient row now has „Anuluj zmianę".** Reported from real use:
+     editing a recipe and tapping „Zmień" on one ingredient emptied the row into the
+     autocomplete with no way back, so a mis-tap read as an ingredient that had simply
+     vanished — the only remaining button was „Usuń wiersz", which throws the row away
+     entirely, and „Anuluj" at the bottom of the form abandons every other edit made so far.
+     Leaving the screen was the only undo, and it cost everything else.
+
+     The editor now remembers, per row, the ingredient „Zmień" took away (`replaced`, keyed by
+     row id — editor state, deliberately not part of the draft that gets written). The emptied
+     row says whose place it is standing in („Zmieniasz składnik: …") and offers „Anuluj
+     zmianę" beside „Usuń wiersz". Cancelling is a true no-op: „Zmień" only blanks
+     `ingredientId`, so the amount, the unit, the weight per piece and any manual macro
+     override are still sitting on the row and come back with it. The memory is dropped once a
+     new ingredient is picked, when the row is removed, and on every load.
+
+     It lives in the editor rather than in `RecipeItemRow` on purpose: „utwórz nowy składnik"
+     swaps that component out for `CustomIngredientForm`, and row-local state would not
+     survive cancelling out of that form — the one path where a user is most likely to want
+     the old ingredient back. The button follows `replaced`, not the resolved name, so a row
+     whose old ingredient has since left the database is still restorable, just without a name
+     to show for it.
+
+     Covered end to end in `e2e/library.spec.ts` — change, cancel, and the amount is still
+     there.
+
+### 2026-09-02 — A reported bug: every reload asked for Google again (and the space left on Drive)
+
+173. **The Drive session now survives a reload, and a lapsed one comes back on the first tap.**
+     Reported from real use: signing in to Google Drive and then refreshing the page landed on
+     „Niepołączono" every time. Decision 90 assumed the renewal on load would carry the
+     session — „every load re-requests it silently (`prompt: ''`)" — and that assumption was
+     wrong. GIS's token flow has no path it can guarantee without opening a window, and a
+     window opened by a script that runs on page load has no user activation behind it, so the
+     browser blocks it. The grant was intact the whole time; the app simply could not ask.
+
+     Two changes, and they answer different halves of the problem:
+
+     - **The access token is mirrored into `sessionStorage`**, so a reload finds the token it
+       already had and reaches Google on no code path at all — no GIS script, no window, no
+       renewal. This is a deliberate deviation from decision 90's „held in memory only". It is
+       `sessionStorage` and not `localStorage` on purpose: closing the tab still ends the
+       session, which is the promise that decision made and the one worth keeping. The token
+       is `drive.appdata`-scoped, lives an hour, and still never touches IndexedDB or Drive.
+     - **A renewal that fails is deferred to the next user gesture.** One `pointerdown` or
+       `keydown` listener is armed after a silent renewal comes back unauthenticated, and the
+       first tap or keystroke carries the activation GIS was missing. It is armed once per
+       failure and disarmed the moment it fires, so a grant that is really gone does not turn
+       every tap into a request, and it only ever asks for `prompt: ''` — a consent screen is
+       still reached from a click on „Połącz Dysk Google" and nowhere else.
+
+     The account's e-mail — the one already kept in the `driveAccountLabel` meta key — is now
+     also kept in `localStorage` and passed to GIS as `hint` on silent renewals only. It
+     removes the one ambiguity a silent renewal cannot resolve for itself, which account to
+     renew in a browser with several signed in. The interactive popup is left hint-free,
+     because that screen is how a user switches account. Every web-storage access is wrapped:
+     a browser with site data blocked throws on it, and the app has to keep working.
+
+     The e2e fake was the reason none of this showed up: its GIS stub answered every silent
+     request, so the suite asserted a reload it could never actually perform. `fake-google.ts`
+     now refuses a silent request from a page that has seen no gesture — the browser rule,
+     modelled — and `e2e/connect.spec.ts` covers both halves: a reload that keeps the session
+     without loading GIS at all, and a token lost with the tab that comes back on the first
+     tap. Reverting the mirror makes the first of them fail, which was checked.
+
+174. **The settings screen now says how full the Google account is.** Asked for alongside 173:
+     the Drive section reported the account and the last sync and nothing about space, which is
+     the one Drive fact that can stop a sync from writing. `about.get` — the call that already
+     runs on every sync to identify the account (decision 89) — returns `storageQuota` inside
+     the same `drive.appdata` grant, so the figure costs no extra request and is as current as
+     the last sync. It rides on `AccountInfo`, which the sync outcome already carries into
+     `syncState.account`, so nothing new had to be stored or plumbed.
+
+     What it says, and what it deliberately does not:
+
+     - The label is „Miejsce na koncie", not „na Dysku". Google pools Drive, Gmail and Photos
+       into one quota, so the number is about the account; this app's own folder is a few
+       hundred kilobytes of JSON and would round to nothing.
+     - Only while a session is in hand. A figure left over from a connection that has since
+       lapsed would be worse than no figure.
+     - Nothing at all when Drive reports no `usage`, or reports something unparseable — Drive
+       sends 64-bit counts as decimal strings, and „0 B" would be a confident lie. An account
+       with no `limit` says „bez limitu" rather than showing a bar with no end.
+     - Above 90% the bar turns amber and a line says what actually happens when the quota runs
+       out: the sync stops writing, and the data on the device is untouched.
+
+     The bar's width is an SVG geometry attribute, like every other bar in the app — the
+     production CSP has no `'unsafe-inline'` for styles (decision 71). `formatBytes` in
+     `text.ts` divides by 1024 and calls the result GB, which is what Drive itself does when it
+     names a 16 106 127 360-byte account „15 GB"; precision falls as the number grows, and the
+     separator is the Polish comma.
+
 ## Open questions
 
-1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216` and written to
-   the local `.env.local`; see decision 83. Still open: setting the same value as the
-   `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a secret) in GitHub, without which a
-   production build ships an empty client ID. Phase 6 is otherwise unblocked.
+> **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 27, 28 — see
+> decisions 143–156. **The pass is finished.** What is left — 15, 20, 24, 25 and 26 — is not
+> undecided but unobserved: each one now names a procedure and waits on a real device. 15 and 20
+> and 26 are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model
+> A/B in DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
+
+1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
+   local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
+   secret — `deploy.yml` reads it as `vars.`); see decision 83. Note that the v0.2.0 bundle
+   already on production was built before the variable existed and therefore carries an empty
+   client ID; the next tag fixes that. Phase 6 is unblocked.
 2. **Server prerequisites — done.** DNS, `/var/www/eatmyway`, the nginx site
    (`/etc/nginx/sites-available/eatmyway.gorny.dev`), the certificate with verified unattended
    renewal, the four `SSH_*` secrets and `DEPLOY_CHECK_TOKEN` are all in place. The only
@@ -577,44 +1937,251 @@ filtered flat list). Her decisions on each point follow.
    yet, so the site returns 502. The deploy key's public half is in the server's
    `~/.ssh/authorized_keys` for user `zyndata`; `SSH_HOST` is the raw IP because every name in
    the zone is Cloudflare-proxied and would never reach port 22.
-3. **CSP *and* COOP will have to widen in Phase 6** for Google Identity Services: `script-src`
-   and `frame-src` for `https://accounts.google.com`, and `Cross-Origin-Opener-Policy` relaxed
-   from `same-origin` to `same-origin-allow-popups` — GIS hands the token back through a popup,
-   and the stricter value severs that window reference. Both live in the Caddyfile header
-   block. Recorded now so they are decisions, not surprises.
-4. **PWA + OAuth interaction** (Phase 8): the service worker must not cache the OAuth redirect
-   or token responses. Verify explicitly when the service worker lands.
-5. **The nutrition bundle must be precached by the service worker** (Phase 8). It is fetched
-   once on first run, so a fresh install that happens to be offline at that moment has no
-   ingredients at all. Today the import simply fails and retries on the next load, which is
-   correct but not pleasant.
-6. **Foundation Foods moves twice a year.** Nothing watches for a new release; refreshing it is
-   a deliberate act (decision 32). Worth a reminder once the app is in daily use.
+3. **CSP and COOP widening — done.** Both landed exactly as predicted (decision 86), plus one
+   that was not: `script-src 'wasm-unsafe-eval'`, without which Chrome refuses to compile the
+   vault's Argon2id WebAssembly at all (decision 87). `connect-src` is unchanged. One
+   violation remains and it is Google's own, inside GIS's transient iframe — decision 88, and
+   worth rechecking whenever GIS is updated.
+4. **PWA + OAuth interaction — answered.** Decision 136: the worker declares no
+   `runtimeCaching`, so it routes precached assets and navigations *inside its own scope* and
+   nothing else. `accounts.google.com` is out of scope and the token arrives through a GIS
+   popup callback, not a redirect back to our origin, so there is nothing on that path to
+   cache. `grep` over the generated `sw.js` finds no Google host. This holds only while
+   `runtimeCaching` stays empty — SECURITY.md now lists widening it as a reportable change.
+5. **The nutrition bundle is precached — answered.** Decision 136: `globPatterns` covers the
+   hashed `ingredients-*.json`, and `e2e/pwa.spec.ts` asserts it is in the cache after the first
+   load. A fresh install that goes offline before its first run now has its ingredients.
+6. **Foundation Foods moves twice a year — answered: nothing will watch it, deliberately.**
+   Reviewed 2026-09-01 and settled: no cron, no reminder. The bundle gets refreshed *reactively*
+   — when something actually goes wrong, or when someone files a GitHub issue about a missing or
+   wrong ingredient. A watcher that fires twice a year into an empty room is a thing to maintain,
+   not a thing that helps.
+
+   Three facts checked while deciding, so the refresh does not have to be re-researched:
+
+   - **We are on the newest release.** The pinned `foundation_food_csv_2026-04-30.zip` is the
+     last entry on USDA's list.
+   - **The list is greppable**, so finding the current release costs one command — no API key,
+     no parser: `curl -sL https://fdc.nal.usda.gov/download-datasets/ | grep -o
+     'foundation_food_csv_[0-9-]*\.zip' | sort -u | tail -1`. The `.html` URL in
+     `build-nutrition.mjs` redirects there. Real cadence is April plus late autumn, but the
+     autumn date drifts (2025-12-18, not October), so guessing a URL from a date is fragile and
+     reading the list is not. SR Legacy has exactly one release, 2018-04, frozen — nothing to
+     watch there ever.
+   - **A refresh cannot quietly break a recipe.** `build-nutrition.mjs` throws when a mapped
+     `fdcId` has no complete macros in the pinned releases, so a release that drops an entry
+     fails the build loudly instead of shrinking the bundle under recipes that reference it.
+     That is what makes "refresh when it matters" a safe policy rather than a gamble.
 7. **A planned meal whose recipe was deleted — answered.** Decision 73: the day view and the
    meal view render „Usunięty przepis" when `recipeId` no longer resolves, keep the frozen
    macros, and drop the recipe section rather than pretending it is still there.
-8. **Ingredient rows cannot be reordered, and a recipe cannot be duplicated.** Neither is in
-   PLAN.md Phase 4 and neither was built. Both are obvious wants once the app is in daily use;
-   `reorderMeals` in `day.ts` is the pattern to copy if rows ever need it.
-9. **The curated mapping is a starting point, not a finished catalogue.** 1343 entries cover
-   ordinary Polish cooking, but Polish specifics with no USDA equivalent (twaróg półtłusty,
-   korzeń pietruszki) are approximated or absent. Open Food Facts is the planned second source
-   (PLAN.md, "Nutrition data") and would fill these in; user-created custom ingredients cover
-   the gap in the meantime.
-10. **Shopping-list export target and transport** (Phase 9, decision 62). Listonic has no documented
-    public import API; a share sheet / plain-text export may be the only thing that reaches it.
-    Home Assistant is reachable but only at a URL the app cannot know at build time. Resolve when
-    Phase 9 starts, and record the CSP consequence before writing any code.
-11. **Grouped library view vs. the existing ranking** (Phase 9, decision 59). Decision 46 orders the
-    library by recent activity. Grouping by tag has to decide what happens inside a section (the same
-    ranking, presumably), what happens to untagged recipes (an „Bez tagu" section), and whether a
-    recipe with three tags appears three times or once. Not decided.
-12. **The swipe-left gesture is only checked by hand.** The drag/scroll boundary is verified in
-    the browser (decision 81), but the card's own swipe is not — synthesizing a horizontal drag
-    that a browser turns into a click is the part the CDP run does not cover. The „⋮" button is
-    the path that *is* covered, and it reaches the same actions (decision 72).
-13. **The day screen re-reads the whole month grid after every write.** ~42 rows and one
-    `getDays` call, which is nothing today. It becomes worth revisiting if Phase 6 makes a read
-    cost a sync round trip; it is written so that only `load()` would have to change.
-14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
-    built here — decision 64's filter compares whole portions against kcal only.
+8. **Ingredient rows and duplicating a recipe — done.** Both landed in Phase 9. „Powiel" in the
+   library and „Zapisz jako kopię" in the editor produce an independent deep copy; the rows are
+   reorderable by drag or from the keyboard, following the `MealList` pattern. The detail this
+   question held back is decision 162: the copy **does** inherit the tags and each of them
+   **does** gain a user, through the ordinary tag delta. `photoFileId` is the one field not
+   copied, and decision 163 records why the row identity had to be renamed to `id`.
+9. **The curated mapping holds two different problems, and only one of them is dangerous.**
+   Reviewed 2026-09-01; decision 143 split what used to be one question.
+
+   **(a) Absent — answered, and not fixable by mapping.** Some Polish staples have no USDA
+   equivalent at all: „korzeń pietruszki" is the clean example, present only as natka and as
+   dried parsley, because parsley root is not a US vegetable. No amount of curation invents a
+   row that FoodData Central does not have. This tries to fail well and does: nothing matches,
+   the user sees that immediately, and a custom ingredient closes it in one step. Open Food
+   Facts remains the planned second source (PLAN.md, „Nutrition data") and is post-1.0.
+
+   **(b) Present but wrong — answered by the Phase 9 audit (decisions 159 and 160).** Six
+   sections were read row by row against the real USDA descriptions. Four entries were wrong
+   and are corrected: twaróg, „serek śmietankowy light", „płatki owsiane" and one bread name.
+   Two more are recorded as examined-and-left (kefir, kabanosy), and „kasza manna" is recorded
+   as deliberately still absent. `DATA_VERSION` is 2, so every install re-imports.
+
+   The twaróg case turned out to belong to **(a)**, not to (b): FoodData Central has no twaróg,
+   no quark and no farmer cheese at all, so the fix was to stop claiming one (decision 160). The
+   answer to „is it an outlier?" is: three others of the same kind existed, all in the most-eaten
+   part of the file, and none of them was visible without reading the source rows.
+10. **Shopping-list transport — answered; only the scope is still open.** Decision 144:
+    `navigator.share()` with a clipboard fallback, which is not a network request and therefore
+    **costs no CSP change**. A direct call to the user's own Home Assistant `todo.add_item` is
+    rejected — a per-user host cannot live in a policy baked into the image, and the workarounds
+    (a private hostname in a public repo's deploy config, an HA token in the browser, a widened
+    `connect-src`) are worse than the feature. Listonic publishes no import API, so the share
+    sheet is also the closest thing to decision 62's stated preference.
+
+    **The scope is settled and built** (decision 158): all three — one meal from the meal view,
+    the day and the week from the day screen's menu. Amounts follow `cookingScale`, never
+    `portionsEaten`.
+
+    One loose end remains, **unverified:** whether the Home Assistant companion app registers as
+    an Android share target — if it does, „share → HA" reaches the shopping list for free. Check
+    it on the phone together with open question 26; `navigator.share()` itself cannot be
+    exercised in headless Chromium (decision 166).
+11. **Grouped library view — answered by PLAN.md Phase 9 task 1** (decision 145). Inside a
+    section the activity ranking of decision 46 applies; untagged recipes get their own section;
+    a recipe with three tags appears under each of them. The task had carried those answers all
+    along while still saying „settle open question 11 first"; the wording is now fixed.
+
+    **Closed.** The order of the sections is the tag's `useCount`, descending — decision 157,
+    chosen so the sections and the filter chips above them read in the same sequence. Built in
+    Phase 9 and covered end to end.
+12. **The swipe-left gesture — mostly covered now; one path is not, and cannot be.** Decision
+    146: `e2e/swipe.spec.ts` drives a real touch drag on a phone-sized touch context through
+    CDP, and asserts the gesture rules (50 px threshold, 40 px vertical slack, direction) and
+    that the action row stops being `inert`.
+
+    What remains uncovered is the click suppression — that a swipe across the card does not also
+    open the meal. Chromium synthesizes a click from a tap, not from a CDP drag, so there is
+    nothing for `suppressClick` to swallow in a test; verified by mutation (deleting the
+    `preventDefault` leaves the suite green), and left without an assertion rather than given a
+    green one that cannot fail. Hand check on a phone, alongside open question 26. The „⋮"
+    button reaches the same actions and is covered (decision 72).
+13. **The day screen's re-read is bounded, and the scan that actually grew has been
+    windowed — answered.** Examined 2026-09-01, settled and built 2026-09-02 as decision 147.
+
+    The original worry can be dropped: `DayScreen.load` reads about 42 dates through a range
+    query over the primary key, so it costs the *window*, not the database — after five years
+    of planning it is still 42 rows. Sync did not change that either; IndexedDB stayed the
+    source of truth and a read never costs a round trip.
+
+    The real one was elsewhere: `recipeUsage()` scanned every day ever planned, on every
+    „Dodaj posiłek". It now counts a trailing year plus everything planned ahead, and the
+    library label says „w ostatnim roku" to match. `recipeReferences()` still scans the whole
+    history on purpose — see decision 147.
+
+14. **Fitting by portion size and by the other macros — answered: scheduled, and now fully
+    specified.** Reviewed 2026-09-02. This was never an open question, it was PLAN.md Phase 9
+    task 6; what was genuinely undecided inside it is settled as decision 148. Half a portion is
+    the only fraction the picker will suggest, and the other macros are shown in the header
+    rather than ranked on. Phase 5 keeps the plain kcal filter it shipped with (decision 64).
+
+15. **The live Drive round trip has never run against Google — answered: it is a hand check,
+    and it is now written down.** Narrowed by decision 107 (the flows run end to end in a real
+    browser under the production CSP, but every request is answered locally), and settled
+    2026-09-02 as decision 149: a `@live` Playwright spec was rejected — Google blocks automated
+    sign-in — in favour of a seven-point checklist in `docs/DEPLOYMENT.md`, run once on
+    production with a throwaway account after `v1.0.0`.
+
+    **Still not run.** The question closes on the method, not on the result; the result is what
+    that visit writes back here, alongside open question 26.
+
+16. **Data export — answered.** Built in Phase 8 as task 6, together with the restore the
+    acceptance criterion implies (decision 137). *Zapisz kopię* / *Wczytaj kopię* in Settings;
+    the file holds everything local except the vault, and a restore replaces rather than merges.
+17. **A vault changed on two devices at once — answered, and the swap is now reversible.**
+    Reviewed and built 2026-09-02 as decision 150. The rule itself was left alone (and is
+    narrower than this question claimed: Drive wins only when *both* sides moved), but the copy
+    it overwrites is now kept locally in `vaultFileReplaced` and Settings offers „Przywróć
+    poprzedni sejf". The old wording understated the loss — adoption locks the vault, and only
+    the other device's master password opens it — so it was rewritten too.
+
+18. **Nothing re-tries a sync that failed while the app was closed — answered: nothing will.**
+    Settled 2026-09-02 as decision 151. Not a judgement about complexity: a service worker has
+    no way to obtain a Drive token, because there is no refresh token in the browser and the
+    GIS token client needs a document. The triggers stay as decision 99 lists them, plus the
+    sync on start-up; the cost is staleness on the *other* device, never lost data.
+
+19. **The COOP `window.closed` warning is noise — answered.** Six
+    `Cross-Origin-Opener-Policy policy would block the window.closed call` warnings are logged
+    during a real sign-in, two seconds after the popup opens and four more when it completes,
+    and they looked like they might break dismissal detection: decision 86 relaxed COOP only
+    far enough to keep the `opener` reference alive, GIS is visibly being refused the `.closed`
+    read, and `google-auth.ts` has no timeout — its promise settles only through `callback` or
+    `error_callback`. Checked by hand against real Google: **closing the consent window is
+    detected and reported.** GIS does not depend on that read to notice a dismissal, so the
+    warning belongs with decision 88 — Google's own, inside Google's frame, with no observed
+    effect. It follows that `e2e/connect.spec.ts` models this correctly after all: its stub
+    calls `error_callback`, and so does the real thing.
+
+    What remains true, and is now only theoretical, is that `getAccessToken` has no timeout.
+    No path is known that reaches it, so nothing was added; if one ever turns up, the symptom
+    is `syncState.phase` stuck on `'syncing'` with „Połącz Dysk Google" disabled until reload.
+
+20. **A silent renewal after a reload asked GIS for a popup — answered on the method.** One
+    `[GSI_LOGGER]: Failed to open popup window` on a load that then succeeded. Reviewed
+    2026-09-02 as decision 152: the failure path is already correct and says so in Polish, and
+    the cause is GIS's own behaviour, which no local fake can answer. It is now point 4 of the
+    live checklist (decision 149) — reload a few times, watch the console, write down what
+    happens. Noise or fragility, that visit decides it.
+
+21. **Import determinism does NOT hold against the real model — answered on what to do about
+    it.** Measured, not assumed: two identical pastes of the same text produced different
+    drafts („2 łyżki mąki" as 30 g then 25 g, „olej do smażenia" as 30 ml then 40 ml, „pieprz
+    czarny" shortened to „pieprz"). `temperature: 0`, `topK: 1` and a fixed `seed` are all sent
+    and are not enough; a shorter prompt was stable across four runs, which points at the wobble
+    living in the judgement calls the prompt *asks* for rather than in decoding noise.
+
+    Three things make this survivable rather than serious: the draft is reviewed before it is
+    saved, a saved recipe never recomputes (`macroSnapshot` is frozen), and a name the user
+    corrects once stops reaching the model at all. What it costs is that re-importing a page is
+    not a way to reproduce a recipe. Not worth chasing with retries or self-consistency voting
+    for a single-user planner.
+
+    Settled 2026-09-02 as decision 153: the criterion — and a second one found alongside it,
+    about a link and its pasted text — stay in PLAN.md worded as intended, unchecked, each
+    annotated with what was measured. The plan is not edited to agree with the result.
+
+22. **The prompts have met the real model, and they work — answered.** First live run,
+    decision 122: 6/6 and 7/7 ingredients matched on real pages, fats quantified where the
+    source said only „olej do smażenia", amounts divided from 4 portions to 1, instructions
+    carried over, and **no nutrition value in any response**. The rules that were guesses are
+    now observations. What this did not cover: only two sites, only one model
+    (`gemini-3.6-flash`), and only a handful of recipes — nothing here says a page with a
+    two-column ingredient table or a „wersja wegańska" variant section parses cleanly. The free
+    tier also rate-limited the run at around a dozen calls a minute (429), which is the first
+    time that limit has been visible; a user importing several recipes back to back will meet
+    it, and the message for it already exists.
+
+23. **The Polish plural sweep — answered.** Done in Phase 8 (decision 139). The counts that
+    were genuinely wrong now go through `pluralPl`; „{n} razy" and „w {n} przepisach" turned out
+    to have been right all along, and portions needed a rule of their own because they can be
+    fractional (`portionWord` / `formatPortions`).
+
+24. **Which model should be the default is now a real trade-off, not an obvious answer**
+    (decision 129). `gemini-3.6-flash` allows 20 requests a day — about six link imports —
+    while `gemini-3.5-flash-lite` allows 500. The lite model is what the hpba.pl runs used, and
+    it matched 15/16 and 12/15 ingredients on real pages; `gemini-3.6-flash` matched 6/6 and
+    7/7, but on shorter recipes, so the two have never been compared on the same input. Worth
+    settling with one deliberate A/B on the same three pages before changing the default again.
+
+25. **A standing regression page for imports: kwestiasmaku's „Cukinia faszerowana mięsem i
+    ricottą w sosie pomidorowym."** The page that exposed decision 131. Everything it needs is
+    in the bundled subset — „Ser ricotta", „Cukinia", „Passata pomidorowa", „Pomidory krojone z
+    puszki" — so a correct import matches every row but one, which makes it a sharp test rather
+    than a vague one. **The exception is the meat**, and it is the page's doing, not the
+    model's: it asks for „mielone mięso (np. indyka, wieprzowego, wołowego)", so the pass mark
+    is 15 of 16 (decision 170). It has **not** been re-run against the live
+    API since the fix: the candidate half was verified offline against the real bundle, the
+    model half was not. **Re-run live on 2026-09-02** on both models (decision 168): 13/16 on
+    the lite model, 15/16 — the pass mark — on `gemini-3.6-flash`. Run it on both when
+    settling open question 24, and use the same page for both.
+
+    **Run on 2026-09-02, and half of it landed** (decision 168): on the cukinia page
+    `gemini-3.6-flash` matched 15/16 against the lite model's 13/16, and won on parsed names and
+    household measures. It then spent the rest of its 20 daily requests on 503s and never
+    reached the other two pages, which the lite model had already done 16/16 and 14/14 without a
+    failure. **Still owed: those two pages on `gemini-3.6-flash`, on a day it is not
+    overloaded** — plus the winner's determinism pass (open question 21), which has not been run
+    at all.
+
+    The default moved to `gemini-3.5-flash-lite` on the strength of that half (decision 171), so
+    what the remaining two pages settle is no longer „which default" but „how much parse quality
+    the quota is costing" — worth knowing, and no longer blocking anything.
+
+26. **Nothing has been installed on a real phone yet.** The installability criteria are
+    asserted programmatically (decision 142) and the manifest, the icons and the service worker
+    are all in place, but „it installs on Android and launches standalone" has been verified by
+    proxy, not by installing it. Do this on the first real visit to `eatmyway.gorny.dev` after
+    the `v1.0.0` release, along with open question 15's live Drive round trip — the same visit
+    can settle both, and that visit now has a written checklist (decision 149,
+    [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
+
+27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
+    argument for leaving it (a two-step red-button action, the export one click away) was
+    sound and still lost to the simpler point: the dialog described the file and said nothing
+    about the device. Built 2026-09-02 as decision 154 — the confirmation now names what is
+    about to be replaced, and says plainly when there is nothing to replace.
+
+28. **Duplicate of open question 18 — closed.** Same subject, same conclusion; the Background
+    Sync half is answered by decision 151, which rests on the worker having no way to obtain a
+    token rather than on `runtimeCaching` alone. See 18.

@@ -41,7 +41,7 @@ const META_FILE = path.join(ROOT, 'src', 'lib', 'nutrition', 'meta.ts');
  * Bump when the shape of the output changes or a release below is replaced. The app stores
  * it in IndexedDB and re-imports only when the stored value is lower.
  */
-const DATA_VERSION = 1;
+const DATA_VERSION = 2;
 
 /**
  * Pinned USDA releases. SR Legacy has been frozen since 2018 and will not move again;

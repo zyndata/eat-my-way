@@ -1,8 +1,19 @@
 import type { Day, Ingredient, Macros, PlannedMeal, Profile, Recipe, Tag } from './types';
-import type { EatMyWayDb, IngredientRecord, MetaKey, MetaValues } from './db';
+import type {
+  DriveFileRow,
+  EatMyWayDb,
+  IngredientRecord,
+  MetaKey,
+  MetaValues,
+  SyncBaselineRow
+} from './db';
+import type { IngredientCorrection } from './sync/documents';
+import { monthOf } from './sync/documents';
+import type { BackupDocument, BackupInput } from './backup';
 import {
   DEFAULT_PROFILE,
   PROFILE_KEY,
+  SCHEMA_VERSION,
   db as defaultDb,
   fromIngredientRecord,
   toIngredientRecord
@@ -25,9 +36,33 @@ import {
   type MealChanges
 } from './day';
 import { newId, type IdFactory } from './ids';
-import { resolveTags } from './tags';
-import { NO_USAGE, type RecipeListEntry, type RecipeUsage } from './recipes';
+import { countTagUses, removeTagKey, replaceTagKey, resolveTags, tagKey } from './tags';
+import {
+  NO_USAGE,
+  duplicateRecipe,
+  usageWindowStart,
+  type RecipeListEntry,
+  type RecipeUsage
+} from './recipes';
 import type { SearchCandidate } from './search';
+
+/**
+ * A copy IndexedDB will accept.
+ *
+ * Everything that reaches this module from a screen came out of a Svelte rune, and every
+ * object read out of `$state` is a `Proxy` that structured clone refuses (STATE.md decision
+ * 56). A spread only unwraps the top level, so the guard has to be deep — and it belongs
+ * here rather than at each call site, because decision 56 predicted the mistake would recur
+ * and it did: `setGoals` passed the bound goals object straight through, so „Zapisz cele"
+ * threw `DataCloneError`, wrote nothing and left the button on „Zapisywanie…" for good.
+ *
+ * JSON is the right shape for the copy: everything stored here is already JSON-serialisable
+ * — that is what keeps the Drive documents byte-identical to the spec — so a round trip
+ * loses only the `undefined` properties IndexedDB would have stored as absent anyway.
+ */
+function plain<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
 
 /** Planned meals referring to one recipe, split at "today" (STATE.md decision 49). */
 export interface RecipeReferences {
@@ -69,9 +104,10 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
   /** An emptied day loses its row rather than being stored as an empty one. */
   async function storeDay(day: Day): Promise<Day> {
-    if (day.meals.length === 0) await database.days.delete(day.date);
-    else await database.days.put(day);
-    return day;
+    const row = plain(day);
+    if (row.meals.length === 0) await database.days.delete(row.date);
+    else await database.days.put(row);
+    return row;
   }
 
   async function currentGoals(): Promise<Macros> {
@@ -119,13 +155,32 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
   }
 
   /**
+   * Recompute `useCount` for every tag from the recipes themselves, and drop the counts of
+   * tags no recipe carries to zero. Tag administration recomputes rather than patches
+   * (PLAN.md Phase 9 task 2): a merge or a colliding rename changes counts by an amount only
+   * counting can know. Must run inside a transaction that already holds both tables.
+   */
+  async function recountTags(): Promise<void> {
+    const counts = countTagUses(await database.recipes.toArray());
+    for (const tag of await database.tags.toArray()) {
+      const useCount = counts.get(tag.key) ?? 0;
+      if (tag.useCount !== useCount) await database.tags.put({ ...tag, useCount });
+    }
+  }
+
+  /**
    * How much each recipe is used, gathered in one pass over the days table. `recipeId`
    * lives inside a meal array, so IndexedDB cannot index it - see STATE.md decision 48.
+   *
+   * The pass starts at `today` minus the usage window rather than at the first day ever
+   * planned (decision 147): this runs on every „Dodaj posiłek", and a range query over the
+   * primary key costs the window, not the history. Days planned ahead are all included.
    */
-  async function recipeUsage(): Promise<Map<string, RecipeUsage>> {
+  async function recipeUsage(today: string): Promise<Map<string, RecipeUsage>> {
     const usage = new Map<string, RecipeUsage>();
+    const window = await database.days.where('date').aboveOrEqual(usageWindowStart(today)).toArray();
 
-    for (const day of await database.days.toArray()) {
+    for (const day of window) {
       for (const meal of day.meals) {
         const current = usage.get(meal.recipeId);
         if (current === undefined) {
@@ -150,13 +205,14 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     async saveProfile(profile: Profile): Promise<Profile> {
-      await database.profile.put(profile, PROFILE_KEY);
-      return profile;
+      const row = plain(profile);
+      await database.profile.put(row, PROFILE_KEY);
+      return row;
     },
 
     async setGoals(goals: Macros): Promise<Profile> {
       const current = (await database.profile.get(PROFILE_KEY)) ?? DEFAULT_PROFILE;
-      const profile: Profile = { ...current, goals };
+      const profile: Profile = plain({ ...current, goals });
       await database.profile.put(profile, PROFILE_KEY);
       return profile;
     },
@@ -171,6 +227,10 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       await database.meta.put(value, key);
     },
 
+    async deleteMeta(key: MetaKey): Promise<void> {
+      await database.meta.delete(key);
+    },
+
     // ---- ingredients ---------------------------------------------------------------
 
     async getIngredient(id: string): Promise<Ingredient | undefined> {
@@ -183,12 +243,13 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     async putIngredient(ingredient: Ingredient): Promise<Ingredient> {
-      await database.ingredients.put(toIngredientRecord(ingredient));
-      return ingredient;
+      const row = plain(ingredient);
+      await database.ingredients.put(toIngredientRecord(row));
+      return row;
     },
 
     async putIngredients(ingredients: readonly Ingredient[]): Promise<void> {
-      await database.ingredients.bulkPut(ingredients.map(toIngredientRecord));
+      await database.ingredients.bulkPut(plain([...ingredients]).map(toIngredientRecord));
     },
 
     async countIngredients(): Promise<number> {
@@ -230,6 +291,73 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       return tags.sort((a, b) => b.useCount - a.useCount || a.key.localeCompare(b.key));
     },
 
+    /**
+     * Rename a tag. When the new label normalizes to the key it already has, only the
+     * spelling changes and no recipe is touched; when it normalizes to a different key, every
+     * recipe carrying the old key is rewritten to the new one. A label that collides with
+     * another tag's key is a merge and must be routed through `mergeTags` — `planTagRename`
+     * in `tags.ts` is what tells the two apart before the user is asked.
+     */
+    async renameTag(key: string, label: string): Promise<void> {
+      await database.transaction('rw', database.recipes, database.tags, async () => {
+        const tag = await database.tags.get(key);
+        if (tag === undefined) return;
+
+        const trimmed = label.trim();
+        const nextTagKey = tagKey(trimmed);
+        if (nextTagKey === '') return;
+
+        if (nextTagKey === key) {
+          await database.tags.put({ ...tag, label: trimmed });
+          return;
+        }
+
+        const clash = await database.tags.get(nextTagKey);
+        if (clash !== undefined) throw new Error(`Tag ${nextTagKey} already exists`);
+
+        for (const recipe of await database.recipes.toArray()) {
+          if (!recipe.tags.includes(key)) continue;
+          await database.recipes.put({ ...recipe, tags: replaceTagKey(recipe.tags, key, nextTagKey) });
+        }
+
+        await database.tags.delete(key);
+        await database.tags.put({ key: nextTagKey, label: trimmed, useCount: 0 });
+        await recountTags();
+      });
+    },
+
+    /** Remove a tag from every recipe carrying it, then delete the tag itself. */
+    async deleteTag(key: string): Promise<void> {
+      await database.transaction('rw', database.recipes, database.tags, async () => {
+        for (const recipe of await database.recipes.toArray()) {
+          if (!recipe.tags.includes(key)) continue;
+          await database.recipes.put({ ...recipe, tags: removeTagKey(recipe.tags, key) });
+        }
+        await database.tags.delete(key);
+        await recountTags();
+      });
+    },
+
+    /**
+     * Fold `from` into `into`: every recipe carrying the first now carries the second, the
+     * first is deleted, and `useCount` is recomputed — a recipe that already carried both
+     * must not be counted twice, which is exactly what patching would do.
+     */
+    async mergeTags(from: string, into: string): Promise<void> {
+      if (from === into) return;
+      await database.transaction('rw', database.recipes, database.tags, async () => {
+        if ((await database.tags.get(into)) === undefined) return;
+
+        for (const recipe of await database.recipes.toArray()) {
+          if (!recipe.tags.includes(from)) continue;
+          await database.recipes.put({ ...recipe, tags: replaceTagKey(recipe.tags, from, into) });
+        }
+
+        await database.tags.delete(from);
+        await recountTags();
+      });
+    },
+
     // ---- recipes -------------------------------------------------------------------
 
     async getRecipe(id: string): Promise<Recipe | undefined> {
@@ -260,12 +388,12 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     async saveRecipe(recipe: Recipe, labels?: readonly string[]): Promise<Recipe> {
       return database.transaction('rw', database.recipes, database.tags, async () => {
         const previous = await database.recipes.get(recipe.id);
-        let stored = recipe;
+        let stored = plain(recipe);
 
         if (labels !== undefined) {
-          const { keys, created } = resolveTags(labels, await database.tags.toArray());
+          const { keys, created } = resolveTags([...labels], await database.tags.toArray());
           if (created.length > 0) await database.tags.bulkPut(created);
-          stored = { ...recipe, tags: keys };
+          stored = { ...stored, tags: keys };
         }
 
         await applyTagDelta(previous?.tags ?? [], stored.tags);
@@ -287,6 +415,26 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           .map(fromIngredientRecord)
       );
       return new Map(recipes.map((recipe) => [recipe.id, recipePortionMacros(recipe, lookup)]));
+    },
+
+    /**
+     * „Zapisz jako kopię": store an independent copy of a recipe. The copy carries the
+     * original's tags, so each of them gains a user and `useCount` is bumped through the
+     * usual delta — a second recipe really does carry the tag now (open question 8).
+     *
+     * Returns `undefined` when the id resolves to nothing, which is what a library screen
+     * showing a recipe that was deleted on another device would hit.
+     */
+    async duplicateRecipe(id: string, nextId: IdFactory = newId): Promise<Recipe | undefined> {
+      return database.transaction('rw', database.recipes, database.tags, async () => {
+        const original = await database.recipes.get(id);
+        if (original === undefined) return undefined;
+
+        const copy = duplicateRecipe(original, { id: nextId(), now: new Date().toISOString() });
+        await applyTagDelta([], copy.tags);
+        await database.recipes.put(copy);
+        return copy;
+      });
     },
 
     async deleteRecipe(id: string): Promise<void> {
@@ -461,8 +609,11 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     recipeUsage,
 
     /** Every recipe with its usage - exactly what the library screen lists. */
-    async recipeLibrary(): Promise<RecipeListEntry[]> {
-      const [recipes, usage] = await Promise.all([database.recipes.toArray(), recipeUsage()]);
+    async recipeLibrary(today: string): Promise<RecipeListEntry[]> {
+      const [recipes, usage] = await Promise.all([
+        database.recipes.toArray(),
+        recipeUsage(today)
+      ]);
       return recipes.map((recipe) => ({ recipe, usage: usage.get(recipe.id) ?? NO_USAGE }));
     },
 
@@ -516,8 +667,265 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           return refreshed;
         }
       );
+    },
+
+    // ---- sync (Phase 6) ------------------------------------------------------------
+
+    /** Everything Drive sync reads, in one pass. Bundled USDA rows are deliberately absent. */
+    async syncSnapshot(): Promise<SyncSnapshot> {
+      const [profile, recipes, tags, ingredients, corrections, days, vaultFile] = await Promise.all([
+        database.profile.get(PROFILE_KEY),
+        database.recipes.toArray(),
+        database.tags.toArray(),
+        // Only what the user created: the USDA subset ships in the build and must never be
+        // uploaded — it would be a few hundred kB of redundant public data per device.
+        database.ingredients.where('source').equals('custom').toArray(),
+        database.corrections.toArray(),
+        database.days.toArray(),
+        database.meta.get('vaultFile' satisfies MetaKey) as Promise<string | undefined>
+      ]);
+
+      return {
+        profile: profile ?? DEFAULT_PROFILE,
+        recipes,
+        tags,
+        customIngredients: ingredients.map(fromIngredientRecord),
+        corrections,
+        days,
+        vaultFile
+      };
+    },
+
+    /** The baseline hashes from the last successful sync, keyed as `merge.ts` expects. */
+    async syncBaseline(): Promise<Map<string, string>> {
+      const rows = await database.syncBaseline.toArray();
+      return new Map(rows.map((row) => [row.key, row.hash]));
+    },
+
+    /** Replace the whole baseline. It only ever describes one consistent past sync. */
+    async setSyncBaseline(baseline: ReadonlyMap<string, string>): Promise<void> {
+      const rows: SyncBaselineRow[] = [...baseline].map(([key, hash]) => ({ key, hash }));
+      await database.transaction('rw', database.syncBaseline, async () => {
+        await database.syncBaseline.clear();
+        await database.syncBaseline.bulkPut(rows);
+      });
+    },
+
+    async driveFiles(): Promise<Map<string, DriveFileRow>> {
+      const rows = await database.driveFiles.toArray();
+      return new Map(rows.map((row) => [row.name, row]));
+    },
+
+    async setDriveFiles(rows: readonly DriveFileRow[]): Promise<void> {
+      await database.transaction('rw', database.driveFiles, async () => {
+        await database.driveFiles.clear();
+        await database.driveFiles.bulkPut([...rows]);
+      });
+    },
+
+    /**
+     * Forget everything sync remembers, without touching a single row of user data. This is
+     * what "connect a different account" does: the next sync then treats both sides as new.
+     */
+    async resetSyncState(): Promise<void> {
+      await database.transaction('rw', database.syncBaseline, database.driveFiles, async () => {
+        await database.syncBaseline.clear();
+        await database.driveFiles.clear();
+      });
+    },
+
+    async allCorrections(): Promise<IngredientCorrection[]> {
+      return database.corrections.toArray();
+    },
+
+    async putCorrection(correction: IngredientCorrection): Promise<void> {
+      await database.corrections.put(plain(correction));
+    },
+
+    /**
+     * Write a merged dataset back. Each map that is present is the *complete* picture of its
+     * collection, so anything local and missing from it was deleted elsewhere and goes too.
+     * `days` is complete only for the months listed in `months` — a month nobody synced is
+     * left entirely alone.
+     */
+    async applyMergedData(merged: MergedData): Promise<void> {
+      // Six tables: the array form, because the variadic overload stops at five.
+      await database.transaction(
+        'rw',
+        [
+          database.profile,
+          database.recipes,
+          database.tags,
+          database.ingredients,
+          database.corrections,
+          database.days
+        ],
+        async () => {
+          if (merged.profile !== undefined) {
+            await database.profile.put(merged.profile, PROFILE_KEY);
+          }
+
+          if (merged.recipes !== undefined) {
+            const keep = merged.recipes;
+            const existing = await database.recipes.toCollection().primaryKeys();
+            const gone = existing.filter((id) => !keep.has(id));
+            if (gone.length > 0) await database.recipes.bulkDelete(gone);
+            await database.recipes.bulkPut([...keep.values()]);
+          }
+
+          if (merged.tags !== undefined) {
+            const keep = merged.tags;
+            const existing = await database.tags.toCollection().primaryKeys();
+            const gone = existing.filter((key) => !keep.has(key));
+            if (gone.length > 0) await database.tags.bulkDelete(gone);
+            await database.tags.bulkPut([...keep.values()]);
+          }
+
+          if (merged.ingredients !== undefined) {
+            const keep = merged.ingredients;
+            // Scoped to `custom`: the bundled USDA rows are not part of the merge at all.
+            const existing = await database.ingredients.where('source').equals('custom').primaryKeys();
+            const gone = existing.filter((id) => !keep.has(id as string));
+            if (gone.length > 0) await database.ingredients.bulkDelete(gone);
+            await database.ingredients.bulkPut([...keep.values()].map(toIngredientRecord));
+          }
+
+          if (merged.corrections !== undefined) {
+            const keep = merged.corrections;
+            const existing = await database.corrections.toCollection().primaryKeys();
+            const gone = existing.filter((key) => !keep.has(key));
+            if (gone.length > 0) await database.corrections.bulkDelete(gone);
+            await database.corrections.bulkPut([...keep.values()]);
+          }
+
+          if (merged.days !== undefined && merged.months !== undefined) {
+            const keep = merged.days;
+            const months = new Set(merged.months);
+            const existing = await database.days.toCollection().primaryKeys();
+            const gone = existing.filter((date) => months.has(monthOf(date)) && !keep.has(date));
+            if (gone.length > 0) await database.days.bulkDelete(gone);
+            // A day that merged down to no meals leaves no row, exactly as `storeDay` does.
+            const rows = [...keep.values()].filter((day) => day.meals.length > 0);
+            const emptied = [...keep.values()].filter((day) => day.meals.length === 0);
+            if (emptied.length > 0) await database.days.bulkDelete(emptied.map((day) => day.date));
+            await database.days.bulkPut(rows);
+          }
+        }
+      );
+    },
+
+    // ---- backup (Phase 8) ----------------------------------------------------------
+
+    /**
+     * Everything the export file carries. The same reading as `syncSnapshot`, minus the
+     * vault: a downloaded file must not carry the Gemini key (`backup.ts`).
+     */
+    async backupInput(): Promise<BackupInput> {
+      const [profile, recipes, tags, ingredients, corrections, days, schemaVersion] =
+        await Promise.all([
+          database.profile.get(PROFILE_KEY),
+          database.recipes.toArray(),
+          database.tags.toArray(),
+          database.ingredients.where('source').equals('custom').toArray(),
+          database.corrections.toArray(),
+          database.days.toArray(),
+          database.meta.get('schemaVersion' satisfies MetaKey) as Promise<number | undefined>
+        ]);
+
+      return {
+        profile: profile ?? DEFAULT_PROFILE,
+        recipes,
+        tags,
+        customIngredients: ingredients.map(fromIngredientRecord),
+        corrections,
+        days,
+        schemaVersion: schemaVersion ?? SCHEMA_VERSION
+      };
+    },
+
+    /**
+     * Restore a backup, replacing the user's data wholesale. Not a merge: the file is a
+     * complete picture of a database, and merging it into another one would silently keep
+     * rows the user believes they replaced.
+     *
+     * The bundled USDA ingredients are untouched — they belong to the build, not to the user
+     * — and so is the vault. What sync remembers *is* cleared: after a restore this device's
+     * data no longer descends from the last sync, and a stale baseline would let the merge
+     * read a restored row as a deletion.
+     */
+    async restoreBackup(backup: BackupDocument): Promise<void> {
+      const rows = plain({
+        profile: backup.profile,
+        recipes: backup.recipes,
+        tags: backup.tags,
+        ingredients: backup.ingredients.map(toIngredientRecord),
+        corrections: backup.corrections,
+        // An empty day has no row anywhere else in this app; a backup does not reintroduce one.
+        days: backup.days.filter((day) => day.meals.length > 0)
+      });
+
+      await database.transaction(
+        'rw',
+        [
+          database.profile,
+          database.recipes,
+          database.tags,
+          database.ingredients,
+          database.corrections,
+          database.days,
+          database.syncBaseline,
+          database.driveFiles
+        ],
+        async () => {
+          await database.profile.put(rows.profile, PROFILE_KEY);
+
+          await database.recipes.clear();
+          await database.recipes.bulkPut(rows.recipes);
+
+          await database.tags.clear();
+          await database.tags.bulkPut(rows.tags);
+
+          const customIds = await database.ingredients.where('source').equals('custom').primaryKeys();
+          if (customIds.length > 0) await database.ingredients.bulkDelete(customIds);
+          await database.ingredients.bulkPut(rows.ingredients);
+
+          await database.corrections.clear();
+          await database.corrections.bulkPut(rows.corrections);
+
+          await database.days.clear();
+          await database.days.bulkPut(rows.days);
+
+          await database.syncBaseline.clear();
+          await database.driveFiles.clear();
+        }
+      );
     }
   };
+}
+
+/** Everything Drive sync reads out of IndexedDB. */
+export interface SyncSnapshot {
+  profile: Profile;
+  recipes: Recipe[];
+  tags: Tag[];
+  /** `source: 'custom'` only — the bundled USDA subset never travels. */
+  customIngredients: Ingredient[];
+  corrections: IngredientCorrection[];
+  days: Day[];
+  /** Raw `vault.json` text, or `undefined` when this device has never seen one. */
+  vaultFile: string | undefined;
+}
+
+/** A merged dataset on its way back into IndexedDB. Absent members are left untouched. */
+export interface MergedData {
+  profile?: Profile;
+  recipes?: ReadonlyMap<string, Recipe>;
+  tags?: ReadonlyMap<string, Tag>;
+  ingredients?: ReadonlyMap<string, Ingredient>;
+  corrections?: ReadonlyMap<string, IngredientCorrection>;
+  days?: ReadonlyMap<string, Day>;
+  /** Which months `days` is authoritative for. */
+  months?: readonly string[];
 }
 
 export type Repository = ReturnType<typeof createRepository>;

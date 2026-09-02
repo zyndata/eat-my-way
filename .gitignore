@@ -42,3 +42,9 @@ dev-dist/
 
 # Claude Code local overrides (machine-specific; the shared settings.json is committed)
 .claude/settings.local.json
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/.env.e2e

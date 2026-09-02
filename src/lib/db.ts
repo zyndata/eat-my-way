@@ -1,5 +1,7 @@
 import Dexie, { type Table, type Transaction } from 'dexie';
 import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
+import type { IngredientCorrection } from './sync/documents';
+import type { RecipeSort } from './recipes';
 import { normalizeKey } from './text';
 
 /**
@@ -13,7 +15,7 @@ import { normalizeKey } from './text';
 export const DB_NAME = 'eat-my-way';
 
 /** Latest schema version. Bump together with a new `version(n)` block below. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** The profile is a single row under a fixed outbound key. */
 export const PROFILE_KEY = 1;
@@ -21,8 +23,33 @@ export const PROFILE_KEY = 1;
 /** Defaults for a profile the user has not filled in yet (PLAN.md first-run wizard). */
 export const DEFAULT_GOALS: Macros = { kcal: 2000, protein: 100, carbs: 250, fat: 70 };
 
-/** Free-tier catalogs change, so this is a default, never a hardcoded assumption. */
-export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+/**
+ * Free-tier catalogs change, so this is a default, never a hardcoded assumption — and it has
+ * already changed twice. PLAN.md named `gemini-2.5-flash`; against a key issued now, that model
+ * is still listed by `models.list` but `generateContent` answers 404 „no longer available to
+ * new users", so the import failed every time (STATE.md decision 120). Settings still override
+ * it, and `client.ts` reads Google's own replacement out of a 404 and names it to the user.
+ *
+ * The second change picks the model a beginner cannot exhaust rather than the one that parses
+ * best (STATE.md decision 171). `gemini-3.6-flash` reads a recipe better — 15 of 16 rows against
+ * 13 on the page both models were measured on — but the free tier gives it 20 requests a day,
+ * about six link imports, and it answers 503 often enough that a retry can end the day. The lite
+ * model has 500. The two rows it loses land in the editor as empty ones, cost a tap each, and
+ * are remembered as corrections; an exhausted quota costs the whole import.
+ */
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
+/**
+ * The default this app shipped before `gemini-3.6-flash`, and the only model name it will ever
+ * overwrite on its own (STATE.md decision 123).
+ *
+ * A profile created by an earlier build stores `gemini-2.5-flash` because *this app* put it
+ * there, not because anyone chose it — and it now 404s, so that profile can never import
+ * anything until someone edits the field by hand. Migrating exactly this one value is a fix to
+ * our own bad default; a model the user actually typed is never touched, and no catalogue of
+ * Google's retired models is hardcoded anywhere (PLAN.md: „free-tier catalogs change").
+ */
+export const PREVIOUS_DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
 
 export const DEFAULT_PROFILE: Profile = {
   goals: DEFAULT_GOALS,
@@ -48,6 +75,35 @@ export interface MetaValues {
   driveModifiedTime: string;
   /** When the last successful sync finished (Phase 6). */
   lastSyncedAt: string;
+  /**
+   * The raw text of `vault.json` as this device last saw it. The vault is opaque to the rest
+   * of the app and must be readable offline, so it is cached here verbatim rather than being
+   * unpacked into rows.
+   */
+  vaultFile: string;
+  /**
+   * The `vault.json` this device held just before sync adopted Drive's copy (STATE.md
+   * decision 93), kept so the swap can be undone — the two files may have different master
+   * passwords, in which case the adopted one cannot be opened here at all (decision 150).
+   * Absent whenever there is nothing to undo. It never leaves the device.
+   */
+  vaultFileReplaced: string;
+  /** Display name of the connected Drive account. Identity itself lives in `Profile.googleSub`. */
+  driveAccountLabel: string;
+  /**
+   * Random id for this device, minted on first use and never sent anywhere except into this
+   * account's own `profile.json`, as the key of its Gemini usage tally. It identifies a browser
+   * profile to its own owner and nothing else — no fingerprinting, no cross-account meaning.
+   */
+  deviceId: string;
+  /**
+   * How the recipe library is ordered, and whether it is grouped by tag (Phase 9 tasks 1 and
+   * 4). Deliberately in `meta` rather than in `Profile`: `meta` never travels to Drive, and
+   * how a list is drawn is a property of the screen in front of you, not of the account —
+   * a phone and a laptop may reasonably disagree.
+   */
+  recipeSort: RecipeSort;
+  recipeGrouped: boolean;
 }
 
 export type MetaKey = keyof MetaValues;
@@ -74,6 +130,32 @@ export const SCHEMA_V1: Record<string, string> = {
 export const SCHEMA_V2: Record<string, string> = {
   ingredients: 'id, name, source, nameKey, *aliasKeys'
 };
+
+/**
+ * Version 3 adds what sync needs (Phase 6): the per-entity baseline hashes the three-way
+ * merge compares against, the Drive version of each file, and the Polish-name corrections
+ * that travel in `ingredients.json`.
+ */
+export const SCHEMA_V3: Record<string, string> = {
+  syncBaseline: 'key',
+  driveFiles: 'name',
+  corrections: 'nameKey'
+};
+
+/** One entity's content hash as of the last successful sync. See `sync/merge.ts`. */
+export interface SyncBaselineRow {
+  /** Namespaced: `day:2026-09-03`, `recipe:<id>`, `profile`, … */
+  key: string;
+  hash: string;
+}
+
+/** The Drive identity and version of one logical file. */
+export interface DriveFileRow {
+  /** Logical name, e.g. `days/2026-09.json`. */
+  name: string;
+  fileId: string;
+  modifiedTime: string;
+}
 
 /**
  * How many times each schema upgrade has run in this process. Exists so the migration test
@@ -122,6 +204,12 @@ export class EatMyWayDb extends Dexie {
   profile!: Table<Profile, number>;
   /** Key/value bookkeeping, outbound keys from `MetaKey`. */
   meta!: Table<unknown, MetaKey>;
+  /** Content hashes at the last successful sync — the baseline of the three-way merge. */
+  syncBaseline!: Table<SyncBaselineRow, string>;
+  /** Drive file ids and `modifiedTime`s, so a sync knows what it last saw. */
+  driveFiles!: Table<DriveFileRow, string>;
+  /** Polish name -> ingredient id, taught by the user (Phase 7, synced from Phase 6). */
+  corrections!: Table<IngredientCorrection, string>;
 
   constructor(name: string = DB_NAME) {
     super(name);
@@ -140,6 +228,15 @@ export class EatMyWayDb extends Dexie {
             Object.assign(row, ingredientIndexKeys(row));
           });
         await tx.table('meta').put(2, 'schemaVersion' satisfies MetaKey);
+      });
+
+    this.version(3)
+      .stores(SCHEMA_V3)
+      .upgrade(async (tx) => {
+        recordUpgrade(3);
+        // The new tables start empty: an unsynced device has no baseline, which is exactly
+        // "nothing has ever been synced" and makes the first merge take both sides.
+        await tx.table('meta').put(3, 'schemaVersion' satisfies MetaKey);
       });
 
     // Runs only for a database created from scratch — never on an upgrade.

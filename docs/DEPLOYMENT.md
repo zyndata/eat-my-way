@@ -188,6 +188,45 @@ git checkout dev && git merge main              # pick up the CHANGELOG commit
 Watch it: `gh run list --workflow=deploy.yml --limit 3`, then `gh run watch <id> --exit-status`.
 The workflow's final step asserts that https://eatmyway.gorny.dev/ returns 200.
 
+## The first live sign-in (run once, then record it)
+
+Every Google request in the test suite is answered locally (STATE.md decision 107), so the client
+is verified against the Drive API *as documented*, never as it behaves. This checklist is the
+only thing that closes that gap — STATE.md open question 15, and decision 149 for why it is a
+hand run rather than a `@live` spec.
+
+Run it **once, on https://eatmyway.gorny.dev, with a throwaway Google account and a throwaway
+day of data**, right after the `v1.0.0` release. Install the PWA on a phone in the same visit and
+open question 26 is settled too. Write the outcome of each point into STATE.md — a point that
+behaved as expected is as much a result as one that did not.
+
+1. **The consent screen.** „Połącz z Google" from Settings. Check what Google actually names the
+   scope, that the app is not flagged as unverified in a way that scares a user off, and that
+   dismissing the popup leaves a readable Polish message rather than a stuck spinner.
+2. **The identity line.** After consenting, Settings should name the account. It comes from
+   `about.get`, the only identity an appdata-only grant exposes (`drive.ts`), and it is unverified
+   whether Google fills `user.emailAddress` for this scope or only `permissionId` — if the label
+   is empty or a bare id, that is the finding.
+3. **A round trip.** Plan a meal, wait for the sync to settle, then reload with an empty cache and
+   confirm it comes back. `appDataFolder` is invisible in the Drive UI, so the app is the only
+   window onto it.
+4. **The silent grant.** Close the tab and open it again. Load asks for a token with `prompt: ''`
+   and must succeed without a popup; a popup here means the silent path does not work in
+   practice, which is the whole premise of "no refresh token in the browser". **Watch the
+   console** while it happens: `[GSI_LOGGER]: Failed to open popup window` has been seen once on
+   a load that then succeeded (open question 20), and whether that is GIS noise or a silent path
+   that genuinely needs a window can only be told here. Reload several times, with the popup
+   blocker in its default setting, and record what the console says each time.
+5. **Token expiry.** Leave the tab open for over an hour (the grant is ~3600 s minus the margin
+   in `google-auth.ts`), then edit something. The sync must recover on its own. This is the point
+   most likely to fail and the least likely to be noticed.
+6. **A real conflict.** Two browsers, same account, both offline, both edit the same day, then
+   both come back. Expect the same-day prompt the engine shows, driven by Drive's own
+   `modifiedTime` — whose resolution and update semantics under a racing write are exactly what
+   the fake cannot vouch for.
+7. **Revocation.** „Odłącz" in Settings, then reload: the app must fall back to local-only with a
+   readable message and must not lose the local database.
+
 ## Rollback
 
 Every release builds `eat-my-way:<tag>` alongside `eat-my-way:latest`, so the previous version is
@@ -212,7 +251,7 @@ their browser's IndexedDB and their own Google Drive.
 | Site loads, app blank, console full of CSP errors | The Caddyfile's policy is out of date with what the app now loads. Reproduce locally with `npm run docker:up` |
 | Duplicate `Content-Security-Policy` headers | Security headers were also added to the nginx block — remove them there |
 | Google login fails only in production | Origin missing from the OAuth client, or `VITE_GOOGLE_CLIENT_ID` not set as a repo variable at build time |
-| Old version still served after a deploy | Service worker cache — hard-reload; check the workflow actually reached the `deploy` job |
+| Old version still served after a deploy | The service worker is registered `prompt`-style: an open tab keeps the running version until the user answers „Jest nowa wersja… → Odśwież". A closed-and-reopened tab picks it up on its own. If neither does, hard-reload and check the workflow actually reached the `deploy` job |
 | `403` with a `cf-mitigated: challenge` header | Cloudflare's WAF answered, the request never reached the VM. Bypass the edge with `curl --resolve …:443:127.0.0.1` |
 | `522` from Cloudflare | Cloudflare could not reach the origin — inbound `:80` is closed at the GCP VPC firewall, or a stale `AAAA` record points at a host that does not exist |
 | certbot: `Could not automatically find a matching server block` | A non-UTF-8 byte in an nginx config file. Find it with `LC_ALL=C.UTF-8 grep -naxv '.*' <file>` |

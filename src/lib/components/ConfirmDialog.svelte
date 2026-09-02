@@ -31,6 +31,14 @@
 
   let dialog = $state<HTMLDialogElement>();
 
+  /**
+   * Unique per instance. A hardcoded id was fine while one screen held one dialog and became
+   * wrong the moment a second appeared: every `aria-labelledby` on the page then resolved to
+   * the *first* matching heading, so all of Settings' dialogs announced one title.
+   */
+  const uid = $props.id();
+  const titleId = `confirm-dialog-title-${uid}`;
+
   // The parent owns `open`; this only mirrors it onto the element.
   $effect(() => {
     const element = dialog;
@@ -43,14 +51,14 @@
 <dialog
   bind:this={dialog}
   class="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-(--color-border) bg-(--color-surface-raised) p-5 text-(--color-ink) shadow-xl backdrop:bg-black/40"
-  aria-labelledby="confirm-dialog-title"
+  aria-labelledby={titleId}
   oncancel={(event) => {
     // Escape: let the parent close it by flipping `open`, so both paths behave alike.
     event.preventDefault();
     oncancel();
   }}
 >
-  <h2 id="confirm-dialog-title" class="text-base font-semibold">{title}</h2>
+  <h2 id={titleId} class="text-base font-semibold">{title}</h2>
 
   {#if children}
     <div class="pt-2 text-sm text-(--color-ink-muted)">{@render children()}</div>

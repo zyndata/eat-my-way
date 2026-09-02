@@ -9,10 +9,20 @@
     scaleMacros
   } from '../lib/macros';
   import { findMeal } from '../lib/day';
-  import { addDays, formatDayLong, isDateKey, relativeDayLabel, todayDate } from '../lib/dates';
+  import { portionWord } from '../lib/text';
+  import {
+    addDays,
+    formatDayLong,
+    formatDayMonth,
+    isDateKey,
+    relativeDayLabel,
+    todayDate
+  } from '../lib/dates';
   import { repository } from '../lib/repository';
+  import { scheduleSync } from '../lib/sync/state.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
+  import ShoppingListSheet from '../lib/components/ShoppingListSheet.svelte';
 
   /**
    * `/day/:date/:mealId` — one planned meal, in PLAN.md's order: name, the recipe, the
@@ -43,6 +53,7 @@
   /** Ids of tomorrow's meals from this same recipe — what „Dodaj też jutro" reflects. */
   let tomorrowMeals = $state<string[]>([]);
   let uncheckOpen = $state(false);
+  let shoppingOpen = $state(false);
 
   const alreadyTomorrow = $derived(tomorrowMeals.length > 0);
 
@@ -120,12 +131,14 @@
     scale = clampScale(value);
     if (meal === undefined) return;
     await repository.updateMeal(date, mealId, { cookingScale: scale });
+    scheduleSync();
   }
 
   async function setPortions(value: number): Promise<void> {
     portions = clampPortions(value);
     if (meal === undefined) return;
     await repository.updateMeal(date, mealId, { portionsEaten: portions });
+    scheduleSync();
   }
 
   /** „Gotuję na 2 dni": scale to 2 and drop a one-portion copy on tomorrow. */
@@ -133,6 +146,7 @@
     if (meal === undefined || alreadyTomorrow) return;
     await repository.cookAlsoOn(date, mealId, tomorrow, { scale: Math.max(2, scale) });
     await load(date, mealId);
+    scheduleSync();
   }
 
   /**
@@ -150,6 +164,7 @@
     await repository.removeMealFromDay(tomorrow, last);
     if (scale === 2) await repository.updateMeal(date, mealId, { cookingScale: 1 });
     await load(date, mealId);
+    scheduleSync();
   }
 </script>
 
@@ -274,8 +289,20 @@
           <NavIcon path={PLUS} class="size-4" />
         </button>
         <span class="text-sm text-(--color-ink-muted)">
-          {scale === 1 ? 'porcja' : 'porcji'}
+          {portionWord(scale)}
         </span>
+      </div>
+
+      <div class="pt-4">
+        <!-- The shopping list belongs next to „ile gotuję": it is the number it reflects
+             (PLAN.md Phase 9 task 7). A day's or a week's list lives on the day screen. -->
+        <button
+          type="button"
+          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          onclick={() => (shoppingOpen = true)}
+        >
+          Lista zakupów
+        </button>
       </div>
 
       <div class="pt-4">
@@ -342,7 +369,7 @@
           <NavIcon path={PLUS} class="size-4" />
         </button>
         <span class="text-sm text-(--color-ink-muted)">
-          {portions === 1 ? 'porcja' : 'porcji'}
+          {portionWord(portions)}
         </span>
       </div>
 
@@ -394,6 +421,14 @@
     {/if}
   {/if}
 {/if}
+
+<ShoppingListSheet
+  open={shoppingOpen}
+  title="Lista zakupów — {recipe?.name ?? 'posiłek'}, {formatDayMonth(date)}"
+  dates={[date]}
+  {mealId}
+  onclose={() => (shoppingOpen = false)}
+/>
 
 <ConfirmDialog
   open={uncheckOpen}

@@ -15,7 +15,38 @@
 </script>
 
 <Screen title="O aplikacji" lead="Skąd pochodzą dane i na jakich zasadach są używane.">
+  <!-- The questions the first end-user review actually asked: where recipes come from, and
+       what the app does with Drive (STATE.md decision 61). -->
   <section class="space-y-3">
+    <h2 class="text-base font-semibold">Jak to działa</h2>
+    <p class="text-sm text-(--color-ink-muted)">
+      <strong class="font-medium text-(--color-ink)">Przepisy są Twoje.</strong>
+      Wpisujesz je sam albo wklejasz link czy tekst z bloga — wtedy Gemini rozkłada przepis na
+      składniki i ilości. Aplikacja nie ma własnej bazy przepisów i nie szuka ich w internecie
+      za Ciebie.
+    </p>
+    <p class="text-sm text-(--color-ink-muted)">
+      <strong class="font-medium text-(--color-ink)">Kalorie nie są zgadywane.</strong>
+      Wartości odżywcze pochodzą wyłącznie z wbudowanej bazy USDA, przeliczanej na miejscu.
+      Model językowy nigdy nie podaje liczb — dzięki temu ten sam posiłek zawsze liczy się tak
+      samo, a zapisany posiłek zachowuje wartości z dnia, w którym go zaplanowałeś.
+    </p>
+    <p class="text-sm text-(--color-ink-muted)">
+      <strong class="font-medium text-(--color-ink)">Dysk Google to kopia zapasowa, nie
+        źródło przepisów.</strong>
+      Dane trzymamy w przeglądarce (IndexedDB) i to one są źródłem prawdy; Dysk służy tylko do
+      przeniesienia ich na inne urządzenie. Aplikacja zapisuje w prywatnym folderze aplikacji i
+      <strong class="font-medium text-(--color-ink)">nie widzi żadnego innego pliku na Twoim
+        Dysku</strong> — nie może go otworzyć ani wyszukać.
+    </p>
+    <p class="text-sm text-(--color-ink-muted)">
+      <strong class="font-medium text-(--color-ink)">Działa offline.</strong>
+      Kalendarz, przepisy i edycja nie wymagają połączenia. Internetu potrzebują tylko dwie
+      rzeczy: synchronizacja z Dyskiem i import przepisu.
+    </p>
+  </section>
+
+  <section class="space-y-3 pt-6">
     <h2 class="text-base font-semibold">Dane o wartościach odżywczych</h2>
     <p class="text-sm text-(--color-ink-muted)">{NUTRITION_ATTRIBUTION}</p>
     <p class="text-sm text-(--color-ink-muted)">
