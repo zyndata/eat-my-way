@@ -56,6 +56,8 @@ test('a backup taken on one device restores the whole calendar on a fresh one', 
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText(/zawiera\s+1\s+przepis/);
   await expect(dialog).toContainText(/1\s+zaplanowany dzień/);
+  // ...and, on a device with nothing on it, that there is nothing to lose (decision 154).
+  await expect(dialog).toContainText('nie ma jeszcze nic, co mogłoby zostać zastąpione');
   // The restore reloads the page — waited for, or the navigation below races it.
   await Promise.all([
     fresh.waitForEvent('load'),
@@ -68,6 +70,14 @@ test('a backup taken on one device restores the whole calendar on a fresh one', 
 
   await fresh.goto('#/');
   await expect(fresh.getByRole('link', { name: /Owsianka/ }).first()).toBeVisible();
+
+  // The same device is no longer empty, so the dialog now names what would be lost.
+  await fresh.goto('#/settings');
+  await fresh.locator('input[type="file"]').setInputFiles(file);
+  const second = fresh.getByRole('dialog', { name: 'Wczytać kopię i zastąpić dane?' });
+  await expect(second).toContainText(/Zastąpi to, co jest teraz na tym urządzeniu:\s+1\s+przepis/);
+  await expect(second).toContainText(/1\s+zaplanowany dzień/);
+  await second.getByRole('button', { name: 'Anuluj' }).click();
 });
 
 test('a file that is not one of ours is refused without touching anything', async ({ device }) => {

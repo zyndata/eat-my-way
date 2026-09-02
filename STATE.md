@@ -1484,11 +1484,34 @@ one of which broke the feature outright.
      before it is saved; a saved recipe never recomputes; and a name corrected once stops
      reaching the model at all.
 
+154. **The restore dialog now says what goes, not only what arrives.** Open question 27 argued
+     the omission was safe because a restore is already a two-step red-button action with the
+     export one click away. True, and beside the point: the dialog was describing the file the
+     user just chose — the half they already know — and staying silent about the device, which
+     is the half that stops the mistake. Reversed on 2026-09-02 and built.
+
+     „Kopia z … zawiera 3 przepisy…" is now followed by „Zastąpi to, co jest teraz na tym
+     urządzeniu: 7 przepisów i 40 zaplanowanych dni (96 posiłków)", counted through
+     `backupInput()` + `summarizeBackup()` — the same path the export takes, so the two numbers
+     are comparable by construction rather than by a second counting rule. A device with nothing
+     on it says so instead of reciting three zeros, which is the case a first restore actually
+     hits. `e2e/backup.spec.ts` covers both branches: the fresh device, then the same device
+     once it holds the restored data.
+
+155. **Open question 28 was open question 18 twice.** Both say nothing re-tries a sync that
+     failed while the app was closed; 28 adds Workbox's Background Sync and the `runtimeCaching`
+     objection from decision 136. Merged into 18 on 2026-09-02 and settled there by decision
+     151, whose reason is stronger than either wording had: the worker could not authenticate
+     even if the plumbing were free.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21 — see decisions
-> 143–153. **Next up: 24.** Still unreviewed after it: 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 27, 28 — see
+> decisions 143–155. **Left: 24, 25 and 26**, and none of the three can be settled from a
+> keyboard: 24 and 25 need one deliberate A/B of the two models on the same live pages, and 26
+> needs an Android phone. All three are now procedures waiting on a real device, not open
+> design questions.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1721,14 +1744,12 @@ one of which broke the feature outright.
     can settle both, and that visit now has a written checklist (decision 149,
     [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
 
-27. **A restore is not offered a preview of what it replaces.** The confirmation dialog says
-    what the file contains („3 przepisy, 12 zaplanowanych dni…") but not what is about to be
-    lost. On a device that is about to be overwritten by an old backup, that is the more useful
-    half of the sentence. Cheap to add; deliberately not added, because a restore is already a
-    two-step, red-button action and the export is one click away first.
+27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
+    argument for leaving it (a two-step red-button action, the export one click away) was
+    sound and still lost to the simpler point: the dialog described the file and said nothing
+    about the device. Built 2026-09-02 as decision 154 — the confirmation now names what is
+    about to be replaced, and says plainly when there is nothing to replace.
 
-28. **Nothing re-tries a sync that failed while the app was closed — still true, and the
-    service worker did not change it** (open question 18). Workbox's Background Sync was
-    considered and not used: it would mean a runtime-caching plugin in the worker, which is the
-    one thing decision 136 keeps out of it, and a single-user planner that syncs on focus,
-    on `online` and every five minutes has no gap worth that.
+28. **Duplicate of open question 18 — closed.** Same subject, same conclusion; the Background
+    Sync half is answered by decision 151, which rests on the worker having no way to obtain a
+    token rather than on `runtimeCaching` alone. See 18.

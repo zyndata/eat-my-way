@@ -28,6 +28,11 @@
   /** Parsed and validated, waiting for the user to confirm that it replaces what is here. */
   let pending: BackupDocument | null = null;
   let summary = $state<BackupSummary | null>(null);
+  /**
+   * What this device holds right now, counted the same way as the file. „What you are about to
+   * lose" is the half of the sentence that actually stops a mistake (STATE.md decision 154).
+   */
+  let current = $state<BackupSummary | null>(null);
   let restoring = $state(false);
 
   let fileInput = $state<HTMLInputElement | null>(null);
@@ -65,10 +70,12 @@
     try {
       const backup = readBackup(await file.text());
       pending = backup;
+      current = summarizeBackup(buildBackup(await repository.backupInput()));
       summary = summarizeBackup(backup);
     } catch (cause) {
       pending = null;
       summary = null;
+      current = null;
       error =
         cause instanceof BackupError
           ? cause.message
@@ -151,6 +158,7 @@
   oncancel={() => {
     pending = null;
     summary = null;
+    current = null;
   }}
 >
   {#if summary !== null}
@@ -166,7 +174,21 @@
       one: 'własny składnik',
       few: 'własne składniki',
       many: 'własnych składników'
-    })}. Wszystko, co jest teraz na tym urządzeniu, zostanie zastąpione. Sejf i wbudowana baza
-    składników zostają nietknięte.
+    })}.
   {/if}
+  {#if current !== null && current.recipes === 0 && current.days === 0}
+    Na tym urządzeniu nie ma jeszcze nic, co mogłoby zostać zastąpione.
+  {:else if current !== null}
+    Zastąpi to, co jest teraz na tym urządzeniu: {current.recipes}
+    {pluralPl(current.recipes, { one: 'przepis', few: 'przepisy', many: 'przepisów' })}
+    i {current.days}
+    {pluralPl(current.days, {
+      one: 'zaplanowany dzień',
+      few: 'zaplanowane dni',
+      many: 'zaplanowanych dni'
+    })}
+    ({current.meals}
+    {pluralPl(current.meals, { one: 'posiłek', few: 'posiłki', many: 'posiłków' })}).
+  {/if}
+  Sejf i wbudowana baza składników zostają nietknięte.
 </ConfirmDialog>
