@@ -19,9 +19,12 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
-Phase 8 is done except for its ninth task, `v1.0.0` — releasing is a separate act through the
-`/release` skill, not something a phase does (decision 141). The app is feature-complete for
-1.0 and waiting on that tag.
+Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
+which is where a release belongs — not inside a phase (decision 141). Live at
+https://eatmyway.gorny.dev. What that release does *not* settle is open questions 15 and 26:
+the first live Drive round trip and the first install on a real phone, both still verified by
+proxy only. The checklist for that visit is in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it).
 
 ## Decisions
 
