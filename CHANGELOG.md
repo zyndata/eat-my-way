@@ -38,9 +38,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 8 — installable offline PWA, data backup and the 1.0 polish
 - **vault:** Keep the vault Drive overwrote, so the swap can be undone
 - **backup:** Say what a restore replaces, not only what it brings in
+- Phase 9 — daily-use comfort
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
