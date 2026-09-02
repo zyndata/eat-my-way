@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addDays,
+  addYears,
   dayOfMonth,
   daysBetween,
   formatDayLong,
@@ -53,6 +54,17 @@ describe('parseDateKey', () => {
     expect([date.getFullYear(), date.getMonth(), date.getDate(), date.getHours()]).toEqual([
       2026, 8, 7, 12
     ]);
+  });
+});
+
+describe('addYears', () => {
+  it('keeps the same day of the month', () => {
+    expect(addYears('2026-09-02', -1)).toBe('2025-09-02');
+    expect(addYears('2026-01-01', -1)).toBe('2025-01-01');
+  });
+
+  it('moves 29 February onto 1 March, which is the only day without a counterpart', () => {
+    expect(addYears('2028-02-29', -1)).toBe('2027-03-01');
   });
 });
 

@@ -48,6 +48,16 @@ export function addDays(key: string, days: number): string {
   return toDateKey(date);
 }
 
+/**
+ * `years` calendar years after `key` (negative goes back). 29 February in a leap year has
+ * no counterpart, so it lands on 1 March, which is what `Date` does anyway.
+ */
+export function addYears(key: string, years: number): string {
+  const date = parseDateKey(key);
+  date.setFullYear(date.getFullYear() + years);
+  return toDateKey(date);
+}
+
 /** Whole days from `from` to `to`; negative when `to` is earlier. */
 export function daysBetween(from: string, to: string): number {
   const millis = parseDateKey(to).getTime() - parseDateKey(from).getTime();

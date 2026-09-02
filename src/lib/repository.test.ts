@@ -3,6 +3,7 @@ import { createRepository, type Repository } from './repository';
 import type { EatMyWayDb } from './db';
 import { DEFAULT_PROFILE } from './db';
 import { dayTotals } from './macros';
+import { addDays, addYears } from './dates';
 import type { Recipe } from './types';
 import { chicken, freshDb, ingredients, item, macros, makeRecipe, seqIds } from '../test/fixtures';
 
@@ -317,13 +318,25 @@ describe('recipe usage', () => {
     await repo.addRecipeToDay(WEDNESDAY, recipe.id);
     await repo.addRecipeToDay(WEDNESDAY, recipe.id);
 
-    const [entry] = await repo.recipeLibrary();
+    const [entry] = await repo.recipeLibrary(TUESDAY);
     expect(entry?.usage).toEqual({ plannedCount: 3, lastPlannedDate: WEDNESDAY });
   });
 
   it('reports a never-planned recipe as unused', async () => {
     await seedRecipe();
-    expect((await repo.recipeLibrary())[0]?.usage).toEqual({ plannedCount: 0 });
+    expect((await repo.recipeLibrary(TUESDAY))[0]?.usage).toEqual({ plannedCount: 0 });
+  });
+
+  // Decision 147: the scan is a range query over a trailing year, not over the history.
+  it('ignores days older than the usage window and keeps everything planned ahead', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay('2024-01-01', recipe.id);
+    await repo.addRecipeToDay(addYears(TUESDAY, -1), recipe.id); // the first day still inside
+    await repo.addRecipeToDay(addDays(addYears(TUESDAY, -1), -1), recipe.id); // one day outside
+    await repo.addRecipeToDay('2030-06-01', recipe.id);
+
+    const [entry] = await repo.recipeLibrary(TUESDAY);
+    expect(entry?.usage).toEqual({ plannedCount: 2, lastPlannedDate: '2030-06-01' });
   });
 
   it('splits references into past and future at the given date', async () => {

@@ -3,6 +3,7 @@
   import type { RecipeListEntry } from '../recipes';
   import { filterByBudget, searchRecipes } from '../recipes';
   import { dayBudget } from '../calendar';
+  import { todayDate } from '../dates';
   import { repository } from '../repository';
   import BottomSheet from './BottomSheet.svelte';
 
@@ -58,7 +59,7 @@
   async function load(): Promise<void> {
     loading = true;
     const [library, allTags] = await Promise.all([
-      repository.recipeLibrary(),
+      repository.recipeLibrary(todayDate()),
       repository.allTags()
     ]);
     entries = library;

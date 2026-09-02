@@ -4,6 +4,7 @@
   import type { RecipeListEntry } from '../lib/recipes';
   import { searchRecipes } from '../lib/recipes';
   import { pluralPl } from '../lib/text';
+  import { todayDate } from '../lib/dates';
   import { repository } from '../lib/repository';
 
   /**
@@ -28,7 +29,10 @@
 
   async function load(): Promise<void> {
     loading = true;
-    const [library, allTags] = await Promise.all([repository.recipeLibrary(), repository.allTags()]);
+    const [library, allTags] = await Promise.all([
+      repository.recipeLibrary(todayDate()),
+      repository.allTags()
+    ]);
     entries = library;
     tags = allTags;
     macros = await repository.recipeMacros(library.map((entry) => entry.recipe));
@@ -152,8 +156,9 @@
                 many: 'składników'
               })}
               {#if entry.usage.plannedCount > 0}
+                <!-- „w ostatnim roku": the count is windowed, see STATE.md decision 147. -->
                 · zaplanowany {entry.usage.plannedCount}
-                {entry.usage.plannedCount === 1 ? 'raz' : 'razy'}
+                {entry.usage.plannedCount === 1 ? 'raz' : 'razy'} w ostatnim roku
               {/if}
             </span>
 

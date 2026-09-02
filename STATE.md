@@ -1336,12 +1336,35 @@ one of which broke the feature outright.
      written for it, deliberately: one that cannot fail reads like coverage and is worse than
      having none. That path remains a hand check on a real phone.
 
+147. **The library ranking counts a trailing year, not the whole history — and says so.** Open
+     question 13 asked whether the day screen's re-read grows with the database. It does not:
+     `DayScreen.load` reads a fixed ~42-date window through a range query over the primary key,
+     so it is bounded by construction. The scan that *did* grow was one the question never
+     mentioned — `recipeUsage()` called `days.toArray()`, every day ever planned, from inside
+     `recipeLibrary()`, which both `/recipes` and `RecipePicker` use. That put an O(history)
+     pass on the most frequent interaction in the app: every „Dodaj posiłek".
+
+     Settled 2026-09-02, and built rather than deferred: `recipeUsage(today)` now takes the day
+     as an argument and reads `days.where('date').aboveOrEqual(usageWindowStart(today))` —
+     `USAGE_WINDOW_YEARS = 1` in `recipes.ts`, one new `addYears` helper in `dates.ts`. The cost
+     is O(window) and no longer grows with age. **The lower bound is the only bound**: everything
+     planned ahead still counts, because decision 46 wants a staple planned for tomorrow to rise.
+
+     **This changes what the user is told, which is why it was a decision and not a refactor.**
+     `plannedCount` is rendered in the library, so the label became „zaplanowany 3 razy w
+     ostatnim roku". Arguably the more correct ranking anyway, and squarely in line with
+     decision 46's „recent activity": a recipe cooked 40 times in 2024 and never since should not
+     outrank one cooked five times last month.
+
+     `recipeReferences()` scans the same way and was deliberately **left alone**. It answers „how
+     many planned meals point at this recipe" for the save and delete prompts, where a windowed
+     answer would be a wrong one — and it runs only when a recipe is opened, saved or deleted.
+
 ## Open questions
 
-> **A review pass over these is in progress** (started 2026-09-01, after Phase 8). Settled so
-> far: 6, 8, 9, 10, 11, 12 — see decisions 143–146. **Stopped at 13**, which has its findings
-> recorded below and is waiting on the user's answer. Still unreviewed after it: 14, 15, 17, 18,
-> 20, 21, 24, 25, 26, 27, 28.
+> **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13 — see decisions 143–147. **Next up: 14.**
+> Still unreviewed after it: 15, 17, 18, 20, 21, 24, 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1449,32 +1472,19 @@ one of which broke the feature outright.
     `preventDefault` leaves the suite green), and left without an assertion rather than given a
     green one that cannot fail. Hand check on a phone, alongside open question 26. The „⋮"
     button reaches the same actions and is covered (decision 72).
-13. **The day screen's re-read is bounded; the scan that actually grows is somewhere else.**
-    Examined 2026-09-01 during the review pass. **Not yet decided — waiting on the user.**
+13. **The day screen's re-read is bounded, and the scan that actually grew has been
+    windowed — answered.** Examined 2026-09-01, settled and built 2026-09-02 as decision 147.
 
-    *The original worry can be dropped.* `DayScreen.load` reads `monthWeeks(target)` — about 42
-    dates — through `getDays(from, to)`, a range query over the primary key, plus one profile
-    read and a `bulkGet` for the current day's recipes. The cost is a function of the **window,
-    not of the database**: after five years of planning it is still 42 rows. It is bounded by
-    construction rather than small by luck, so it cannot degrade with age. Phase 6 did not make
-    it worse either — a read never costs a sync round trip, because IndexedDB stayed the source
-    of truth and sync is a debounced background job on top of it.
+    The original worry can be dropped: `DayScreen.load` reads about 42 dates through a range
+    query over the primary key, so it costs the *window*, not the database — after five years
+    of planning it is still 42 rows. Sync did not change that either; IndexedDB stayed the
+    source of truth and a read never costs a round trip.
 
-    *What the question never mentioned, and is the real one:* `recipeUsage()` (repository.ts)
-    calls `days.toArray()` — **every day ever planned** — to build the library ranking, and it
-    runs inside `recipeLibrary()`, which both `/recipes` and **`RecipePicker`** use. That puts a
-    full scan of the user's whole history on the most frequent interaction in the app: every
-    „Dodaj posiłek". A year of daily planning is ~365 rows, five years ~1825. Today that is
-    likely single-digit milliseconds and **nothing to fix**; it is simply the only O(history)
-    path on a hot route, and it only grows. (`recipeReferences()` scans the same way but runs
-    only when a recipe is opened, saved or deleted.)
+    The real one was elsewhere: `recipeUsage()` scanned every day ever planned, on every
+    „Dodaj posiłek". It now counts a trailing year plus everything planned ahead, and the
+    library label says „w ostatnim roku" to match. `recipeReferences()` still scans the whole
+    history on purpose — see decision 147.
 
-    *The cheap way out, when it is ever worth taking:* decision 46 ranks the library by
-    **recent** activity, so `recipeUsage()` could count a trailing window (say 12 months) with
-    the same range query — O(window) instead of O(history). It is a decision rather than a
-    refactor, because `plannedCount` is also shown to the user („zaplanowany 3 razy") and would
-    come to mean „in the last year". Arguably more correct for a ranking: a recipe cooked 40
-    times in 2024 and never since should not outrank one cooked five times last month.
 14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
     built here — decision 64's filter compares whole portions against kcal only.
 15. **The live Drive round trip still has never run against Google.** Narrowed, not closed,

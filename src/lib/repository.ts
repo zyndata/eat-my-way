@@ -37,7 +37,7 @@ import {
 } from './day';
 import { newId, type IdFactory } from './ids';
 import { resolveTags } from './tags';
-import { NO_USAGE, type RecipeListEntry, type RecipeUsage } from './recipes';
+import { NO_USAGE, usageWindowStart, type RecipeListEntry, type RecipeUsage } from './recipes';
 import type { SearchCandidate } from './search';
 
 /**
@@ -151,11 +151,16 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
   /**
    * How much each recipe is used, gathered in one pass over the days table. `recipeId`
    * lives inside a meal array, so IndexedDB cannot index it - see STATE.md decision 48.
+   *
+   * The pass starts at `today` minus the usage window rather than at the first day ever
+   * planned (decision 147): this runs on every „Dodaj posiłek", and a range query over the
+   * primary key costs the window, not the history. Days planned ahead are all included.
    */
-  async function recipeUsage(): Promise<Map<string, RecipeUsage>> {
+  async function recipeUsage(today: string): Promise<Map<string, RecipeUsage>> {
     const usage = new Map<string, RecipeUsage>();
+    const window = await database.days.where('date').aboveOrEqual(usageWindowStart(today)).toArray();
 
-    for (const day of await database.days.toArray()) {
+    for (const day of window) {
       for (const meal of day.meals) {
         const current = usage.get(meal.recipeId);
         if (current === undefined) {
@@ -497,8 +502,11 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     recipeUsage,
 
     /** Every recipe with its usage - exactly what the library screen lists. */
-    async recipeLibrary(): Promise<RecipeListEntry[]> {
-      const [recipes, usage] = await Promise.all([database.recipes.toArray(), recipeUsage()]);
+    async recipeLibrary(today: string): Promise<RecipeListEntry[]> {
+      const [recipes, usage] = await Promise.all([
+        database.recipes.toArray(),
+        recipeUsage(today)
+      ]);
       return recipes.map((recipe) => ({ recipe, usage: usage.get(recipe.id) ?? NO_USAGE }));
     },
 

@@ -1,4 +1,5 @@
 import type { Ingredient, Macros, Recipe, RecipeItem, Unit } from './types';
+import { addYears } from './dates';
 import { itemMacros, sumMacros, type IngredientLookup } from './macros';
 import { rankCandidates } from './search';
 import { toTagKeys } from './tags';
@@ -9,9 +10,24 @@ import { normalizeKey } from './text';
  * functions decide; the repository persists what they produce.
  */
 
+/**
+ * How far back the library looks when it counts usage, in years (decision 147). Everything
+ * from the future counts too — a staple planned for tomorrow is exactly what should rise.
+ */
+export const USAGE_WINDOW_YEARS = 1;
+
+/** The first day usage is counted from: `today` minus the window. */
+export function usageWindowStart(today: string): string {
+  return addYears(today, -USAGE_WINDOW_YEARS);
+}
+
 /** How much a recipe is actually used, gathered from the days table (decision 48). */
 export interface RecipeUsage {
-  /** Planned meals referring to this recipe, across every day. */
+  /**
+   * Planned meals referring to this recipe, counted over the last `USAGE_WINDOW_YEARS`
+   * and everything planned ahead — not over the whole history (decision 147). The library
+   * says „w ostatnim roku" for exactly this reason.
+   */
   plannedCount: number;
   /** The latest day it is planned on, `YYYY-MM-DD`, or `undefined` if never planned. */
   lastPlannedDate?: string;
