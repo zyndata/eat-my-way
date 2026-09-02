@@ -80,6 +80,11 @@ export class FakeDrive {
 
   account = { permissionId: 'sub-1', emailAddress: 'test@example.com', displayName: 'Test' };
   /**
+   * What `about.get` reports for the account's storage, as Drive sends it: decimal strings,
+   * one 15 GB free account a little over a third full. A test that cares assigns its own.
+   */
+  storageQuota: { limit?: string; usage?: string } = { limit: '16106127360', usage: '5368709120' };
+  /**
    * When true every request fails the way a dropped connection does. Playwright's own
    * `setOffline` cannot be used here: these requests are answered by a route handler and
    * never reach the network, so they would succeed regardless.
@@ -183,7 +188,7 @@ export class FakeDrive {
     const path = url.pathname;
 
     if (path === '/drive/v3/about') {
-      await json({ user: this.account });
+      await json({ user: this.account, storageQuota: this.storageQuota });
       return;
     }
 

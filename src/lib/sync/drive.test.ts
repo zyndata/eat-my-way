@@ -109,4 +109,52 @@ describe('drive backend', () => {
 
     expect(await backend.authenticate()).toEqual({ id: '1122', label: 'me@example.com' });
   });
+
+  it('reads the storage figures from the same call, and asks for them by name', async () => {
+    const { calls, fetchImpl } = scripted([
+      (url) =>
+        url.includes('/drive/v3/about')
+          ? json({
+              user: { permissionId: '1122', emailAddress: 'me@example.com' },
+              // Drive sends 64-bit counts as strings, because JSON numbers are not.
+              storageQuota: { limit: '16106127360', usage: '5368709120' }
+            })
+          : undefined
+    ]);
+    const backend = createDriveBackend({ fetchImpl, token });
+
+    expect(await backend.authenticate()).toEqual({
+      id: '1122',
+      label: 'me@example.com',
+      storage: { usage: 5_368_709_120, limit: 16_106_127_360 }
+    });
+    // One request for identity and quota together: the figure costs no extra round trip.
+    expect(calls).toHaveLength(1);
+    expect(decodeURIComponent(calls[0]?.url ?? '')).toContain('storageQuota(limit,usage)');
+  });
+
+  it('reports an account with no fixed limit, and says nothing when Drive says nothing', async () => {
+    const unlimited = scripted([
+      (url) =>
+        url.includes('/drive/v3/about')
+          ? json({ user: { permissionId: '1122' }, storageQuota: { usage: '1024' } })
+          : undefined
+    ]);
+    expect(await createDriveBackend({ fetchImpl: unlimited.fetchImpl, token }).authenticate()).toEqual({
+      id: '1122',
+      storage: { usage: 1024 }
+    });
+
+    // No `storageQuota` at all, or one that cannot be read: the settings row stays away
+    // rather than claiming a confident „0 B".
+    const silent = scripted([
+      (url) =>
+        url.includes('/drive/v3/about')
+          ? json({ user: { permissionId: '1122' }, storageQuota: { usage: 'nonsense' } })
+          : undefined
+    ]);
+    expect(await createDriveBackend({ fetchImpl: silent.fetchImpl, token }).authenticate()).toEqual({
+      id: '1122'
+    });
+  });
 });

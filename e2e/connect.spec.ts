@@ -97,6 +97,31 @@ test('a dismissed consent popup says so and changes nothing', async ({ device, d
   });
 });
 
+test('the connected account reports how full the Drive is', async ({ device, drive }) => {
+  // 5 GiB of a 15 GiB free account.
+  drive.storageQuota = { limit: '16106127360', usage: '5368709120' };
+  seedAccount(drive);
+
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+
+  const space = device.locator('dt', { hasText: 'Miejsce na koncie' }).locator('xpath=following-sibling::dd[1]');
+  await expect(space).toContainText('5 GB z 15 GB');
+  await expect(space).toContainText('33%');
+  await expect(space.getByRole('img')).toHaveAttribute('aria-label', 'Zajęte 5 GB z 15 GB');
+});
+
+test('an account Drive says nothing about simply has no storage row', async ({ device, drive }) => {
+  drive.storageQuota = {};
+  seedAccount(drive);
+
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+
+  // Better a missing row than a confident „0 B".
+  await expect(device.locator('dt', { hasText: 'Miejsce na koncie' })).toHaveCount(0);
+});
+
 test('a reload keeps the session without going back to Google at all', async ({ device, drive }) => {
   seedAccount(drive);
   await device.getByRole('button', { name: CONNECT }).click();

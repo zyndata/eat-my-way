@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatPortions, normalizeKey, pluralPl, portionWord } from './text';
+import { formatBytes, formatPortions, normalizeKey, pluralPl, portionWord } from './text';
 
 const zapytanie = { one: 'zapytanie', few: 'zapytania', many: 'zapytań' };
 
@@ -51,5 +51,29 @@ describe('portions', () => {
     expect(portionWord(1)).toBe('porcja');
     expect(portionWord(3)).toBe('porcje');
     expect(portionWord(1.5)).toBe('porcji');
+  });
+});
+
+describe('byte sizes', () => {
+  it('climbs the units and keeps Google\u2019s reading of a gigabyte', () => {
+    expect(formatBytes(0)).toBe('0 B');
+    expect(formatBytes(999)).toBe('999 B');
+    expect(formatBytes(1024)).toBe('1 KB');
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5 MB');
+    // What Drive calls a free 15 GB account: 15 x 2^30 bytes.
+    expect(formatBytes(16_106_127_360)).toBe('15 GB');
+  });
+
+  it('loses precision as the number grows, the way a size is quoted out loud', () => {
+    expect(formatBytes(1024 * 1024 * 1024 * 1.25)).toBe('1,25 GB');
+    expect(formatBytes(1024 * 1024 * 42.5)).toBe('42,5 MB');
+    expect(formatBytes(1024 * 1024 * 340.7)).toBe('341 MB');
+    // Bytes are whole things; there is no such quantity as 0,5 of one.
+    expect(formatBytes(512.4)).toBe('512 B');
+  });
+
+  it('says nothing rather than something wrong about a figure it does not have', () => {
+    expect(formatBytes(Number.NaN)).toBe('\u2014');
+    expect(formatBytes(-1)).toBe('\u2014');
   });
 });

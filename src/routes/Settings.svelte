@@ -12,7 +12,7 @@
   import { REQUESTS_PER_IMPORT, quotaDay } from '../lib/gemini/usage';
   import { listGeminiModels, withCurrentModel, type GeminiModel } from '../lib/gemini/models';
   import { geminiUsageByModel, modelGeminiUsage } from '../lib/sync/documents';
-  import { pluralPl } from '../lib/text';
+  import { formatBytes, pluralPl } from '../lib/text';
   import {
     connectDrive,
     disconnectDrive,
@@ -67,6 +67,22 @@
     goals = loaded.goals;
     model = loaded.geminiModel;
   }
+
+  /**
+   * How full the connected Google account is, as Drive reported it on the last sync. Only
+   * shown while a session is in hand: a stale number from a connection that has since lapsed
+   * would be the one thing worse than no number at all.
+   */
+  const driveStorage = $derived(syncState.connected ? syncState.account?.storage : undefined);
+  /**
+   * Rounded for the bar as well as the label, so the two never disagree — and clamped, because
+   * Google's own figure can sit a hair over the limit while a deletion is still settling.
+   */
+  const storageUsedPercent = $derived(
+    driveStorage === undefined || driveStorage.limit === undefined || driveStorage.limit <= 0
+      ? 0
+      : Math.min(100, Math.round((driveStorage.usage / driveStorage.limit) * 100))
+  );
 
   /**
    * What this account has spent on Gemini in the current quota window. Counted by the app
@@ -273,6 +289,43 @@
             ? 'nigdy'
             : new Date(syncState.lastSyncedAt).toLocaleString('pl-PL')}
         </dd>
+        <!-- Odczytywane przy każdej synchronizacji z tego samego `about.get`, które podaje
+             konto — więc liczba jest aktualna i nie kosztuje dodatkowego zapytania. -->
+        {#if driveStorage !== undefined}
+          <dt class="text-(--color-ink-muted)">Miejsce na koncie</dt>
+          <dd>
+            {#if driveStorage.limit === undefined}
+              {formatBytes(driveStorage.usage)} — bez limitu
+            {:else}
+              <span class="tabular-nums">
+                {formatBytes(driveStorage.usage)} z {formatBytes(driveStorage.limit)}
+                <span class="text-(--color-ink-muted)">({storageUsedPercent}%)</span>
+              </span>
+              <!-- Szerokość jako atrybut geometrii SVG, nie styl: produkcyjne CSP nie
+                   dopuszcza stylu inline (decyzja 71). -->
+              <svg
+                class="mt-1 h-1.5 w-full max-w-56 rounded-full bg-(--color-border) {storageUsedPercent >=
+                90
+                  ? 'text-amber-600'
+                  : 'text-(--color-accent)'}"
+                viewBox="0 0 100 6"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label="Zajęte {formatBytes(driveStorage.usage)} z {formatBytes(
+                  driveStorage.limit
+                )}"
+              >
+                <rect x="0" y="0" height="6" width={storageUsedPercent} fill="currentColor" />
+              </svg>
+              {#if storageUsedPercent >= 90}
+                <p class="pt-1 text-xs text-amber-700">
+                  Dysk jest prawie pełny. Gdy zabraknie miejsca, synchronizacja przestanie
+                  zapisywać — dane na tym urządzeniu zostaną nietknięte.
+                </p>
+              {/if}
+            {/if}
+          </dd>
+        {/if}
       </dl>
 
       {#if syncState.message !== ''}

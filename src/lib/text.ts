@@ -75,3 +75,27 @@ export function portionWord(count: number): string {
 export function formatPortions(count: number): string {
   return `${count.toLocaleString('pl-PL')} ${portionWord(count)}`;
 }
+
+/** Google's own units: Drive's 15 GB is 15 × 2^30 bytes, and it calls that „15 GB". */
+const BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
+
+/**
+ * A byte count as a person reads it: „1,25 GB", „340 MB", „15 GB".
+ *
+ * Precision falls as the number grows, which is how a size is quoted out loud — two decimals
+ * under 10, one under 100, none above, and never a decimal on raw bytes. The separator is the
+ * Polish comma, so it matches every other number on the screen.
+ */
+export function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return '—';
+
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < BYTE_UNITS.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+
+  const digits = unit === 0 ? 0 : size < 10 ? 2 : size < 100 ? 1 : 0;
+  return `${size.toLocaleString('pl-PL', { maximumFractionDigits: digits })} ${BYTE_UNITS[unit] ?? 'B'}`;
+}

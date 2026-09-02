@@ -20,12 +20,26 @@ export interface RemoteContent {
   version: RemoteVersion;
 }
 
+/**
+ * How full the account's storage is. Google counts one pool across Drive, Gmail and Photos,
+ * so this is the whole Google account, not this app's folder — which holds a few hundred
+ * kilobytes of JSON and would round to nothing anyway.
+ */
+export interface StorageQuota {
+  /** Bytes in use. */
+  usage: number;
+  /** Bytes available in total. Absent on an account with no fixed limit. */
+  limit?: number;
+}
+
 /** The connected account, as far as an appDataFolder-only grant can see it. */
 export interface AccountInfo {
   /** Stable per-account id. Stored in `Profile.googleSub` (STATE.md decision 89). */
   id: string;
   /** For display only; may be absent depending on what the grant exposes. */
   label?: string;
+  /** Re-read on every sync, so the settings screen shows a current number. */
+  storage?: StorageQuota;
 }
 
 /** Raised when the grant is gone: the user revoked it, or the session expired. */

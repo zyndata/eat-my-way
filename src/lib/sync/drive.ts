@@ -5,7 +5,8 @@ import {
   type RemoteContent,
   type RemoteFile,
   type RemoteVersion,
-  type StorageBackend
+  type StorageBackend,
+  type StorageQuota
 } from './backend';
 import {
   forgetAccessToken,
@@ -37,6 +38,17 @@ interface DriveFileResource {
   id?: string;
   name?: string;
   modifiedTime?: string;
+}
+
+/**
+ * Drive reports quota figures as decimal strings, because they are 64-bit and JSON numbers
+ * are not. Anything unparseable is treated as absent rather than as zero — „0 B used" would
+ * be a confident lie.
+ */
+function bytes(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 /** Drive's own error envelope, used only to turn 401/403 into a readable message. */
@@ -165,16 +177,34 @@ export function createDriveBackend(options: DriveBackendOptions = {}): StorageBa
 
       // `about.get` is inside the appdata grant and is the only identity this scope exposes:
       // no ID token, no email unless Drive chooses to return one. See STATE.md decision 89.
+      // `storageQuota` comes from the same call, so a current figure costs no extra request.
       const about = await requestJson<{
         user?: { permissionId?: string; emailAddress?: string; displayName?: string };
-      }>(`${DRIVE_ABOUT}?${query({ fields: 'user(permissionId,emailAddress,displayName)' })}`);
+        storageQuota?: { limit?: string; usage?: string };
+      }>(
+        `${DRIVE_ABOUT}?${query({
+          fields: 'user(permissionId,emailAddress,displayName),storageQuota(limit,usage)'
+        })}`
+      );
 
       const id = about.user?.permissionId;
       if (id === undefined) throw new NotAuthenticatedError('Drive did not identify the account');
       const label = about.user?.emailAddress ?? about.user?.displayName;
       // Kept for the next silent renewal, which needs to know *which* account to renew.
       rememberAccountHint(about.user?.emailAddress);
-      return label === undefined ? { id } : { id, label };
+
+      // An account with unlimited storage reports no `limit`; one that reports no `usage` has
+      // told us nothing worth showing, so the row simply stays away.
+      const usage = bytes(about.storageQuota?.usage);
+      const limit = bytes(about.storageQuota?.limit);
+      const storage: StorageQuota | undefined =
+        usage === undefined ? undefined : limit === undefined ? { usage } : { usage, limit };
+
+      return {
+        id,
+        ...(label === undefined ? {} : { label }),
+        ...(storage === undefined ? {} : { storage })
+      };
     },
 
     isAuthenticated: hasAccessToken,
