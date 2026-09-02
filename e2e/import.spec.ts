@@ -236,9 +236,9 @@ test('the Gemini usage counter records what an import spent, per model', async (
 
   // The quota is charged per model, so switching shows a fresh count — and the spend on the
   // model just left is still listed underneath rather than vanishing.
-  await device.getByLabel('Model Gemini').selectOption('gemini-3.5-flash-lite');
-  await expect(device.getByText(/Dziś, model gemini-3\.5-flash-lite: 0 zapytań/)).toBeVisible();
-  await expect(device.getByText('gemini-3.6-flash: 2 zapytania')).toBeVisible();
+  await device.getByLabel('Model Gemini').selectOption('gemini-3.6-flash');
+  await expect(device.getByText(/Dziś, model gemini-3\.6-flash: 0 zapytań/)).toBeVisible();
+  await expect(device.getByText('gemini-3.5-flash-lite: 2 zapytania')).toBeVisible();
 });
 
 test('the model field is a list built from the key, and still accepts a typed name', async ({
