@@ -24,6 +24,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Record where the open-questions review stopped
 - Settle open question 14 as decision 148
 - Settle open question 15 as decision 149
+- Settle open question 18 as decision 151
+- Settle open question 20 as decision 152
+- Settle open question 21 as decision 153
+- Write the model A/B protocol and close the open-questions pass
 
 ### Features
 
@@ -33,9 +37,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Pick the Gemini model from a list, and count usage per model
 - Phase 8 — installable offline PWA, data backup and the 1.0 polish
 - **vault:** Keep the vault Drive overwrote, so the swap can be undone
+- **backup:** Say what a restore replaces, not only what it brings in
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
