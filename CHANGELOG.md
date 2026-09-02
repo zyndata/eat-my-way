@@ -22,6 +22,8 @@ project adheres to [Semantic Versioning](https://semver.org).
 - The COOP window.closed warning does not break dismissal detection
 - Settle open questions 6 and 8-12 after the phase-8 review
 - Record where the open-questions review stopped
+- Settle open question 14 as decision 148
+- Settle open question 15 as decision 149
 
 ### Features
 
@@ -30,9 +32,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Show what this account has spent on Gemini today
 - Pick the Gemini model from a list, and count usage per model
 - Phase 8 — installable offline PWA, data backup and the 1.0 polish
+- **vault:** Keep the vault Drive overwrote, so the swap can be undone
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
