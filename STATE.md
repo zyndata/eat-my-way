@@ -622,6 +622,12 @@ filtered flat list). Her decisions on each point follow.
     surfaces as `NotAuthenticatedError`, which the UI turns into „Połącz konto ponownie" —
     and, as PLAN.md requires, that path touches no IndexedDB row.
 
+    **Amended by decision 173.** „Every load re-requests it silently" turned out not to work:
+    GIS may need a window, and a page load has no user gesture to open one with, so every
+    reload signed the user out. The token is now mirrored into `sessionStorage` — still never
+    `localStorage`, still never IndexedDB or Drive — and a failed renewal waits for the next
+    tap. Everything else in this decision stands.
+
 91. **`days/2026-09.json` is a literal file name containing a slash.** `appDataFolder` is
     flat and Drive names are arbitrary strings, so a real subfolder would only add a round
     trip and an id to keep in step. The layout on Drive reads exactly as PLAN.md writes it.
@@ -1816,6 +1822,99 @@ one of which broke the feature outright.
      `e2e/fake-gemini.ts` now serves „Nano Banana 2" alongside the two text models, so
      `e2e/import.spec.ts` asserts through the real dropdown that decision 167's filter keeps a
      picture model out of it.
+
+### 2026-09-02 — A reported bug: „Zmień" on an ingredient row was one-way
+
+172. **„Zmień" on a filled ingredient row now has „Anuluj zmianę".** Reported from real use:
+     editing a recipe and tapping „Zmień" on one ingredient emptied the row into the
+     autocomplete with no way back, so a mis-tap read as an ingredient that had simply
+     vanished — the only remaining button was „Usuń wiersz", which throws the row away
+     entirely, and „Anuluj" at the bottom of the form abandons every other edit made so far.
+     Leaving the screen was the only undo, and it cost everything else.
+
+     The editor now remembers, per row, the ingredient „Zmień" took away (`replaced`, keyed by
+     row id — editor state, deliberately not part of the draft that gets written). The emptied
+     row says whose place it is standing in („Zmieniasz składnik: …") and offers „Anuluj
+     zmianę" beside „Usuń wiersz". Cancelling is a true no-op: „Zmień" only blanks
+     `ingredientId`, so the amount, the unit, the weight per piece and any manual macro
+     override are still sitting on the row and come back with it. The memory is dropped once a
+     new ingredient is picked, when the row is removed, and on every load.
+
+     It lives in the editor rather than in `RecipeItemRow` on purpose: „utwórz nowy składnik"
+     swaps that component out for `CustomIngredientForm`, and row-local state would not
+     survive cancelling out of that form — the one path where a user is most likely to want
+     the old ingredient back. The button follows `replaced`, not the resolved name, so a row
+     whose old ingredient has since left the database is still restorable, just without a name
+     to show for it.
+
+     Covered end to end in `e2e/library.spec.ts` — change, cancel, and the amount is still
+     there.
+
+### 2026-09-02 — A reported bug: every reload asked for Google again (and the space left on Drive)
+
+173. **The Drive session now survives a reload, and a lapsed one comes back on the first tap.**
+     Reported from real use: signing in to Google Drive and then refreshing the page landed on
+     „Niepołączono" every time. Decision 90 assumed the renewal on load would carry the
+     session — „every load re-requests it silently (`prompt: ''`)" — and that assumption was
+     wrong. GIS's token flow has no path it can guarantee without opening a window, and a
+     window opened by a script that runs on page load has no user activation behind it, so the
+     browser blocks it. The grant was intact the whole time; the app simply could not ask.
+
+     Two changes, and they answer different halves of the problem:
+
+     - **The access token is mirrored into `sessionStorage`**, so a reload finds the token it
+       already had and reaches Google on no code path at all — no GIS script, no window, no
+       renewal. This is a deliberate deviation from decision 90's „held in memory only". It is
+       `sessionStorage` and not `localStorage` on purpose: closing the tab still ends the
+       session, which is the promise that decision made and the one worth keeping. The token
+       is `drive.appdata`-scoped, lives an hour, and still never touches IndexedDB or Drive.
+     - **A renewal that fails is deferred to the next user gesture.** One `pointerdown` or
+       `keydown` listener is armed after a silent renewal comes back unauthenticated, and the
+       first tap or keystroke carries the activation GIS was missing. It is armed once per
+       failure and disarmed the moment it fires, so a grant that is really gone does not turn
+       every tap into a request, and it only ever asks for `prompt: ''` — a consent screen is
+       still reached from a click on „Połącz Dysk Google" and nowhere else.
+
+     The account's e-mail — the one already kept in the `driveAccountLabel` meta key — is now
+     also kept in `localStorage` and passed to GIS as `hint` on silent renewals only. It
+     removes the one ambiguity a silent renewal cannot resolve for itself, which account to
+     renew in a browser with several signed in. The interactive popup is left hint-free,
+     because that screen is how a user switches account. Every web-storage access is wrapped:
+     a browser with site data blocked throws on it, and the app has to keep working.
+
+     The e2e fake was the reason none of this showed up: its GIS stub answered every silent
+     request, so the suite asserted a reload it could never actually perform. `fake-google.ts`
+     now refuses a silent request from a page that has seen no gesture — the browser rule,
+     modelled — and `e2e/connect.spec.ts` covers both halves: a reload that keeps the session
+     without loading GIS at all, and a token lost with the tab that comes back on the first
+     tap. Reverting the mirror makes the first of them fail, which was checked.
+
+174. **The settings screen now says how full the Google account is.** Asked for alongside 173:
+     the Drive section reported the account and the last sync and nothing about space, which is
+     the one Drive fact that can stop a sync from writing. `about.get` — the call that already
+     runs on every sync to identify the account (decision 89) — returns `storageQuota` inside
+     the same `drive.appdata` grant, so the figure costs no extra request and is as current as
+     the last sync. It rides on `AccountInfo`, which the sync outcome already carries into
+     `syncState.account`, so nothing new had to be stored or plumbed.
+
+     What it says, and what it deliberately does not:
+
+     - The label is „Miejsce na koncie", not „na Dysku". Google pools Drive, Gmail and Photos
+       into one quota, so the number is about the account; this app's own folder is a few
+       hundred kilobytes of JSON and would round to nothing.
+     - Only while a session is in hand. A figure left over from a connection that has since
+       lapsed would be worse than no figure.
+     - Nothing at all when Drive reports no `usage`, or reports something unparseable — Drive
+       sends 64-bit counts as decimal strings, and „0 B" would be a confident lie. An account
+       with no `limit` says „bez limitu" rather than showing a bar with no end.
+     - Above 90% the bar turns amber and a line says what actually happens when the quota runs
+       out: the sync stops writing, and the data on the device is untouched.
+
+     The bar's width is an SVG geometry attribute, like every other bar in the app — the
+     production CSP has no `'unsafe-inline'` for styles (decision 71). `formatBytes` in
+     `text.ts` divides by 1024 and calls the result GB, which is what Drive itself does when it
+     names a 16 106 127 360-byte account „15 GB"; precision falls as the number grows, and the
+     separator is the Polish comma.
 
 ## Open questions
 
