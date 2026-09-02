@@ -212,7 +212,11 @@ behaved as expected is as much a result as one that did not.
    window onto it.
 4. **The silent grant.** Close the tab and open it again. Load asks for a token with `prompt: ''`
    and must succeed without a popup; a popup here means the silent path does not work in
-   practice, which is the whole premise of "no refresh token in the browser".
+   practice, which is the whole premise of "no refresh token in the browser". **Watch the
+   console** while it happens: `[GSI_LOGGER]: Failed to open popup window` has been seen once on
+   a load that then succeeded (open question 20), and whether that is GIS noise or a silent path
+   that genuinely needs a window can only be told here. Reload several times, with the popup
+   blocker in its default setting, and record what the console says each time.
 5. **Token expiry.** Leave the tab open for over an hour (the grant is ~3600 s minus the margin
    in `google-auth.ts`), then edit something. The sync must recover on its own. This is the point
    most likely to fail and the least likely to be noticed.

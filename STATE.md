@@ -1447,11 +1447,29 @@ one of which broke the feature outright.
      later — on a single-user planner opened most days, that is a few hours of staleness, not
      lost data. Not built, and not to be revisited unless the auth model changes.
 
+152. **The one GIS popup warning is an observation to be made against Google, not a bug to be
+     guessed at.** Open question 20 recorded a single `[GSI_LOGGER]: Failed to open popup
+     window` on a load that should have renewed silently, and then succeeded. Reviewed
+     2026-09-02.
+
+     Two facts bound it. **The failure path is already correct**: a silent renewal that does not
+     produce a token ends as `unauthenticated` without `interactive`, and the user reads
+     „Połączenie z Dyskiem Google wygasło. Połącz konto ponownie — dane na tym urządzeniu są
+     nietknięte." Nothing fails silently. **And the cause cannot be established from here**:
+     whether `prompt: ''` completes in a hidden iframe or reaches for a window is GIS's own
+     behaviour, and every Google response in the suite is a local fake (decision 107).
+
+     So it is neither dismissed as noise nor patched defensively against a hypothesis. It became
+     point 4 of the live checklist (decision 149): reload several times with the popup blocker at
+     its default and record what the console says. If the warning is reproducible, the silent
+     resume on start-up is fragile without a user gesture and that is worth knowing; if it is
+     not, it joins decision 19's COOP warning as GIS noise.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18 — see decisions 143–151.
-> **Next up: 20.** Still unreviewed after it: 21, 24, 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20 — see decisions
+> 143–152. **Next up: 21.** Still unreviewed after it: 24, 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1620,11 +1638,12 @@ one of which broke the feature outright.
     No path is known that reaches it, so nothing was added; if one ever turns up, the symptom
     is `syncState.phase` stuck on `'syncing'` with „Połącz Dysk Google" disabled until reload.
 
-20. **A silent renewal after a reload asked GIS for a popup.** One
-    `[GSI_LOGGER]: Failed to open popup window` was recorded on a load that should have renewed
-    silently (`prompt: ''`). The sync recovered and reported „Połączono", so nothing broke, but
-    a silent path that reaches for a popup is a silent path that can fail without a gesture.
-    Seen once, not investigated.
+20. **A silent renewal after a reload asked GIS for a popup — answered on the method.** One
+    `[GSI_LOGGER]: Failed to open popup window` on a load that then succeeded. Reviewed
+    2026-09-02 as decision 152: the failure path is already correct and says so in Polish, and
+    the cause is GIS's own behaviour, which no local fake can answer. It is now point 4 of the
+    live checklist (decision 149) — reload a few times, watch the console, write down what
+    happens. Noise or fragility, that visit decides it.
 
 21. **Import determinism does NOT hold against the real model — the acceptance criterion
     fails, honestly.** Measured, not assumed. Two identical pastes of the same recipe text
