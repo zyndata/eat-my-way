@@ -575,9 +575,16 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
    The chosen order persists in the meta table.
 5. **Reorder ingredient rows** in the recipe editor, following the `reorderMeals` pattern in
    `day.ts` (drag & drop, ~200 ms touch delay).
-6. **Smarter fitting to the day's budget** (STATE.md decision 65): suggest a portion size when a
-   recipe fits the remaining kcal only below one portion („zmieści się przy 0,75 porcji"), and rank
-   by the remaining protein / carbs / fat rather than kcal alone. Both build on the Phase 5 filter.
+6. **Smarter fitting to the day's budget** (STATE.md decisions 65 and 148). Both halves build on
+   the Phase 5 filter (`filterByBudget`, `dayBudget`) and both are now settled:
+
+   - **Half a portion is the only suggestion.** A recipe that does not fit whole but fits at half
+     is offered as „zmieści się przy pół porcji"; anything that needs less than half is not
+     offered at all. One rule, one fraction, nothing to misread on a plate — quarters were
+     considered and rejected (decision 148).
+   - **The remaining macros are shown, not ranked on.** The sheet header states what is left of
+     each goal („zostało 620 kcal · 40 g białka"); the list keeps the decision 46 order. The app
+     reports the gap and lets the user choose, rather than recommending a recipe because of it.
 7. **Shopping-list export** next to the `cookingScale` control in the meal view (decision 62):
    the scaled ingredient list, with the same ingredient summed when the scope covers more than one
    meal.
@@ -615,8 +622,10 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
       tags leaves one tag whose `useCount` equals the number of recipes that now carry it (test).
 - [ ] A duplicated recipe is independent: editing the copy provably leaves the original and every
       existing `macroSnapshot` untouched.
-- [ ] A recipe that exceeds the remaining budget at one portion is offered with the portion that
-      fits, and never with a portion that does not.
+- [ ] A recipe that exceeds the remaining budget at one portion but fits at half is offered as
+      „zmieści się przy pół porcji"; one that does not fit at half is not offered at all.
+- [ ] The picker header states what is left of every goal macro, and turning the budget filter on
+      provably does not reorder the list.
 - [ ] The shopping list sums the same ingredient across meals in the chosen scope and reflects
       `cookingScale`, not `portionsEaten`.
 - [ ] Every staple the audit examined is recorded in STATE.md as either confirmed or corrected,

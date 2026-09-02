@@ -1360,11 +1360,32 @@ one of which broke the feature outright.
      many planned meals point at this recipe" for the save and delete prompts, where a windowed
      answer would be a wrong one — and it runs only when a recipe is opened, saved or deleted.
 
+148. **Both halves of „smarter fitting" are settled before anyone writes them, and one of them
+     shrank.** Open question 14 turned out not to be a question but PLAN.md Phase 9 task 6 — with
+     the portion half already carrying an acceptance criterion and the macro half carrying
+     nothing but a sentence decision 65 itself called „the easy way to build something that
+     recommends nonsense". Settled 2026-09-02, written into the task rather than into code:
+     Phase 9 builds this, not this conversation.
+
+     **Half a portion is the only fraction offered.** A recipe that does not fit whole but fits
+     at half is „zmieści się przy pół porcji"; below half it is not offered at all. Quarters were
+     the alternative and lost: 0,75 porcji is arithmetic, half a portion is something a person
+     actually puts on a plate, and the rule that has one fraction cannot be misread. The cost is
+     accepted — a recipe that would have fitted at 0,75 is simply not suggested.
+
+     **The macro half becomes a readout, not a ranking.** The picker header states what is left
+     of every goal macro („zostało 620 kcal · 40 g białka") and the list keeps its decision 46
+     order. This answers the question that gets asked — „czego mi dziś brakuje" — without the app
+     claiming to know which recipe fixes it. A real ranking needs goals for every macro to be set
+     and meaningful, and degrades into nonsense exactly when they are not; showing the gap
+     degrades into showing nothing, which is honest. Decision 65's worry is therefore closed
+     rather than inherited.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13 — see decisions 143–147. **Next up: 14.**
-> Still unreviewed after it: 15, 17, 18, 20, 21, 24, 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14 — see decisions 143–148. **Next up:
+> 15.** Still unreviewed after it: 17, 18, 20, 21, 24, 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1485,8 +1506,12 @@ one of which broke the feature outright.
     library label says „w ostatnim roku" to match. `recipeReferences()` still scans the whole
     history on purpose — see decision 147.
 
-14. **Fitting by portion size and by the other macros** (Phase 9, decision 65). Deliberately not
-    built here — decision 64's filter compares whole portions against kcal only.
+14. **Fitting by portion size and by the other macros — answered: scheduled, and now fully
+    specified.** Reviewed 2026-09-02. This was never an open question, it was PLAN.md Phase 9
+    task 6; what was genuinely undecided inside it is settled as decision 148. Half a portion is
+    the only fraction the picker will suggest, and the other macros are shown in the header
+    rather than ranked on. Phase 5 keeps the plain kcal filter it shipped with (decision 64).
+
 15. **The live Drive round trip still has never run against Google.** Narrowed, not closed,
     by decision 107: the flows are now driven end to end in a real browser under the production
     CSP, but every request is answered locally, so the client is checked against the Drive API
