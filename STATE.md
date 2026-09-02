@@ -1381,11 +1381,33 @@ one of which broke the feature outright.
      degrades into showing nothing, which is honest. Decision 65's worry is therefore closed
      rather than inherited.
 
+149. **The live Drive round trip is a written hand check, not a `@live` spec.** Open question 15
+     proposed an opt-in Playwright spec against a throwaway Google account as „the obvious next
+     step". Rejected on 2026-09-02, and the reason is not effort: **Google blocks OAuth in
+     browsers it can tell are automated**, so such a spec needs either a hand-harvested
+     `storageState` that expires, or a human in the middle of the run. It could never run in CI,
+     it would need a live account session kept alive to stay useful, and the two most valuable
+     checks — the real consent screen and a token actually expiring after an hour — are precisely
+     the ones it could not make.
+
+     What replaced it is a seven-point checklist in
+     [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it):
+     consent screen, the `about.get` identity label, one round trip, the silent `prompt: ''`
+     grant on reload, token expiry after an hour, a real two-browser same-day conflict against
+     Drive's own `modifiedTime`, and revocation. Run once on production, on a throwaway account
+     and a throwaway day of data, after `v1.0.0` — the same visit installs the PWA on a phone and
+     settles open question 26.
+
+     **The outcome of each point goes into STATE.md**, including the points that behave exactly
+     as the fake predicted. Otherwise this gets re-run by the next person who wonders, and the
+     one thing worth having — a record of how Google actually behaved — is the thing that was
+     never written down.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14 — see decisions 143–148. **Next up:
-> 15.** Still unreviewed after it: 17, 18, 20, 21, 24, 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15 — see decisions 143–149. **Next
+> up: 17.** Still unreviewed after it: 18, 20, 21, 24, 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1512,16 +1534,16 @@ one of which broke the feature outright.
     the only fraction the picker will suggest, and the other macros are shown in the header
     rather than ranked on. Phase 5 keeps the plain kcal filter it shipped with (decision 64).
 
-15. **The live Drive round trip still has never run against Google.** Narrowed, not closed,
-    by decision 107: the flows are now driven end to end in a real browser under the production
-    CSP, but every request is answered locally, so the client is checked against the Drive API
-    *as documented* rather than as it behaves. What remains unverified is Google's own
-    behaviour — real token lifetimes, `modifiedTime` semantics under a racing write, what
-    `about.get` actually returns for an appdata-only grant, and the real consent screen. The
-    first real sign-in on `eatmyway.gorny.dev` is still that test. Worth doing deliberately, on
-    a throwaway day of data, before trusting it with a month of planning. An opt-in `@live`
-    spec against a throwaway Google account is the obvious next step and was deliberately not
-    built here.
+15. **The live Drive round trip has never run against Google — answered: it is a hand check,
+    and it is now written down.** Narrowed by decision 107 (the flows run end to end in a real
+    browser under the production CSP, but every request is answered locally), and settled
+    2026-09-02 as decision 149: a `@live` Playwright spec was rejected — Google blocks automated
+    sign-in — in favour of a seven-point checklist in `docs/DEPLOYMENT.md`, run once on
+    production with a throwaway account after `v1.0.0`.
+
+    **Still not run.** The question closes on the method, not on the result; the result is what
+    that visit writes back here, alongside open question 26.
+
 16. **Data export — answered.** Built in Phase 8 as task 6, together with the restore the
     acceptance criterion implies (decision 137). *Zapisz kopię* / *Wczytaj kopię* in Settings;
     the file holds everything local except the vault, and a restore replaces rather than merges.
@@ -1612,7 +1634,8 @@ one of which broke the feature outright.
     are all in place, but „it installs on Android and launches standalone" has been verified by
     proxy, not by installing it. Do this on the first real visit to `eatmyway.gorny.dev` after
     the `v1.0.0` release, along with open question 15's live Drive round trip — the same visit
-    can settle both.
+    can settle both, and that visit now has a written checklist (decision 149,
+    [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
 
 27. **A restore is not offered a preview of what it replaces.** The confirmation dialog says
     what the file contains („3 przepisy, 12 zaplanowanych dni…") but not what is about to be

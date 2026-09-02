@@ -224,5 +224,7 @@ npm run test:e2e:csp
 
 The live round trip to Google itself — a real token, a real `appDataFolder`, Drive's real
 `modifiedTime` semantics. Every request in this suite is answered locally, so the client is
-checked against the API *as documented*, not as it behaves. See open question 15 in
-[STATE.md](../STATE.md).
+checked against the API *as documented*, not as it behaves. This is covered on purpose by a hand
+run rather than by a test: Google blocks automated sign-in, so the checklist lives in
+[DEPLOYMENT.md](DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it) and is run once on
+production after `v1.0.0`. Open question 15 and decision 149 in [STATE.md](../STATE.md).
