@@ -56,6 +56,14 @@
   let customName = $state('');
 
   /**
+   * The ingredient each row held before „Zmień" emptied it, keyed by row id. „Zmień" used to
+   * be one-way: a mis-tap dropped the ingredient with nothing to put it back, so the row read
+   * as an ingredient that had simply vanished (STATE.md decision 172). Kept out of the draft
+   * because it is editor state, not part of the recipe being written.
+   */
+  let replaced = $state<Record<string, string>>({});
+
+  /**
    * The recipe waiting on the "update future days?" answer. Deliberately a plain variable
    * and NOT `$state`: a Svelte state proxy cannot be structured-cloned, so a recipe that
    * had passed through one would fail `IDBObjectStore.put` with `DataCloneError`. Only the
@@ -91,6 +99,9 @@
 
     const allTags = await repository.allTags();
     tags = allTags;
+
+    replaced = {};
+    customRowId = null;
 
     if (id === NEW) {
       existing = undefined;
@@ -130,12 +141,29 @@
   function removeRow(rowId: string): void {
     draft.items = draft.items.filter((item) => item.id !== rowId);
     if (customRowId === rowId) customRowId = null;
+    delete replaced[rowId];
   }
 
-  /** „Zmień" on a filled row: drop the ingredient and re-open the autocomplete. */
+  /**
+   * „Zmień" on a filled row: drop the ingredient and re-open the autocomplete. The old
+   * ingredient is remembered so „Anuluj zmianę" can put it back untouched — amount, unit and
+   * any manual override stay on the row throughout, so cancelling really is a no-op.
+   */
   function clearRow(rowId: string): void {
     const row = draft.items.find((item) => item.id === rowId);
-    if (row !== undefined) row.ingredientId = '';
+    if (row === undefined || row.ingredientId === '') return;
+    replaced[rowId] = row.ingredientId;
+    row.ingredientId = '';
+  }
+
+  /** „Anuluj zmianę": put back the ingredient „Zmień" took away. */
+  function restoreRow(rowId: string): void {
+    const previous = replaced[rowId];
+    const row = draft.items.find((item) => item.id === rowId);
+    if (row === undefined || previous === undefined) return;
+    row.ingredientId = previous;
+    delete replaced[rowId];
+    if (customRowId === rowId) customRowId = null;
   }
 
   function pick(rowId: string, ingredient: Ingredient): void {
@@ -143,6 +171,8 @@
     const row = draft.items.find((item) => item.id === rowId);
     if (row === undefined) return;
     row.ingredientId = ingredient.id;
+    // The change went through; there is nothing left to cancel back to.
+    delete replaced[rowId];
     // A fresh pick starts from the database values, never from a previous row's override.
     row.macroOverride = null;
 
@@ -331,9 +361,11 @@
           bind:items={draft.items}
           {customRowId}
           {customName}
+          {replaced}
           {lookup}
           onpick={(rowId, ingredient) => pick(rowId, ingredient)}
           onclear={(rowId) => clearRow(rowId)}
+          onrestore={(rowId) => restoreRow(rowId)}
           onremove={(rowId) => removeRow(rowId)}
           oncreate={(rowId, query) => {
             customName = query;

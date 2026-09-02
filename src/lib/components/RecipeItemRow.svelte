@@ -19,8 +19,11 @@
     item,
     position,
     ingredient,
+    canRestore,
+    restoredName,
     onpick,
     onclear,
+    onrestore,
     onremove,
     oncreate
   }: {
@@ -28,8 +31,13 @@
     /** 1-based, for labels and for a unique field id per row. */
     position: number;
     ingredient: Ingredient | undefined;
+    /** This row was emptied by „Zmień" and the old ingredient can still be put back. */
+    canRestore: boolean;
+    /** Name of that ingredient, when it is still in the database. */
+    restoredName: string | undefined;
     onpick: (ingredient: Ingredient) => void;
     onclear: () => void;
+    onrestore: () => void;
     onremove: () => void;
     oncreate: (query: string) => void;
   } = $props();
@@ -65,19 +73,27 @@
 
 <div class="rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
   {#if item.ingredientId === ''}
+    {#if canRestore && restoredName !== undefined}
+      <p class="pb-2 text-xs text-(--color-ink-muted)">
+        Zmieniasz składnik: <span class="font-medium">{restoredName}</span>
+      </p>
+    {/if}
     <IngredientAutocomplete
       id="recipe-item-{position}"
       label="Składnik {position}"
       onselect={onpick}
       oncreate={oncreate}
     />
-    <button
-      type="button"
-      class="pt-2 text-sm text-(--color-ink-muted) underline"
-      onclick={onremove}
-    >
-      Usuń wiersz
-    </button>
+    <div class="flex flex-wrap items-center gap-4 pt-2">
+      {#if canRestore}
+        <button type="button" class="text-sm text-(--color-accent) underline" onclick={onrestore}>
+          Anuluj zmianę
+        </button>
+      {/if}
+      <button type="button" class="text-sm text-(--color-ink-muted) underline" onclick={onremove}>
+        Usuń wiersz
+      </button>
+    </div>
   {:else}
     <div class="flex items-start justify-between gap-2">
       <div class="min-w-0">

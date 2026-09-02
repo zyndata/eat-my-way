@@ -33,9 +33,11 @@
     items = $bindable(),
     customRowId,
     customName,
+    replaced,
     lookup,
     onpick,
     onclear,
+    onrestore,
     onremove,
     oncreate,
     oncustomsave,
@@ -45,14 +47,27 @@
     /** Row currently showing the "new ingredient" form instead of its normal contents. */
     customRowId: string | null;
     customName: string;
+    /** Ingredient each row held before „Zmień", keyed by row id — what „Anuluj zmianę" restores. */
+    replaced: Record<string, string>;
     lookup: (id: string) => Ingredient | undefined;
     onpick: (rowId: string, ingredient: Ingredient) => void;
     onclear: (rowId: string) => void;
+    onrestore: (rowId: string) => void;
     onremove: (rowId: string) => void;
     oncreate: (rowId: string, query: string) => void;
     oncustomsave: (rowId: string, ingredient: Ingredient) => void;
     oncustomcancel: () => void;
   } = $props();
+
+  /**
+   * The name „Anuluj zmianę" would put back, or `undefined` when the remembered ingredient has
+   * since left the database. The button itself follows `replaced`, not this: a row can be
+   * restorable without a name to show for it.
+   */
+  const replacedName = (rowId: string): string | undefined => {
+    const previous = replaced[rowId];
+    return previous === undefined ? undefined : lookup(previous)?.name;
+  };
 
   /** During a drag the library inserts its own placeholder; it is not a real row. */
   const isPlaceholder = (item: DraftItem): boolean => item.id === SHADOW_PLACEHOLDER_ITEM_ID;
@@ -104,8 +119,11 @@
               {item}
               position={index + 1}
               ingredient={lookup(item.ingredientId)}
+              canRestore={replaced[item.id] !== undefined}
+              restoredName={replacedName(item.id)}
               onpick={(ingredient) => onpick(item.id, ingredient)}
               onclear={() => onclear(item.id)}
+              onrestore={() => onrestore(item.id)}
               onremove={() => onremove(item.id)}
               oncreate={(query) => oncreate(item.id, query)}
             />

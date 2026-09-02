@@ -94,6 +94,22 @@ test('„Powiel" makes an independent copy that keeps the tags', async ({ device
   await expect(device.getByLabel('Ilość').first()).toHaveValue('100');
 });
 
+test('„Zmień" on an ingredient row can be taken back', async ({ device }) => {
+  await writeRecipe(device, 'Owsianka', { ingredient: 'jajko', amount: '120' });
+
+  await device.goto('#/recipes');
+  await device.getByRole('link', { name: /^Owsianka/ }).click();
+
+  // „Zmień" empties the row into the autocomplete...
+  await device.getByRole('button', { name: 'Zmień', exact: true }).click();
+  await expect(device.getByLabel('Składnik 1')).toBeVisible();
+
+  // ...and „Anuluj zmianę" puts the ingredient back with its amount untouched.
+  await device.getByRole('button', { name: 'Anuluj zmianę' }).click();
+  await expect(device.getByRole('button', { name: /^Usuń składnik/ })).toBeVisible();
+  await expect(device.getByLabel('Ilość').first()).toHaveValue('120');
+});
+
 test('a tag renamed in Settings follows every recipe that carries it', async ({ device }) => {
   await writeRecipe(device, 'Kotlet', { tags: ['Obiat'] });
   await writeRecipe(device, 'Omlet', { tags: ['Obiat'] });
