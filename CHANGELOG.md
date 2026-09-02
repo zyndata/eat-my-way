@@ -6,7 +6,7 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.0.0] - 2026-09-02
 
 ### Bug Fixes
 
@@ -14,6 +14,8 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Default to gemini-3.6-flash, which a new key can actually call
 - Migrate profiles off the retired model and report the real quota
 - Offer the right ingredients for a multi-word name, and drop import from the edit screen
+- **editor:** Let "Zmień" on an ingredient row be undone
+- **sync:** Keep the Drive session across a page reload
 
 ### Documentation
 
@@ -28,6 +30,8 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Settle open question 20 as decision 152
 - Settle open question 21 as decision 153
 - Write the model A/B protocol and close the open-questions pass
+- Record the first model A/B and what the free tier did to it
+- Record decisions 172-174
 
 ### Features
 
@@ -39,9 +43,13 @@ project adheres to [Semantic Versioning](https://semver.org).
 - **vault:** Keep the vault Drive overwrote, so the swap can be undone
 - **backup:** Say what a restore replaces, not only what it brings in
 - Phase 9 — daily-use comfort
+- **gemini:** List only the models an import can use
+- **gemini:** Default to gemini-3.5-flash-lite
+- **sync:** Show how full the connected Google account is
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
@@ -66,6 +74,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Cover the Drive login and sync flows end to end
 - Cover the loop that turns an unmatched row into a permanent match
 - Drive the meal-card swipe as a real touch gesture
+
+### Merge
+
+- Dev into main for v1.0.0
 
 ## [0.2.0] - 2026-08-31
 
