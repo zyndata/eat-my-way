@@ -73,6 +73,13 @@ export interface MetaValues {
    * unpacked into rows.
    */
   vaultFile: string;
+  /**
+   * The `vault.json` this device held just before sync adopted Drive's copy (STATE.md
+   * decision 93), kept so the swap can be undone — the two files may have different master
+   * passwords, in which case the adopted one cannot be opened here at all (decision 150).
+   * Absent whenever there is nothing to undo. It never leaves the device.
+   */
+  vaultFileReplaced: string;
   /** Display name of the connected Drive account. Identity itself lives in `Profile.googleSub`. */
   driveAccountLabel: string;
   /**

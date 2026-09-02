@@ -26,6 +26,10 @@ browser and in their own Google Drive:
 The vault's master password is never stored and cannot be recovered. The decrypted vault key
 exists only in page memory for the duration of the session.
 
+When sync adopts the vault from Drive, the copy this device held is kept locally so the swap can
+be undone (STATE.md decision 150). It is the same ciphertext under the same protection, it is
+never uploaded, and it is discarded as soon as the user restores it or writes a vault here.
+
 The data export in settings (*Zapisz kopię*) writes a JSON file holding the goals, recipes,
 tags, custom ingredients and planned days — and **deliberately not the vault**. A backup file
 ends up in Downloads, in mail attachments and in other people's cloud drives; an API key does

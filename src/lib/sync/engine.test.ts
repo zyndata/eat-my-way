@@ -397,5 +397,18 @@ describe('the vault', () => {
 
     expect(await b.engine.sync()).toMatchObject({ status: 'ok', vaultAdopted: true });
     expect(await b.repository.getMeta('vaultFile')).toContain('from-a');
+    // Decision 150: what the adoption overwrote is kept locally so the swap can be undone.
+    expect(await b.repository.getMeta('vaultFileReplaced')).toContain('from-b');
+  });
+
+  it('keeps nothing to undo when the device had no vault of its own', async () => {
+    const drive = new FakeDrive();
+    const a = device(drive);
+    await a.repository.setMeta('vaultFile', '{"v":1,"kdf":"none","data":{"geminiApiKey":"k"}}');
+    await a.engine.sync();
+
+    const b = device(drive);
+    expect(await b.engine.sync()).toMatchObject({ status: 'ok', vaultAdopted: true });
+    expect(await b.repository.getMeta('vaultFileReplaced')).toBeUndefined();
   });
 });

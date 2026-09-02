@@ -53,7 +53,20 @@ export const vaultState = $state<{
   message: string;
   /** True while an Argon2 derivation is running — it takes about a second. */
   busy: boolean;
-}>({ status: 'unknown', encrypted: true, failedAttempts: 0, message: '', busy: false });
+  /**
+   * A vault this device held before sync adopted Drive's copy is still around, so the swap
+   * can be undone (decision 150). Survives a reload, because the offer has to outlive the
+   * sync that made it.
+   */
+  replaced: boolean;
+}>({
+  status: 'unknown',
+  encrypted: true,
+  failedAttempts: 0,
+  message: '',
+  busy: false,
+  replaced: false
+});
 
 /** The parsed file, kept so a reseal reuses its salt and parameters. */
 let file: VaultFile | null = null;
@@ -78,14 +91,44 @@ async function persist(next: VaultFile, opened: UnlockedVault | null): Promise<v
   loadedText = text;
   unlocked = opened;
   await repository.setMeta('vaultFile', text);
+  // Writing a vault deliberately is the user taking charge of this device's secrets, which
+  // retires the undo offer from an earlier adoption.
+  await forgetReplacedVault();
   vaultState.encrypted = isEncrypted(next);
   vaultState.status = opened === null ? 'locked' : 'unlocked';
   vaultState.failedAttempts = 0;
   vaultState.message = '';
 }
 
+/** Drop the kept pre-adoption copy, if there is one. */
+async function forgetReplacedVault(): Promise<void> {
+  if (!vaultState.replaced) return;
+  vaultState.replaced = false;
+  await repository.deleteMeta('vaultFileReplaced');
+}
+
+/**
+ * Put back the vault this device held before sync adopted Drive's copy (decision 150). The
+ * restored file differs from the baseline the last sync recorded, so the next sync uploads it
+ * and Drive's copy loses in turn — which is exactly what "undo" has to mean here.
+ */
+export async function restoreReplacedVault(): Promise<VaultStatus> {
+  const text = await repository.getMeta('vaultFileReplaced');
+  if (text === undefined) {
+    vaultState.replaced = false;
+    return vaultState.status;
+  }
+  await repository.setMeta('vaultFile', text);
+  await repository.deleteMeta('vaultFileReplaced');
+  vaultState.replaced = false;
+  vaultState.failedAttempts = 0;
+  vaultState.message = '';
+  return loadVault();
+}
+
 /** Read `vault.json` out of IndexedDB. Safe to call repeatedly. */
 export async function loadVault(): Promise<VaultStatus> {
+  vaultState.replaced = (await repository.getMeta('vaultFileReplaced')) !== undefined;
   const text = await repository.getMeta('vaultFile');
   if (text === undefined) {
     file = null;
@@ -231,6 +274,7 @@ export async function forgetVault(): Promise<void> {
   vaultState.encrypted = true;
   vaultState.status = 'absent';
   await repository.deleteMeta('vaultFile');
+  await forgetReplacedVault();
 }
 
 /**

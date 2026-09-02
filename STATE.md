@@ -1403,11 +1403,37 @@ one of which broke the feature outright.
      one thing worth having — a record of how Google actually behaved — is the thing that was
      never written down.
 
+150. **The vault Drive overwrote is kept, locally, until the user answers for it.** Open question
+     17 called the losing side „silent apart from a sentence in Settings". Reviewing it on
+     2026-09-02 turned up two things the question had wrong in opposite directions.
+
+     **The rule is narrower than stated.** Drive does not simply win: `engine.ts` adopts the
+     remote vault only when the remote moved away from the baseline *and* the local copy also
+     changed. A vault edited on this device alone still uploads. That rule stands unchanged.
+
+     **The loss is larger than the sentence admitted.** After adoption `loadVault()` sees a
+     different text and drops the derived key, so the vault locks — and if the two devices had
+     different master passwords, only the *other* device's password opens it. Settings said
+     „Jeśli klucz Gemini był tu inny, wpisz go ponownie", which describes filling in a field.
+     The user may in fact be locked out of secrets that were theirs a second ago.
+
+     So the fix the question predicted was built, with one change: the losing copy is kept in
+     the local `meta` table as `vaultFileReplaced`, **not** under a second name on Drive. It
+     never leaves the device, costs no upload, and needs no second name for the merge to reason
+     about. Settings states the situation in full and offers „Przywróć poprzedni sejf"; the
+     offer survives a reload, because whoever needs it is unlikely to be looking at Settings at
+     the moment the sync runs. Restoring makes the local file differ from the recorded baseline,
+     so the next sync pushes it and Drive's copy loses in turn — undo has to mean that.
+
+     The offer is retired when it stops meaning anything: on restore, on `forgetVault()`, and on
+     any deliberate write of this device's vault (`persist()`), since a user who has just sealed
+     their own secrets is no longer stranded.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15 — see decisions 143–149. **Next
-> up: 17.** Still unreviewed after it: 18, 20, 21, 24, 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17 — see decisions 143–150.
+> **Next up: 18.** Still unreviewed after it: 20, 21, 24, 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1547,11 +1573,13 @@ one of which broke the feature outright.
 16. **Data export — answered.** Built in Phase 8 as task 6, together with the restore the
     acceptance criterion implies (decision 137). *Zapisz kopię* / *Wczytaj kopię* in Settings;
     the file holds everything local except the vault, and a restore replaces rather than merges.
-17. **A vault changed on two devices at once resolves in Drive's favour, silently apart from a
-    sentence in Settings** (decision 93). Ciphertext cannot be merged, so something has to win;
-    the case where it costs anything is narrow — the key would have to have been set differently
-    on both devices while one was offline. If it ever bites, the fix is to keep the losing file
-    under a second name rather than to try to merge it.
+17. **A vault changed on two devices at once — answered, and the swap is now reversible.**
+    Reviewed and built 2026-09-02 as decision 150. The rule itself was left alone (and is
+    narrower than this question claimed: Drive wins only when *both* sides moved), but the copy
+    it overwrites is now kept locally in `vaultFileReplaced` and Settings offers „Przywróć
+    poprzedni sejf". The old wording understated the loss — adoption locks the vault, and only
+    the other device's master password opens it — so it was rewritten too.
+
 18. **Nothing re-tries a sync that failed while the app was closed.** The triggers are a
     debounce after an edit, focus, `online`, and a five-minute timer (decision 99) — all of
     which need the tab to be open. Phase 8's service worker could add a background sync;

@@ -26,6 +26,7 @@
     lockVault,
     requestUnlock,
     forgetVault,
+    restoreReplacedVault,
     saveSecrets,
     setPassword,
     vaultState
@@ -278,8 +279,7 @@
       {/if}
       {#if syncState.vaultAdopted}
         <p class="pt-2 text-sm text-(--color-ink-muted)" role="status">
-          Sejf z Dysku zastąpił kopię z tego urządzenia. Jeśli klucz Gemini był tu inny, wpisz go
-          ponownie.
+          Sejf z Dysku zastąpił kopię z tego urządzenia — szczegóły i cofnięcie w sekcji „Sejf".
         </p>
       {/if}
 
@@ -327,6 +327,27 @@
       W sejfie trzymamy klucz API do Gemini. Kalendarz i przepisy nie są w sejfie i działają, gdy
       jest zamknięty.
     </p>
+
+    {#if vaultState.replaced}
+      <!-- The swap can lock this device out of its own secrets, so it is stated in full and
+           kept until the user answers it — not only while the sync that caused it is fresh. -->
+      <p class="pt-3 text-sm text-amber-700" role="status">
+        Sejf z Dysku zastąpił ten z tego urządzenia. Jeśli hasła główne były różne, ten sejf
+        otworzy tylko hasło z drugiego urządzenia.
+      </p>
+      <p class="pt-2 text-sm text-(--color-ink-muted)">
+        Poprzedni sejf nadal jest na tym urządzeniu i nigdzie nie został wysłany. Możesz go
+        przywrócić — wtedy przy następnej synchronizacji zastąpi ten na Dysku.
+      </p>
+      <button
+        type="button"
+        class="{secondaryClass} mt-3"
+        disabled={vaultState.busy}
+        onclick={() => void restoreReplacedVault()}
+      >
+        Przywróć poprzedni sejf
+      </button>
+    {/if}
 
     {#if vaultState.status === 'unknown'}
       <p class="pt-3 text-sm text-(--color-ink-muted)">Wczytywanie…</p>

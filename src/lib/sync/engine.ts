@@ -395,7 +395,15 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
       months: [...months]
     };
     await repository.applyMergedData(merged);
-    if (vaultAdopted && vaultText !== undefined) await repository.setMeta('vaultFile', vaultText);
+    if (vaultAdopted && vaultText !== undefined) {
+      // Keep what we are about to overwrite. The two vaults can have different master
+      // passwords, so adopting Drive's copy can leave this device unable to open its own
+      // secrets — decision 150. The kept copy is local only; it is never uploaded.
+      if (snapshot.vaultFile !== undefined) {
+        await repository.setMeta('vaultFileReplaced', snapshot.vaultFile);
+      }
+      await repository.setMeta('vaultFile', vaultText);
+    }
     if (account.label !== undefined) await repository.setMeta('driveAccountLabel', account.label);
 
     // ---- upload what moved ------------------------------------------------------------
