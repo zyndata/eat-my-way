@@ -43,6 +43,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
+- Update CHANGELOG
+
+### Performance
+
+- **recipes:** Count usage over a trailing year instead of the whole history
 
 ### Tests
 
