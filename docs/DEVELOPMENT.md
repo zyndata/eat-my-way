@@ -169,6 +169,35 @@ Identity Services applies an inline style inside its own transient iframe, which
 `style-src 'self'` blocks. It leaves nothing in the DOM and does not affect the sign-in popup —
 see STATE.md decision 88. Any violation from our own code is a real regression.
 
+## Comparing two Gemini models on the same recipes
+
+STATE.md open questions 24 and 25: `gemini-3.5-flash-lite` and `gemini-3.6-flash` have both done
+well on real pages, but **never on the same page**, so the default model rests on a comparison
+that was never made. This is the protocol for making it — a hand run in the browser, with a real
+key in the vault; the key is not in the repository and not in CI.
+
+**Fix the pages first, and write them down here.** One is already chosen: kwestiasmaku's *Cukinia
+faszerowana mięsem i ricottą w sosie pomidorowym*, the page that exposed decision 131. Every
+ingredient it needs is in the bundled subset — „Mięso mielone wieprzowe", „Ser ricotta",
+„Cukinia", „Passata pomidorowa", „Pomidory krojone z puszki" — so a correct import matches every
+row and a wrong one is obvious. Add two more, ideally the hpba.pl pages the earlier lite runs
+used, and record the URLs before starting: the comparison is worthless if the inputs drift.
+
+**Budget it, because one model is tight.** A link import costs 3 requests
+(`REQUESTS_PER_IMPORT.link`); a paste costs 2. Three pages on `gemini-3.6-flash` is 9 of its 20
+requests per day, and its rate is 5 per minute (decision 129), so leave a moment between imports
+and do the whole comparison **in one sitting** — a second attempt the same day will not fit.
+`gemini-3.5-flash-lite` has 500 a day and is not a constraint.
+
+**Record, per page and per model:** matched rows out of total, which rows fell back to manual
+autocomplete, whether the household measures („2 łyżki mąki", „olej do smażenia") came out
+plausibly and consistently, and what the usage screen says it cost. Then run the same page twice
+on the winner — that is open question 21's determinism, measured on the model that would become
+the default.
+
+**The result goes into STATE.md** as the answer to open questions 24 and 25, whichever way it
+falls. „The two are indistinguishable, keep the one with 500 requests a day" is a result.
+
 ## End-to-end tests
 
 `e2e/` drives the built app in Chromium:

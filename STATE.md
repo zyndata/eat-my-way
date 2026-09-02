@@ -1504,14 +1504,32 @@ one of which broke the feature outright.
      151, whose reason is stronger than either wording had: the worker could not authenticate
      even if the plumbing were free.
 
+156. **The model A/B is now a protocol with a budget, not an intention.** Open questions 24 and
+     25 both wait on the same run — the two models have never seen the same page — and the
+     review on 2026-09-02 could not settle them from a keyboard: it needs a real key in the
+     vault and six hand-driven imports. What it could do is remove every reason to get the run
+     wrong, in
+     [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#comparing-two-gemini-models-on-the-same-recipes).
+
+     The trap worth naming: a link import costs 3 requests and `gemini-3.6-flash` allows 20 a
+     day at 5 a minute (decision 129), so three pages on it is 9 of 20 and **the comparison has
+     to happen in one sitting** — there is no second attempt that day. The lite model's 500 make
+     it a non-issue on that side, which is itself part of what is being compared.
+
+     The pages must be fixed and written down before the first import, or the two halves of the
+     A/B are not the same experiment. One is chosen already (the kwestiasmaku cukinia page of
+     open question 25, every row of which exists in the bundle); the other two are named when
+     the run happens. And the winner gets one extra pass: the same page twice, which measures
+     open question 21's determinism on the model that would actually ship.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
 > 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 27, 28 — see
-> decisions 143–155. **Left: 24, 25 and 26**, and none of the three can be settled from a
-> keyboard: 24 and 25 need one deliberate A/B of the two models on the same live pages, and 26
-> needs an Android phone. All three are now procedures waiting on a real device, not open
-> design questions.
+> decisions 143–156. **The pass is finished.** What is left — 15, 20, 24, 25 and 26 — is not
+> undecided but unobserved: each one now names a procedure and waits on a real device. 15 and 20
+> and 26 are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model
+> A/B in DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1735,6 +1753,11 @@ one of which broke the feature outright.
     API since the fix: the candidate half was verified offline against the real bundle, the
     model half was not. Run it on `gemini-3.5-flash-lite` and on `gemini-3.6-flash` when
     settling open question 24, and use the same page for both.
+
+    **Both now have a written protocol** — decision 156 and
+    [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#comparing-two-gemini-models-on-the-same-recipes) —
+    including the request budget that makes the run a one-sitting affair. What is left is the
+    run itself.
 
 26. **Nothing has been installed on a real phone yet.** The installability criteria are
     asserted programmatically (decision 142) and the manifest, the icons and the service worker
