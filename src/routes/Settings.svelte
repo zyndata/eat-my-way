@@ -4,6 +4,7 @@
   import GoalsForm from '../lib/components/GoalsForm.svelte';
   import BackupSection from '../lib/components/BackupSection.svelte';
   import InstallSection from '../lib/components/InstallSection.svelte';
+  import TagSection from '../lib/components/TagSection.svelte';
   import type { Macros, Profile } from '../lib/types';
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
@@ -221,7 +222,7 @@
   void load();
 </script>
 
-<Screen title="Ustawienia" lead="Konto Google, sejf na klucz Gemini i cele dzienne.">
+<Screen title="Ustawienia" lead="Konto Google, sejf na klucz Gemini, cele dzienne i tagi.">
   <!-- ---- Google Drive ------------------------------------------------------------- -->
   <section class="rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-4">
     <h2 class="text-base font-semibold">Dysk Google</h2>
@@ -547,6 +548,8 @@
       {/if}
     {/if}
   </section>
+
+  <TagSection />
 
   <BackupSection />
 

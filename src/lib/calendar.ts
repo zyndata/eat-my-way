@@ -1,5 +1,5 @@
 import type { Day, Macros } from './types';
-import { dayTotals } from './macros';
+import { dayTotals, remainingMacros } from './macros';
 import { addDays, toDateKey, parseDateKey, weekdayIndex } from './dates';
 
 /**
@@ -147,4 +147,37 @@ export function dayBudget(totals: Macros, goals: Macros): DayBudget {
   const remaining = hasGoal ? goals.kcal - totals.kcal : 0;
   const exhausted = hasGoal && remaining <= 0;
   return { remaining, hasGoal, exhausted, canFilter: hasGoal && !exhausted };
+}
+
+/**
+ * What is left of every goal the day actually has — the readout PLAN.md Phase 9 task 6 puts
+ * in the picker header („zostało 620 kcal · 40 g białka").
+ *
+ * A **readout, not a ranking** (STATE.md decision 148): it answers „czego mi dziś brakuje"
+ * and leaves the choice of recipe to the user. A goal of zero or less is not a goal, so it
+ * produces no entry rather than a permanently exhausted one; a day with no goals at all
+ * produces an empty list and the header simply says nothing.
+ *
+ * `remaining` is negative once a goal has been passed, deliberately: „−40 g białka" is the
+ * honest reading, and clamping it at zero would claim the day is exactly on target.
+ */
+export interface RemainingGoal {
+  key: keyof Macros;
+  /** Polish unit as it follows the number: „kcal", „g białka", … */
+  label: string;
+  remaining: number;
+}
+
+const GOAL_LABELS: ReadonlyArray<{ key: keyof Macros; label: string }> = [
+  { key: 'kcal', label: 'kcal' },
+  { key: 'protein', label: 'g białka' },
+  { key: 'carbs', label: 'g węglowodanów' },
+  { key: 'fat', label: 'g tłuszczu' }
+];
+
+export function remainingGoals(totals: Macros, goals: Macros): RemainingGoal[] {
+  const left = remainingMacros(goals, totals);
+  return GOAL_LABELS.filter(({ key }) => Number.isFinite(goals[key]) && goals[key] > 0).map(
+    ({ key, label }) => ({ key, label, remaining: left[key] })
+  );
 }

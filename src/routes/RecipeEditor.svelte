@@ -2,13 +2,13 @@
   import { push, router } from 'svelte-spa-router';
   import Screen from '../lib/components/Screen.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
-  import CustomIngredientForm from '../lib/components/CustomIngredientForm.svelte';
   import RecipeImportSheet from '../lib/components/RecipeImportSheet.svelte';
-  import RecipeItemRow from '../lib/components/RecipeItemRow.svelte';
+  import RecipeItemList from '../lib/components/RecipeItemList.svelte';
   import TagInput from '../lib/components/TagInput.svelte';
   import type { Ingredient, Recipe, Tag } from '../lib/types';
   import type { RecipeDraft } from '../lib/recipes';
   import {
+    COPY_SUFFIX,
     canSaveDraft,
     draftFromRecipe,
     draftMacros,
@@ -52,7 +52,7 @@
   let references = $state<RecipeReferences>({ past: 0, future: 0, total: 0 });
 
   /** Row waiting for a hand-written ingredient, and the name the user had typed. */
-  let customRowKey = $state<string | null>(null);
+  let customRowId = $state<string | null>(null);
   let customName = $state('');
 
   /**
@@ -78,7 +78,7 @@
   let importedPortions = $state(1);
 
   let rowCounter = 0;
-  const nextKey = (): string => `row-${++rowCounter}`;
+  const nextId = (): string => `row-${++rowCounter}`;
 
   const lookup = (id: string): Ingredient | undefined => ingredientsById[id];
   const sum = $derived(draftMacros(draft.items, lookup));
@@ -111,7 +111,7 @@
     existing = recipe;
     // Tags are stored as keys; the editor shows the label the user first typed.
     const labels = recipe.tags.map((key) => allTags.find((tag) => tag.key === key)?.label ?? key);
-    draft = draftFromRecipe(recipe, labels, nextKey);
+    draft = draftFromRecipe(recipe, labels, nextId);
 
     const used = await repository.ingredientsByIds(recipe.items.map((item) => item.ingredientId));
     ingredientsById = Object.fromEntries(used.map((ingredient) => [ingredient.id, ingredient]));
@@ -124,17 +124,23 @@
   });
 
   function addRow(): void {
-    draft.items = [...draft.items, emptyDraftItem(nextKey())];
+    draft.items = [...draft.items, emptyDraftItem(nextId())];
   }
 
-  function removeRow(key: string): void {
-    draft.items = draft.items.filter((item) => item.key !== key);
-    if (customRowKey === key) customRowKey = null;
+  function removeRow(rowId: string): void {
+    draft.items = draft.items.filter((item) => item.id !== rowId);
+    if (customRowId === rowId) customRowId = null;
   }
 
-  function pick(key: string, ingredient: Ingredient): void {
+  /** „Zmień" on a filled row: drop the ingredient and re-open the autocomplete. */
+  function clearRow(rowId: string): void {
+    const row = draft.items.find((item) => item.id === rowId);
+    if (row !== undefined) row.ingredientId = '';
+  }
+
+  function pick(rowId: string, ingredient: Ingredient): void {
     ingredientsById[ingredient.id] = ingredient;
-    const row = draft.items.find((item) => item.key === key);
+    const row = draft.items.find((item) => item.id === rowId);
     if (row === undefined) return;
     row.ingredientId = ingredient.id;
     // A fresh pick starts from the database values, never from a previous row's override.
@@ -164,13 +170,13 @@
     imported = true;
   }
 
-  async function saveCustomIngredient(key: string, ingredient: Ingredient): Promise<void> {
+  async function saveCustomIngredient(rowId: string, ingredient: Ingredient): Promise<void> {
     await repository.putIngredient(ingredient);
     scheduleSync();
     // The autocomplete keeps an in-memory snapshot — see STATE.md decision 39.
     ingredientIndex.invalidate();
-    pick(key, ingredient);
-    customRowKey = null;
+    pick(rowId, ingredient);
+    customRowId = null;
   }
 
   /** Write the recipe, optionally carrying the new macros into days from today onwards. */
@@ -210,6 +216,24 @@
       return;
     }
     await commit(recipe, false);
+  }
+
+  /**
+   * „Zapisz jako kopię" — the variant workflow of STATE.md decision 66. The *edited* draft is
+   * written under a fresh id, so „swap the rice for buckwheat, save as a copy" leaves the
+   * original exactly as it was on disk and gives both versions a life of their own.
+   *
+   * No „update future days?" question is possible here: the recipe being written has never
+   * existed, so nothing plans it.
+   */
+  async function saveAsCopy(): Promise<void> {
+    if (!canSave) return;
+    const now = new Date().toISOString();
+    const copy = draftToRecipe(
+      { ...draft, name: `${draft.name.trim()}${COPY_SUFFIX}` },
+      { id: newId(), now }
+    );
+    await commit(copy, false);
   }
 
   /** Both answers save; only "yes" carries the new macros into days from today onwards. */
@@ -303,32 +327,21 @@
           </p>
         {/if}
 
-        <ul class="flex flex-col gap-3 pt-3">
-          {#each draft.items as item, index (item.key)}
-            {#if customRowKey === item.key}
-              <li>
-                <CustomIngredientForm
-                  initialName={customName}
-                  onsave={(ingredient) => void saveCustomIngredient(item.key, ingredient)}
-                  oncancel={() => (customRowKey = null)}
-                />
-              </li>
-            {:else}
-              <RecipeItemRow
-                {item}
-                position={index + 1}
-                ingredient={lookup(item.ingredientId)}
-                onpick={(ingredient) => pick(item.key, ingredient)}
-                onclear={() => (item.ingredientId = '')}
-                onremove={() => removeRow(item.key)}
-                oncreate={(query) => {
-                  customName = query;
-                  customRowKey = item.key;
-                }}
-              />
-            {/if}
-          {/each}
-        </ul>
+        <RecipeItemList
+          bind:items={draft.items}
+          {customRowId}
+          {customName}
+          {lookup}
+          onpick={(rowId, ingredient) => pick(rowId, ingredient)}
+          onclear={(rowId) => clearRow(rowId)}
+          onremove={(rowId) => removeRow(rowId)}
+          oncreate={(rowId, query) => {
+            customName = query;
+            customRowId = rowId;
+          }}
+          oncustomsave={(rowId, ingredient) => void saveCustomIngredient(rowId, ingredient)}
+          oncustomcancel={() => (customRowId = null)}
+        />
 
         <button
           type="button"
@@ -337,6 +350,11 @@
         >
           Dodaj składnik
         </button>
+        {#if draft.items.length > 1}
+          <p class="pt-2 text-xs text-(--color-ink-muted)">
+            Kolejność zmienisz, przeciągając uchwyt z lewej strony wiersza.
+          </p>
+        {/if}
       </section>
 
       <section class="rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
@@ -392,6 +410,16 @@
         >
           Zapisz przepis
         </button>
+        {#if existing !== undefined}
+          <button
+            type="button"
+            class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium disabled:opacity-50"
+            disabled={!canSave}
+            onclick={() => void saveAsCopy()}
+          >
+            Zapisz jako kopię
+          </button>
+        {/if}
         <a class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium" href="#/recipes">
           Anuluj
         </a>
@@ -417,7 +445,7 @@
   open={importOpen && existing === undefined}
   onclose={() => (importOpen = false)}
   onimport={applyImport}
-  {nextKey}
+  {nextId}
 />
 
 <ConfirmDialog

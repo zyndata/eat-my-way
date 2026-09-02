@@ -6,10 +6,10 @@
  */
 
 /** Bumped whenever the bundled data changes; IndexedDB stores the value it imported. */
-export const NUTRITION_DATA_VERSION = 1;
+export const NUTRITION_DATA_VERSION = 2;
 
 /** How many ingredients the bundle holds. */
-export const NUTRITION_INGREDIENT_COUNT = 1343;
+export const NUTRITION_INGREDIENT_COUNT = 1344;
 
 /** The pinned USDA FoodData Central releases the bundle was built from. */
 export const NUTRITION_SOURCES = ["sr_legacy_2018-04","foundation_2026-04-30"] as const;

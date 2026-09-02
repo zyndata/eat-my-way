@@ -46,11 +46,12 @@
 171250	Ser roquefort	roquefort	raw
 170851	Ser ricotta	ricotta	raw
 173418	Serek śmietankowy	serek kremowy|philadelphia|cream cheese	raw
-172207	Serek śmietankowy light	serek kremowy light	raw
+169079	Serek śmietankowy light	serek kremowy light|philadelphia light	raw
+172207	Serek śmietankowy 0%	serek kremowy 0|serek smietankowy bez tluszczu	raw
 171246	Ser neufchatel	neufchatel	raw
 172179	Serek wiejski	twarog ziarnisty|cottage cheese	raw
 173417	Serek wiejski light	twarog ziarnisty light	raw
-172181	Twaróg chudy	twarog|twarog chudy	raw
+172181	Serek wiejski odsączony	twarog ziarnisty odsaczony|cottage cheese odsaczony	raw
 171254	Ser topiony	serek topiony	raw
 2647443	Ser cotija	cotija	raw
 172223	Ser queso fresco	queso fresco	raw
@@ -484,8 +485,8 @@
 168908	Makaron somen	somen	raw
 168872	Otręby owsiane	otreby owsiane	raw
 168873	Otręby owsiane gotowane	otreby owsiane gotowane	cooked
-169705	Płatki owsiane	platki owsiane|owsianka sucha	raw
-2346396	Płatki owsiane górskie	platki owsiane gorskie	raw
+169705	Owies ziarno	owies|owies ziarno	raw
+2346396	Płatki owsiane	platki owsiane|owsianka sucha|platki owsiane gorskie	raw
 2346397	Owies łamany	owies lamany|steel cut	raw
 169736	Makaron pszenny	makaron|makaron suchy|spaghetti	raw
 169737	Makaron pszenny gotowany	makaron gotowany|spaghetti gotowane	cooked
@@ -1159,7 +1160,7 @@
 172685	Chleb żytni opiekany	chleb zytni opiekany	cooked
 174918	Chleb pumpernikiel	pumpernikiel	raw
 168013	Chleb wieloziarnisty	chleb wieloziarnisty	raw
-172686	Chleb pszenny razowy	chleb pszenny razowy	raw
+172686	Chleb pszenny mieszany	chleb pszenny mieszany	raw
 172672	Chleb z pękanego ziarna	chleb z pekanego ziarna	raw
 172678	Chleb owsiany	chleb owsiany	raw
 172676	Chleb z otrębami owsianymi	chleb z otrebami	raw

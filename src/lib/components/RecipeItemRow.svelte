@@ -63,7 +63,7 @@
   }
 </script>
 
-<li class="rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
+<div class="rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
   {#if item.ingredientId === ''}
     <IngredientAutocomplete
       id="recipe-item-{position}"
@@ -234,4 +234,4 @@
       {macros.carbs.toFixed(1)} · T {macros.fat.toFixed(1)}
     </p>
   {/if}
-</li>
+</div>

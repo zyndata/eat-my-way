@@ -561,3 +561,113 @@ describe('a copy is independent of later recipe edits', () => {
     );
   });
 });
+
+describe('tag administration', () => {
+  /** Three recipes: two carry „obiad", one carries both „obiad" and „szybkie". */
+  async function seedTagged(): Promise<void> {
+    await repo.saveRecipe(makeRecipe({ id: 'r1', name: 'Kotlet' }), ['Obiad']);
+    await repo.saveRecipe(makeRecipe({ id: 'r2', name: 'Omlet' }), ['Obiad', 'Szybkie']);
+    await repo.saveRecipe(makeRecipe({ id: 'r3', name: 'Kanapka' }), ['Szybkie']);
+  }
+
+  it('a relabel keeps the key and leaves every recipe alone', async () => {
+    await seedTagged();
+    await repo.renameTag('obiad', 'OBIAD');
+
+    const tags = await repo.allTags();
+    expect(tags.find((tag) => tag.key === 'obiad')?.label).toBe('OBIAD');
+    expect((await repo.getRecipe('r1'))?.tags).toEqual(['obiad']);
+  });
+
+  it('a rename to a new key rewrites every recipe and leaves no orphaned key', async () => {
+    await seedTagged();
+    await repo.renameTag('obiad', 'Obiad dnia');
+
+    const keys = (await repo.allTags()).map((tag) => tag.key);
+    expect(keys).toContain('obiad dnia');
+    expect(keys).not.toContain('obiad');
+
+    expect((await repo.getRecipe('r1'))?.tags).toEqual(['obiad dnia']);
+    expect((await repo.getRecipe('r2'))?.tags).toEqual(['obiad dnia', 'szybkie']);
+    expect((await repo.getRecipe('r3'))?.tags).toEqual(['szybkie']);
+
+    // No recipe is left pointing at a key that no tag row holds.
+    const known = new Set(keys);
+    for (const recipe of await repo.allRecipes()) {
+      for (const key of recipe.tags) expect(known.has(key)).toBe(true);
+    }
+  });
+
+  it('a rename recomputes useCount rather than patching it', async () => {
+    await seedTagged();
+    await repo.renameTag('obiad', 'Obiad dnia');
+
+    const renamed = (await repo.allTags()).find((tag) => tag.key === 'obiad dnia');
+    expect(renamed?.useCount).toBe(2);
+  });
+
+  it('merging leaves one tag whose useCount is the number of recipes that now carry it', async () => {
+    await seedTagged();
+    // r2 already carries both, so the merged tag must count 3 recipes, not 4.
+    await repo.mergeTags('obiad', 'szybkie');
+
+    const tags = await repo.allTags();
+    expect(tags.map((tag) => tag.key)).toEqual(['szybkie']);
+    expect(tags[0]?.useCount).toBe(3);
+
+    expect((await repo.getRecipe('r1'))?.tags).toEqual(['szybkie']);
+    // The duplicate a merge would create is collapsed, not stored twice.
+    expect((await repo.getRecipe('r2'))?.tags).toEqual(['szybkie']);
+  });
+
+  it('deleting a tag removes it from every recipe and from the table', async () => {
+    await seedTagged();
+    await repo.deleteTag('obiad');
+
+    expect((await repo.allTags()).map((tag) => tag.key)).toEqual(['szybkie']);
+    expect((await repo.getRecipe('r1'))?.tags).toEqual([]);
+    expect((await repo.getRecipe('r2'))?.tags).toEqual(['szybkie']);
+  });
+
+  it('refuses a rename onto a key another tag already holds', async () => {
+    await seedTagged();
+    await expect(repo.renameTag('obiad', 'Szybkie')).rejects.toThrow();
+    expect((await repo.allTags()).map((tag) => tag.key).sort()).toEqual(['obiad', 'szybkie']);
+  });
+});
+
+describe('duplicateRecipe', () => {
+  it('the copy is independent: editing it leaves the original and every snapshot alone', async () => {
+    const original = await seedRecipe({ id: 'r1', name: 'Ryż z warzywami' });
+    await repo.saveRecipe(original, ['Obiad']);
+    await repo.addRecipeToDay(MONDAY, 'r1');
+    const frozen = (await repo.getDay(MONDAY)).meals[0]?.macroSnapshot;
+
+    const copy = await repo.duplicateRecipe('r1', seqIds('copy'));
+    expect(copy?.id).toBe('copy-1');
+    expect(copy?.name).toBe('Ryż z warzywami (kopia)');
+
+    // Rewrite the copy from top to bottom, then offer to refresh future days from it.
+    await repo.saveRecipe({ ...copy!, items: [item(chicken.id, 1000)] });
+    await repo.refreshFutureSnapshots('copy-1', MONDAY);
+
+    expect((await repo.getRecipe('r1'))?.items).toEqual(original.items);
+    expect((await repo.getRecipe('r1'))?.name).toBe('Ryż z warzywami');
+    expect((await repo.getDay(MONDAY)).meals[0]?.macroSnapshot).toEqual(frozen);
+  });
+
+  it('the copy carries the tags, and each of them gains a user', async () => {
+    await seedRecipe({ id: 'r1' });
+    await repo.saveRecipe(makeRecipe({ id: 'r1' }), ['Obiad']);
+    expect((await repo.allTags())[0]?.useCount).toBe(1);
+
+    const copy = await repo.duplicateRecipe('r1', seqIds('copy'));
+    expect(copy?.tags).toEqual(['obiad']);
+    expect((await repo.allTags())[0]?.useCount).toBe(2);
+  });
+
+  it('an unknown id copies nothing', async () => {
+    expect(await repo.duplicateRecipe('nope')).toBeUndefined();
+    expect(await repo.allRecipes()).toEqual([]);
+  });
+});

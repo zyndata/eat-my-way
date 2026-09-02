@@ -36,8 +36,14 @@ import {
   type MealChanges
 } from './day';
 import { newId, type IdFactory } from './ids';
-import { resolveTags } from './tags';
-import { NO_USAGE, usageWindowStart, type RecipeListEntry, type RecipeUsage } from './recipes';
+import { countTagUses, removeTagKey, replaceTagKey, resolveTags, tagKey } from './tags';
+import {
+  NO_USAGE,
+  duplicateRecipe,
+  usageWindowStart,
+  type RecipeListEntry,
+  type RecipeUsage
+} from './recipes';
 import type { SearchCandidate } from './search';
 
 /**
@@ -145,6 +151,20 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       await database.tags.where('key').equals(key).modify((tag) => {
         tag.useCount = Math.max(0, tag.useCount - 1);
       });
+    }
+  }
+
+  /**
+   * Recompute `useCount` for every tag from the recipes themselves, and drop the counts of
+   * tags no recipe carries to zero. Tag administration recomputes rather than patches
+   * (PLAN.md Phase 9 task 2): a merge or a colliding rename changes counts by an amount only
+   * counting can know. Must run inside a transaction that already holds both tables.
+   */
+  async function recountTags(): Promise<void> {
+    const counts = countTagUses(await database.recipes.toArray());
+    for (const tag of await database.tags.toArray()) {
+      const useCount = counts.get(tag.key) ?? 0;
+      if (tag.useCount !== useCount) await database.tags.put({ ...tag, useCount });
     }
   }
 
@@ -271,6 +291,73 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       return tags.sort((a, b) => b.useCount - a.useCount || a.key.localeCompare(b.key));
     },
 
+    /**
+     * Rename a tag. When the new label normalizes to the key it already has, only the
+     * spelling changes and no recipe is touched; when it normalizes to a different key, every
+     * recipe carrying the old key is rewritten to the new one. A label that collides with
+     * another tag's key is a merge and must be routed through `mergeTags` — `planTagRename`
+     * in `tags.ts` is what tells the two apart before the user is asked.
+     */
+    async renameTag(key: string, label: string): Promise<void> {
+      await database.transaction('rw', database.recipes, database.tags, async () => {
+        const tag = await database.tags.get(key);
+        if (tag === undefined) return;
+
+        const trimmed = label.trim();
+        const nextTagKey = tagKey(trimmed);
+        if (nextTagKey === '') return;
+
+        if (nextTagKey === key) {
+          await database.tags.put({ ...tag, label: trimmed });
+          return;
+        }
+
+        const clash = await database.tags.get(nextTagKey);
+        if (clash !== undefined) throw new Error(`Tag ${nextTagKey} already exists`);
+
+        for (const recipe of await database.recipes.toArray()) {
+          if (!recipe.tags.includes(key)) continue;
+          await database.recipes.put({ ...recipe, tags: replaceTagKey(recipe.tags, key, nextTagKey) });
+        }
+
+        await database.tags.delete(key);
+        await database.tags.put({ key: nextTagKey, label: trimmed, useCount: 0 });
+        await recountTags();
+      });
+    },
+
+    /** Remove a tag from every recipe carrying it, then delete the tag itself. */
+    async deleteTag(key: string): Promise<void> {
+      await database.transaction('rw', database.recipes, database.tags, async () => {
+        for (const recipe of await database.recipes.toArray()) {
+          if (!recipe.tags.includes(key)) continue;
+          await database.recipes.put({ ...recipe, tags: removeTagKey(recipe.tags, key) });
+        }
+        await database.tags.delete(key);
+        await recountTags();
+      });
+    },
+
+    /**
+     * Fold `from` into `into`: every recipe carrying the first now carries the second, the
+     * first is deleted, and `useCount` is recomputed — a recipe that already carried both
+     * must not be counted twice, which is exactly what patching would do.
+     */
+    async mergeTags(from: string, into: string): Promise<void> {
+      if (from === into) return;
+      await database.transaction('rw', database.recipes, database.tags, async () => {
+        if ((await database.tags.get(into)) === undefined) return;
+
+        for (const recipe of await database.recipes.toArray()) {
+          if (!recipe.tags.includes(from)) continue;
+          await database.recipes.put({ ...recipe, tags: replaceTagKey(recipe.tags, from, into) });
+        }
+
+        await database.tags.delete(from);
+        await recountTags();
+      });
+    },
+
     // ---- recipes -------------------------------------------------------------------
 
     async getRecipe(id: string): Promise<Recipe | undefined> {
@@ -328,6 +415,26 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           .map(fromIngredientRecord)
       );
       return new Map(recipes.map((recipe) => [recipe.id, recipePortionMacros(recipe, lookup)]));
+    },
+
+    /**
+     * „Zapisz jako kopię": store an independent copy of a recipe. The copy carries the
+     * original's tags, so each of them gains a user and `useCount` is bumped through the
+     * usual delta — a second recipe really does carry the tag now (open question 8).
+     *
+     * Returns `undefined` when the id resolves to nothing, which is what a library screen
+     * showing a recipe that was deleted on another device would hit.
+     */
+    async duplicateRecipe(id: string, nextId: IdFactory = newId): Promise<Recipe | undefined> {
+      return database.transaction('rw', database.recipes, database.tags, async () => {
+        const original = await database.recipes.get(id);
+        if (original === undefined) return undefined;
+
+        const copy = duplicateRecipe(original, { id: nextId(), now: new Date().toISOString() });
+        await applyTagDelta([], copy.tags);
+        await database.recipes.put(copy);
+        return copy;
+      });
     },
 
     async deleteRecipe(id: string): Promise<void> {

@@ -15,7 +15,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 6     | Drive sync & vault          | done    | 2026-08-31 |
 | 7     | Gemini import               | done    | 2026-09-01 |
 | 8     | PWA & polish                | done    | 2026-09-01 |
-| 9     | Daily-use comfort           | pending | —         |
+| 9     | Daily-use comfort           | done    | 2026-09-02 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
@@ -1522,6 +1522,199 @@ one of which broke the feature outright.
      the run happens. And the winner gets one extra pass: the same page twice, which measures
      open question 21's determinism on the model that would actually ship.
 
+### 2026-09-02 — Phase 9
+
+157. **The grouped library orders its sections by `useCount`, not alphabetically.** The last
+     undecided point of open question 11 (decision 145). Chosen because `repository.allTags()`
+     already returns exactly that order and the filter chips above the list are already drawn
+     from it: the sections and the chips now read left-to-right and top-to-bottom in the same
+     sequence, so the header a user is looking for is where the chip they just pressed was.
+
+     Alphabetical was the alternative and loses on the same ground — it would put the tag used
+     twice above the tag used forty times. „Recent activity" loses harder: the page would
+     reorder itself between visits, and a list you navigate from memory must not move.
+     „Bez tagu" is last regardless, and the counts sum to more than the library holds because a
+     recipe appears under each of its tags — both already written into PLAN.md task 1.
+
+158. **The shopping list has three scopes and lives in two places.** Settling the one thing
+     PLAN.md task 7 left open. The scopes are **one meal**, **the whole day** and **the whole
+     week** (Monday–Sunday of the day being looked at), which is the full set the task named —
+     none of them was dropped, because the summing is one function over a list of meals and a
+     wider scope costs a different argument, not different code.
+
+     The control appears twice, and that is a deliberate deviation from the task's wording.
+     PLAN.md places the export „next to the `cookingScale` control in the meal view", which is
+     right for the one-meal scope and wrong for the other two: a list covering seven days has no
+     business being reached through one Tuesday breakfast. So the meal view exports that meal,
+     and the day screen's „⋮" menu exports the day or the week.
+
+     Transport is decision 144's, unchanged: `navigator.share()` where the browser has it,
+     the clipboard otherwise. Neither is a network request and **the CSP is untouched**.
+
+159. **The mapping audit: six sections read row by row, four entries corrected, `DATA_VERSION`
+     bumped to 2.** PLAN.md Phase 9 task 8, done first in the phase because it is the only item
+     here that changes the numbers the app exists to produce.
+
+     Method, so it can be repeated: the two pinned archives were downloaded into `data/usda/`
+     and every mapped `fdcId` was joined against its real USDA description and macros, section
+     by section. That is what makes „confirmed" mean something — each row below was read
+     against the product a Polish shopper buys, not skimmed.
+
+     **Corrected (4):**
+
+     - `172181` „Twaróg chudy" → **„Serek wiejski odsączony"**, and the alias `twarog` is gone.
+       See decision 160 — this is the case decision 143 found, and it turned out to be worse
+       than a wrong fat level.
+     - `172207` „Serek śmietankowy light" → **„Serek śmietankowy 0%"**, and `169079`
+       (`Cheese, cream, low fat`, 208 kcal / 16,7 g fat) is **added** as the real
+       „Serek śmietankowy light". The bundle had mapped „light" onto USDA's *fat free* row at
+       105 kcal — half the energy of the product on a Polish shelf, and 1 g of fat against 17.
+       This is the „split the name into the variants a shopper distinguishes" fix.
+     - `169705` „Płatki owsiane" → **„Owies ziarno"**, and `2346396` „Płatki owsiane górskie" →
+       **„Płatki owsiane"**, taking the aliases with it. `169705` is USDA `Oats`, the whole
+       grain, at 16,9 g protein; rolled oats are `2346396` at 13,5 g. The most-eaten breakfast
+       in the file was overstating its protein by a quarter, and the correct row was hiding
+       behind „górskie".
+     - `172686` „Chleb pszenny razowy" → **„Chleb pszenny mieszany"**. USDA `Bread, wheat` is a
+       mixed-flour commercial loaf, not wholemeal; the real wholemeal row is `172688`, which
+       already carries the alias `chleb razowy`. A name only — the macros were never wrong for
+       what the row actually is.
+
+     **Confirmed, section by section.** *Dairy and eggs*: butter (717 kcal) and clarified
+     butter, the whole yellow-cheese family, feta, mozzarella, ricotta, processed cheese, the
+     cream ladder 12/18/30/36 %, śmietana 12 and 18 %, milk 3,2/2/1/0 %, buttermilk, natural
+     and Greek yogurt, cottage cheese (`172179` / `173417`), and every egg row raw and cooked.
+     *Groats, rice, pasta and flours*: all four wheat flours, rye, spelt, buckwheat, oat, corn
+     and rice flours, kasza gryczana / jęczmienna / jaglana raw and cooked, bulgur, couscous,
+     every rice row raw and cooked, wheat and wholemeal pasta raw and cooked, egg noodles.
+     *Bread*: pszenny, żytni, pełnoziarnisty, pumpernikiel, bułka tarta, bułka pszenna, and the
+     pastry rows. *Fats*: every oil at 884 kcal, smalec and łój at 902, margarine at 717 — the
+     least ambiguous rows in the file. *Meat*: pierś z kurczaka 120 kcal raw, schab 127,
+     karkówka 143, polędwiczka 109, boczek 518, mielone wieprzowe 263, all five ground-beef fat
+     levels, kiełbasa polska 325, parówki, szynka gotowana, salami, pasztet. A spot check
+     outside the task's list covered the highest-traffic *vegetables* — ziemniaki, marchew,
+     cebula, kapusta (biała, czerwona, kiszona), ogórki, the tomato family, buraki — all
+     correct.
+
+     **Two things recorded rather than changed.** `170904` „Kefir" maps to a 1 % kefir at 43
+     kcal where the Polish shelf standard is 2 % at about 51 — an 8 kcal/100 g understatement,
+     inside the spread of real products. `174602` „Kabanosy wołowo-wieprzowe" maps to
+     `Bacon and beef sticks` at 517 kcal against about 440 for Polish pork kabanosy; the name
+     already says which product it is, and no closer row exists. Both are written down so they
+     are not re-discovered as findings.
+
+     **„Kasza manna" stays absent, deliberately.** The tempting alias is `2003589`
+     `Flour, semolina, fine`, which is durum at 13,3 g protein against about 10 for Polish
+     kasza manna. Adding it would have created exactly the silent 30 % error this audit exists
+     to remove. An absent ingredient fails loudly and a custom one closes it in a step (open
+     question 9a); a wrong one does not fail at all.
+
+     `DATA_VERSION` is now 2, so every existing install re-imports on its next load.
+     `npm run check:nutrition` passes against the regenerated bundle: 1344 ingredients.
+     **No `macroSnapshot` is rewritten by any of this** — the audit corrects the future and
+     leaves recorded history exactly as it was, which is what the snapshot design is for.
+
+160. **„Twaróg" is not mismapped, it is absent — so the alias goes.** Decision 143 suspected a
+     wrong fat level. The archives say worse: `172181` is
+     `Cheese, cottage, nonfat, uncreamed, dry, large or small curd`. Dry-curd cottage cheese is
+     not twaróg at any fat level, which is why its 10,3 g protein never looked like one.
+
+     There is no twaróg in either pinned release. Every `Cheese, *` row with 14–23 g protein
+     and 2–9 g fat was listed and read: the set holds no farmer cheese, no quark, no twaróg —
+     the product does not exist in FoodData Central. So this is not a case of open question 9b
+     after all; it collapses into 9a, **absent**, and the only honest fix is to stop claiming
+     otherwise. The row now says what it is, and „twaróg" matches nothing.
+
+     The cost is real and accepted: the most ordinary Polish dairy staple now has to be added
+     as a custom ingredient, from the empty search result, in one step. The alternative was
+     leaving 200 g of twaróg logged at 144 kcal instead of about 266 — silently, because
+     something matched. Open Food Facts, already planned as the second source post-1.0
+     (PLAN.md „Nutrition data"), is where twaróg actually lives.
+
+161. **The library's order and grouping live in the meta table, not in `Profile`.** PLAN.md task
+     4 says the chosen order persists in `meta`; the grouping toggle joins it there for the same
+     reason. `meta` never travels to Drive, so this is per device — and that is right rather
+     than merely convenient: how a list is drawn belongs to the screen in front of you, and a
+     phone and a laptop may reasonably disagree. `Profile` is synced and would have forced them
+     to agree. Two new keys, `recipeSort` and `recipeGrouped`; `meta` is an outbound-key
+     key/value store, so neither needs a schema bump (decision 42).
+
+162. **A duplicated recipe inherits its tags and bumps their `useCount`; it does not inherit the
+     photo.** Settling the detail open question 8 left for this phase. Tags: yes to both halves —
+     a variant of „obiad" is still „obiad", and a second recipe really does carry the tag, so a
+     count that did not move would be the drifted one. The copy goes through the ordinary
+     `applyTagDelta`, exactly as saving a new recipe with tags does.
+
+     `photoFileId` is the one field deliberately dropped. It names a separate Drive file; two
+     recipes pointing at one of them would mean deleting either takes the other's photo. Nothing
+     writes that field yet, which is precisely why it is worth getting right before something
+     does.
+
+163. **`DraftItem.key` is now `DraftItem.id`.** `svelte-dnd-action` identifies items by a field
+     literally named `id`, and the only way to tell it otherwise —
+     `overrideItemIdKeyNameBeforeInitialisingDndZones` — is **global**, so using it for the
+     editor's rows would have broken the day's meal list, which uses the default. Renaming an
+     editor-local field is the smaller change, and it makes the two draggable lists in the app
+     look alike. `DraftItem` never reaches IndexedDB or Drive — `toRecipeItem` is the only way
+     out of the editor and it does not copy the field — so nothing stored changes.
+
+164. **A rename that collides with an existing tag is a merge, and it is asked about.** „Sniadanie"
+     and „Śniadanie" are one key (decision 47's normalization), so renaming one onto the other is
+     not a rename at all. `planTagRename` in `tags.ts` sorts the four cases apart — noop,
+     relabel (same key, new spelling), rekey, merge — and the repository's `renameTag`
+     **refuses** a colliding key outright rather than silently folding two tags together; the
+     screen catches that case first and offers „Połącz tagi?".
+
+     All three operations recompute `useCount` from the recipes rather than patching it, which
+     is what PLAN.md task 2 asks for and what the merge case actually needs: a recipe already
+     carrying both tags must count once, and only counting can know that.
+
+165. **Sorting by energy is lightest first, and a recipe with no macros sorts last.** The
+     direction is the one a budget is read in — „what can I fit" — and it matches the picker's
+     „Zmieści się w limicie" right next door. A recipe whose per-portion macros are unknown
+     sorts to the end rather than as zero: „we do not know" is not „it is free", and the same
+     rule already governs `fitToBudget`, which keeps such a recipe rather than hiding it.
+
+     A typed query still overrides the chosen order entirely, exactly as it has always
+     overridden the default one (decision 46): once the user has said what they are looking for,
+     match quality is the only ranking that makes sense. The screen says so in one line rather
+     than leaving the select looking broken.
+
+166. **How Phase 9 was verified, and the two things this machine could not check.**
+
+     Automated: 559 unit tests and **42 Playwright specs**, the latter run twice — once on
+     `vite preview` and once against the `npm run docker:up` container, which serves the real
+     Caddy headers. `e2e/screens.spec.ts` walks every route in that second run and reports
+     **zero CSP violations and zero console errors**, so nothing this phase added needs a
+     policy change: the Caddyfile is byte-identical to what Phase 8 shipped.
+
+     `e2e/library.spec.ts` is new and drives the phase through the actual screens: the grouped
+     view (a two-tag recipe appearing in both sections, the untagged one not lost, the choice
+     surviving a reload), the sort select and its persistence, „Powiel" followed by rewriting
+     the copy and finding the original intact, a tag renamed in Settings following both of its
+     recipes, the shopping list summing 300 g + 100 g across a day while `portionsEaten` is
+     0,25, and the picker header listing every set goal while „Zmieści się w limicie" drops the
+     recipe that cannot fit at half and leaves the survivors **in the order they were already
+     in**.
+
+     One thing came out of that run rather than out of the plan: `ConfirmDialog` had a
+     **hardcoded `aria-labelledby` id**, so the moment Settings held two of them every dialog
+     on the page announced the first one's title. Harmless while one screen had one dialog,
+     wrong the instant this phase added another. Now `$props.id()` per instance. Found because
+     a Playwright accessible-name lookup started resolving to „Połączyć tagi?".
+
+     Also worth noting: the keyboard-drag spec is the **first automated coverage of the drag
+     library's reorder path** in this repo — `MealList` has had none since Phase 5.
+
+     **Not verified here, and honestly so.** `navigator.share()` does not exist in headless
+     Chromium, so the share sheet itself was never exercised; the spec asserts the list the
+     sheet renders, not what the button hands to the system. That path — and with it whether
+     the Home Assistant companion app registers as an Android share target (decision 144) —
+     stays a hand check on the phone, alongside open question 26. Second: the ingredient rows
+     were reordered by **keyboard**, not by a touch drag. The pointer path is the same library
+     and the same `dragHandleZone` configuration the day's meal list has used since Phase 5,
+     but it was not driven here.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -1581,15 +1774,12 @@ one of which broke the feature outright.
 7. **A planned meal whose recipe was deleted — answered.** Decision 73: the day view and the
    meal view render „Usunięty przepis" when `recipeId` no longer resolves, keep the frozen
    macros, and drop the recipe section rather than pretending it is still there.
-8. **Ingredient rows and duplicating a recipe — answered: both are scheduled.** The question
-   predates Phase 9 being written, and the plan has since claimed both: PLAN.md Phase 9 task 3
-   is „Zapisz jako kopię" (a deep copy with a new id, the variant workflow of decision 66) and
-   task 5 is reordering the rows. `reorderMeals` in `day.ts` remains the pattern to copy — that
-   is the one piece of guidance PLAN.md does not repeat.
-
-   One detail to settle when Phase 9 starts, not now: whether a duplicated recipe inherits its
-   tags (it should) and whether that increments each tag's `useCount` (it should, or the counter
-   drifts from the number of recipes actually carrying the tag).
+8. **Ingredient rows and duplicating a recipe — done.** Both landed in Phase 9. „Powiel" in the
+   library and „Zapisz jako kopię" in the editor produce an independent deep copy; the rows are
+   reorderable by drag or from the keyboard, following the `MealList` pattern. The detail this
+   question held back is decision 162: the copy **does** inherit the tags and each of them
+   **does** gain a user, through the ordinary tag delta. `photoFileId` is the one field not
+   copied, and decision 163 records why the row identity had to be renamed to `id`.
 9. **The curated mapping holds two different problems, and only one of them is dangerous.**
    Reviewed 2026-09-01; decision 143 split what used to be one question.
 
@@ -1600,12 +1790,16 @@ one of which broke the feature outright.
    the user sees that immediately, and a custom ingredient closes it in one step. Open Food
    Facts remains the planned second source (PLAN.md, „Nutrition data") and is post-1.0.
 
-   **(b) Present but wrong — open, and now PLAN.md Phase 9 task 8.** „Twaróg" resolves to
-   `172181 Twaróg chudy` at 72 kcal / 10.3 g protein / 6.7 g carbohydrate: neither the fat level
-   the name means to a Polish shopper, nor a believable twaróg at all (see decision 143). This
-   one is silent — something matched, so nobody looks — and it puts a wrong number into the one
-   thing the app promises to get right. One case found so far, from checking the two names this
-   question happened to list; the audit exists to find out whether it is an outlier.
+   **(b) Present but wrong — answered by the Phase 9 audit (decisions 159 and 160).** Six
+   sections were read row by row against the real USDA descriptions. Four entries were wrong
+   and are corrected: twaróg, „serek śmietankowy light", „płatki owsiane" and one bread name.
+   Two more are recorded as examined-and-left (kefir, kabanosy), and „kasza manna" is recorded
+   as deliberately still absent. `DATA_VERSION` is 2, so every install re-imports.
+
+   The twaróg case turned out to belong to **(a)**, not to (b): FoodData Central has no twaróg,
+   no quark and no farmer cheese at all, so the fix was to stop claiming one (decision 160). The
+   answer to „is it an outlier?" is: three others of the same kind existed, all in the most-eaten
+   part of the file, and none of them was visible without reading the source rows.
 10. **Shopping-list transport — answered; only the scope is still open.** Decision 144:
     `navigator.share()` with a clipboard fallback, which is not a network request and therefore
     **costs no CSP change**. A direct call to the user's own Home Assistant `todo.add_item` is
@@ -1614,18 +1808,22 @@ one of which broke the feature outright.
     `connect-src`) are worse than the feature. Listonic publishes no import API, so the share
     sheet is also the closest thing to decision 62's stated preference.
 
-    Two loose ends. **Unverified:** whether the Home Assistant companion app registers as an
-    Android share target — if it does, „share → HA" reaches the shopping list for free; check it
-    on the phone together with open question 26. **Still to decide, in Phase 9:** the scope —
-    one meal, a day or a week.
+    **The scope is settled and built** (decision 158): all three — one meal from the meal view,
+    the day and the week from the day screen's menu. Amounts follow `cookingScale`, never
+    `portionsEaten`.
+
+    One loose end remains, **unverified:** whether the Home Assistant companion app registers as
+    an Android share target — if it does, „share → HA" reaches the shopping list for free. Check
+    it on the phone together with open question 26; `navigator.share()` itself cannot be
+    exercised in headless Chromium (decision 166).
 11. **Grouped library view — answered by PLAN.md Phase 9 task 1** (decision 145). Inside a
     section the activity ranking of decision 46 applies; untagged recipes get their own section;
     a recipe with three tags appears under each of them. The task had carried those answers all
     along while still saying „settle open question 11 first"; the wording is now fixed.
 
-    Open only in one respect: the order of the sections themselves (alphabetical / `useCount` /
-    recent activity), deliberately left to whoever builds the screen. „Bez tagu" goes last
-    either way.
+    **Closed.** The order of the sections is the tag's `useCount`, descending — decision 157,
+    chosen so the sections and the filter chips above them read in the same sequence. Built in
+    Phase 9 and covered end to end.
 12. **The swipe-left gesture — mostly covered now; one path is not, and cannot be.** Decision
     146: `e2e/swipe.spec.ts` drives a real touch drag on a phone-sized touch context through
     CDP, and asserts the gesture rules (50 px threshold, 40 px vertical slack, direction) and

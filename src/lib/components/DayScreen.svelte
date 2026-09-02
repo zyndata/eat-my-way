@@ -2,7 +2,7 @@
   import type { Day, Macros, PlannedMeal, Recipe } from '../types';
   import type { DaySummary } from '../calendar';
   import { isOverGoal, monthWeeks, summarizeDates, weekDates } from '../calendar';
-  import { formatDayLong, isDateKey, relativeDayLabel } from '../dates';
+  import { formatDayLong, formatDayMonth, isDateKey, relativeDayLabel } from '../dates';
   import { emptyDay } from '../day';
   import { dayTotals } from '../macros';
   import { repository } from '../repository';
@@ -15,6 +15,7 @@
   import MonthGrid from './MonthGrid.svelte';
   import NavIcon from './NavIcon.svelte';
   import RecipePicker from './RecipePicker.svelte';
+  import ShoppingListSheet from './ShoppingListSheet.svelte';
   import WeekStrip from './WeekStrip.svelte';
 
   /**
@@ -55,6 +56,9 @@
   let removeMealId = $state<string | null>(null);
   /** Targets of a day copy that already have meals — the replace/append question. */
   let conflictDates = $state<string[]>([]);
+  /** Days the shopping list covers; empty while the sheet is closed (STATE.md decision 158). */
+  let shoppingDates = $state<string[]>([]);
+  let shoppingTitle = $state('');
 
   let dayMenu = $state<HTMLDetailsElement>();
 
@@ -107,6 +111,17 @@
     await load(date, monthAnchor, monthShown);
     // Debounced, and silent unless it fails — see `sync/state.svelte.ts`.
     scheduleSync();
+  }
+
+  /** „Lista zakupów" for this day or for its whole week. */
+  function openShopping(scope: 'day' | 'week'): void {
+    closeMenu();
+    const dates = scope === 'day' ? [date] : weekDates(date);
+    shoppingTitle =
+      scope === 'day'
+        ? `Lista zakupów — ${formatDayLong(date)}`
+        : `Lista zakupów — tydzień ${formatDayMonth(dates[0] ?? date)} – ${formatDayMonth(dates[dates.length - 1] ?? date)}`;
+    shoppingDates = dates;
   }
 
   function closeMenu(): void {
@@ -282,6 +297,20 @@
           </button>
           <button
             type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openShopping('day')}
+          >
+            Lista zakupów — dzień
+          </button>
+          <button
+            type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openShopping('week')}
+          >
+            Lista zakupów — tydzień
+          </button>
+          <button
+            type="button"
             class="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 disabled:opacity-40"
             disabled={day.meals.length === 0}
             onclick={() => {
@@ -358,6 +387,13 @@
     goals={headerGoals}
     onpick={(recipeId) => void addRecipe(recipeId)}
     onclose={() => (pickerOpen = false)}
+  />
+
+  <ShoppingListSheet
+    open={shoppingDates.length > 0}
+    title={shoppingTitle}
+    dates={shoppingDates}
+    onclose={() => (shoppingDates = [])}
   />
 
   <DateMultiSelect

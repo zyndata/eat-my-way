@@ -10,11 +10,19 @@
   } from '../lib/macros';
   import { findMeal } from '../lib/day';
   import { portionWord } from '../lib/text';
-  import { addDays, formatDayLong, isDateKey, relativeDayLabel, todayDate } from '../lib/dates';
+  import {
+    addDays,
+    formatDayLong,
+    formatDayMonth,
+    isDateKey,
+    relativeDayLabel,
+    todayDate
+  } from '../lib/dates';
   import { repository } from '../lib/repository';
   import { scheduleSync } from '../lib/sync/state.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
+  import ShoppingListSheet from '../lib/components/ShoppingListSheet.svelte';
 
   /**
    * `/day/:date/:mealId` — one planned meal, in PLAN.md's order: name, the recipe, the
@@ -45,6 +53,7 @@
   /** Ids of tomorrow's meals from this same recipe — what „Dodaj też jutro" reflects. */
   let tomorrowMeals = $state<string[]>([]);
   let uncheckOpen = $state(false);
+  let shoppingOpen = $state(false);
 
   const alreadyTomorrow = $derived(tomorrowMeals.length > 0);
 
@@ -285,6 +294,18 @@
       </div>
 
       <div class="pt-4">
+        <!-- The shopping list belongs next to „ile gotuję": it is the number it reflects
+             (PLAN.md Phase 9 task 7). A day's or a week's list lives on the day screen. -->
+        <button
+          type="button"
+          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          onclick={() => (shoppingOpen = true)}
+        >
+          Lista zakupów
+        </button>
+      </div>
+
+      <div class="pt-4">
         <label class="flex items-center gap-2 text-sm">
           <input
             class="size-4 accent-(--color-accent)"
@@ -400,6 +421,14 @@
     {/if}
   {/if}
 {/if}
+
+<ShoppingListSheet
+  open={shoppingOpen}
+  title="Lista zakupów — {recipe?.name ?? 'posiłek'}, {formatDayMonth(date)}"
+  dates={[date]}
+  {mealId}
+  onclose={() => (shoppingOpen = false)}
+/>
 
 <ConfirmDialog
   open={uncheckOpen}

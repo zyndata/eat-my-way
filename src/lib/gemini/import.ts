@@ -57,8 +57,8 @@ export interface ImportDeps {
   index?: IngredientIndex;
   repository?: Repository;
   fetchImpl?: typeof fetch;
-  /** Row keys for the editor's `{#each}` block. */
-  nextKey: () => string;
+  /** Row ids for the editor's `{#each}` block and its drag handles. */
+  nextId: () => string;
   /** Told what is happening, so a three-call import does not look frozen. */
   onstage?: (stage: ImportStage) => void;
   /**
@@ -187,10 +187,10 @@ async function resolveIngredients(
  */
 export function toDraftItems(
   matched: readonly MatchedIngredient[],
-  nextKey: () => string
+  nextId: () => string
 ): DraftItem[] {
   return matched.map((row) => ({
-    key: nextKey(),
+    id: nextId(),
     ingredientId: row.ingredientId ?? '',
     amount: row.parsed.amount,
     unit: row.parsed.unit,
@@ -251,7 +251,7 @@ async function importWithTally(
   const found = await repository.ingredientsByIds(ids);
   const ingredientsById = Object.fromEntries(found.map((row) => [row.id, row]));
 
-  const items = toDraftItems(matched, deps.nextKey);
+  const items = toDraftItems(matched, deps.nextId);
 
   return {
     name: recipe.name,

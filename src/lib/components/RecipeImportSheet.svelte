@@ -23,13 +23,13 @@
     open = false,
     onclose,
     onimport,
-    nextKey
+    nextId
   }: {
     open?: boolean;
     onclose: () => void;
     onimport: (result: ImportedRecipe) => void;
     /** Row keys, so imported rows share the editor's `{#each}` identity space. */
-    nextKey: () => string;
+    nextId: () => string;
   } = $props();
 
   const STAGES: Record<ImportStage, string> = {
@@ -80,7 +80,7 @@
       const result = await importRecipe(input, {
         apiKey,
         model: profile.geminiModel,
-        nextKey,
+        nextId,
         onstage: (next) => (stage = STAGES[next]),
         // The tally travels in profile.json so the free tier's 20/day is counted across every
         // device on the account, not per browser (STATE.md decision 127).

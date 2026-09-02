@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeKey, stripDiacritics } from './text';
-import { bumpTag, makeTag, rankTags, resolveTags, tagKey, toTagKeys } from './tags';
+import {
+  bumpTag,
+  countTagUses,
+  makeTag,
+  planTagRename,
+  rankTags,
+  removeTagKey,
+  replaceTagKey,
+  resolveTags,
+  tagKey,
+  toTagKeys
+} from './tags';
 import type { Tag } from './types';
+import { makeRecipe } from '../test/fixtures';
 
 describe('normalizeKey', () => {
   it('strips every Polish diacritic, including the stroked l', () => {
@@ -98,5 +110,58 @@ describe('rankTags', () => {
       'sniadanie',
       'obiad wegetarianski'
     ]);
+  });
+});
+
+describe('tag administration helpers', () => {
+  it('replaceTagKey swaps the key and collapses the duplicate a merge creates', () => {
+    expect(replaceTagKey(['obiad', 'szybkie'], 'obiad', 'kolacja')).toEqual([
+      'kolacja',
+      'szybkie'
+    ]);
+    // A recipe carrying both already: the merge must not leave it counted twice.
+    expect(replaceTagKey(['obiad', 'szybkie'], 'obiad', 'szybkie')).toEqual(['szybkie']);
+    expect(replaceTagKey(['szybkie'], 'obiad', 'kolacja')).toEqual(['szybkie']);
+  });
+
+  it('removeTagKey drops just that key', () => {
+    expect(removeTagKey(['obiad', 'szybkie'], 'obiad')).toEqual(['szybkie']);
+  });
+
+  it('countTagUses counts recipes, not tag occurrences', () => {
+    const counts = countTagUses([
+      makeRecipe({ id: 'r1', tags: ['obiad'] }),
+      makeRecipe({ id: 'r2', tags: ['obiad', 'szybkie'] })
+    ]);
+    expect(counts.get('obiad')).toBe(2);
+    expect(counts.get('szybkie')).toBe(1);
+  });
+
+  it('planTagRename tells a relabel, a rekey and a merge apart', () => {
+    const obiad: Tag = { key: 'obiad', label: 'Obiad', useCount: 2 };
+    const szybkie: Tag = { key: 'szybkie', label: 'Szybkie', useCount: 1 };
+    const all = [obiad, szybkie];
+
+    expect(planTagRename(obiad, 'Obiad', all)).toEqual({ kind: 'noop' });
+    expect(planTagRename(obiad, '  ', all)).toEqual({ kind: 'invalid' });
+    // Same key, different spelling — nothing but the label moves.
+    expect(planTagRename(obiad, 'OBIAD', all)).toEqual({
+      kind: 'relabel',
+      key: 'obiad',
+      label: 'OBIAD'
+    });
+    expect(planTagRename(obiad, 'Obiad dnia', all)).toEqual({
+      kind: 'rekey',
+      from: 'obiad',
+      to: 'obiad dnia',
+      label: 'Obiad dnia'
+    });
+    // „Szybkie" normalizes onto a key that already exists: that is a merge, and the user
+    // is asked rather than having the two folded together quietly.
+    expect(planTagRename(obiad, 'szybkie', all)).toEqual({
+      kind: 'merge',
+      from: 'obiad',
+      to: 'szybkie'
+    });
   });
 });

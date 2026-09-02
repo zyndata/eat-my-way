@@ -128,7 +128,7 @@ const deps = (fetchImpl: typeof fetch, model = 'gemini-2.5-flash') => ({
   index,
   repository: repo,
   fetchImpl,
-  nextKey: seqIds('row')
+  nextId: seqIds('row')
 });
 
 beforeEach(async () => {
@@ -156,7 +156,7 @@ describe('importing pasted text', () => {
     expect(result.items).toEqual([
       // Halved, because the page described two portions and a recipe stores one.
       {
-        key: 'row-1',
+        id: 'row-1',
         ingredientId: egg.id,
         amount: 1,
         unit: 'szt',
@@ -165,7 +165,7 @@ describe('importing pasted text', () => {
         sourceName: 'Jajko'
       },
       {
-        key: 'row-2',
+        id: 'row-2',
         ingredientId: '',
         amount: 100,
         unit: 'g',
@@ -174,7 +174,7 @@ describe('importing pasted text', () => {
         sourceName: 'mąka pszenna'
       },
       {
-        key: 'row-3',
+        id: 'row-3',
         // „oliwa do smażenia" is not in the database under that name; the model picked it.
         ingredientId: oil.id,
         amount: 10,

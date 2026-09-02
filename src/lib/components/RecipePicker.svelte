@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { Macros, Tag } from '../types';
-  import type { RecipeListEntry } from '../recipes';
-  import { filterByBudget, searchRecipes } from '../recipes';
-  import { dayBudget } from '../calendar';
+  import type { BudgetEntry, RecipeListEntry } from '../recipes';
+  import { budgetFit, fitToBudget, searchRecipes } from '../recipes';
+  import { dayBudget, remainingGoals } from '../calendar';
   import { todayDate } from '../dates';
   import { repository } from '../repository';
   import BottomSheet from './BottomSheet.svelte';
@@ -18,6 +18,12 @@
    * The header also answers the question that actually gets asked at supper time: how much
    * of the day is left, and which recipes still fit it (STATE.md decision 64). The filter is
    * off until it is asked for — the picker's job is to show the library, not to hide it.
+   *
+   * Phase 9 adds the other half of that question (decision 148). The header now states what is
+   * left of **every** goal macro, as a readout and nothing more: the list keeps its decision
+   * 46 order and the app never claims to know which recipe closes a protein gap. And a recipe
+   * that does not fit whole but fits at half a portion is offered as exactly that — half is
+   * the only fraction, because a rule with one fraction cannot be misread.
    */
 
   let {
@@ -46,12 +52,29 @@
   let budgetOnly = $state(false);
 
   const budget = $derived(dayBudget(totals, goals));
+  const left = $derived(remainingGoals(totals, goals));
   /** The filter can only be *on* while it is offered, so an emptied budget re-opens the list. */
   const filtering = $derived(budgetOnly && budget.canFilter);
   const pool = $derived(
-    filtering ? filterByBudget(entries, macros, budget.remaining) : entries
+    filtering ? fitToBudget(entries, macros, budget.remaining).map((row) => row.entry) : entries
   );
   const visible = $derived(searchRecipes(pool, query, selected));
+
+  /**
+   * Whether each visible recipe needs half a portion to fit. Computed over the *visible*
+   * list rather than folded into the filter, so the badge is there whether or not the filter
+   * is on — and so the filter stays a filter and never reorders anything.
+   */
+  const fits = $derived(
+    new Map<string, BudgetEntry['fit'] | undefined>(
+      budget.canFilter
+        ? visible.map((entry) => [
+            entry.recipe.id,
+            budgetFit(macros.get(entry.recipe.id), budget.remaining)
+          ])
+        : []
+    )
+  );
   const chips = $derived(
     tags.filter((tag) => entries.some((entry) => entry.recipe.tags.includes(tag.key)))
   );
@@ -96,7 +119,13 @@
   {:else if budget.hasGoal}
     <div class="flex flex-wrap items-center justify-between gap-2 pb-3">
       <p class="text-sm">
-        Zostało <span class="font-semibold tabular-nums">{Math.round(budget.remaining)} kcal</span>
+        Zostało
+        {#each left as goal, index (goal.key)}
+          {#if index > 0}<span class="text-(--color-ink-muted)"> · </span>{/if}<span
+            class="font-semibold tabular-nums {goal.remaining < 0 ? 'text-amber-700' : ''}"
+            >{Math.round(goal.remaining)} {goal.label}</span
+          >
+        {/each}
       </p>
       <label class="flex items-center gap-2 text-sm">
         <input
@@ -172,6 +201,11 @@
                 </span>
               {/if}
             </span>
+            {#if fits.get(entry.recipe.id) === 'half'}
+              <span class="block pt-1 text-xs text-amber-700">
+                Zmieści się przy pół porcji
+              </span>
+            {/if}
             {#if entry.recipe.tags.length > 0}
               <span class="flex flex-wrap gap-1 pt-2">
                 {#each entry.recipe.tags as key (key)}

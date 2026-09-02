@@ -568,6 +568,7 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
    One thing left to settle while building it (STATE.md decision 145): the order of the sections
    themselves — alphabetical, by the tag's `useCount`, or by recent activity. „Bez tagu" goes
    last whichever wins, because it is the absence of a category rather than one of them.
+   *Settled while building: the tag's `useCount`, descending — STATE.md decision 157.*
 2. **Tag management in Settings**: rename (the `label` changes, the `key` is recomputed and
    recipes are rewritten), delete (removed from every recipe), merge two tags into one. `useCount`
    is recomputed after each operation, never patched.
@@ -601,6 +602,8 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
 
    What is still to decide, and must be recorded before the code: the **scope** — one meal, a
    whole day or a week — with the same ingredient summed across meals inside it.
+   *Settled before the code: all three, with the meal scope in the meal view and the day and
+   week scopes in the day screen's menu — STATE.md decision 158.*
 8. **Audit the Polish ingredient mapping for silently wrong entries** (STATE.md open question 9
    and decision 143). Not a comfort feature, and worth doing *first* in this phase: it is the
    only item here that changes the numbers the app exists to produce, and every day of use adds

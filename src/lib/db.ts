@@ -1,6 +1,7 @@
 import Dexie, { type Table, type Transaction } from 'dexie';
 import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
 import type { IngredientCorrection } from './sync/documents';
+import type { RecipeSort } from './recipes';
 import { normalizeKey } from './text';
 
 /**
@@ -88,6 +89,14 @@ export interface MetaValues {
    * profile to its own owner and nothing else — no fingerprinting, no cross-account meaning.
    */
   deviceId: string;
+  /**
+   * How the recipe library is ordered, and whether it is grouped by tag (Phase 9 tasks 1 and
+   * 4). Deliberately in `meta` rather than in `Profile`: `meta` never travels to Drive, and
+   * how a list is drawn is a property of the screen in front of you, not of the account —
+   * a phone and a laptop may reasonably disagree.
+   */
+  recipeSort: RecipeSort;
+  recipeGrouped: boolean;
 }
 
 export type MetaKey = keyof MetaValues;
