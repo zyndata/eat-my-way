@@ -1429,11 +1429,29 @@ one of which broke the feature outright.
      any deliberate write of this device's vault (`persist()`), since a user who has just sealed
      their own secrets is no longer stranded.
 
+151. **Background sync is not a cost/benefit question — the worker cannot authenticate.** Open
+     question 18 left „whether that is worth the complexity" open. Settled 2026-09-02 by a fact
+     that removes the choice: there is **no refresh token in the browser** (`google-auth.ts`).
+     The access token lives in page memory and comes from a GIS token client that needs a
+     document — a popup, or the silent `prompt: ''` grant in a hidden iframe. A service worker
+     has neither. A `sync` event would wake up with nothing to put in the `Authorization`
+     header.
+
+     Giving it one would mean persisting a long-lived credential in the browser, which is the
+     opposite of what this app does with the Gemini key one table over, and would be a
+     reportable change under SECURITY.md. That is a far worse trade than the thing it buys.
+
+     And it buys little. IndexedDB is the source of truth, a failed sync leaves the baseline
+     untouched so nothing is half-applied, and `App.svelte` syncs on every start. The whole cost
+     of a sync that failed while the app was closed is that the *other* device sees the change
+     later — on a single-user planner opened most days, that is a few hours of staleness, not
+     lost data. Not built, and not to be revisited unless the auth model changes.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17 — see decisions 143–150.
-> **Next up: 18.** Still unreviewed after it: 20, 21, 24, 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18 — see decisions 143–151.
+> **Next up: 20.** Still unreviewed after it: 21, 24, 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1580,10 +1598,11 @@ one of which broke the feature outright.
     poprzedni sejf". The old wording understated the loss — adoption locks the vault, and only
     the other device's master password opens it — so it was rewritten too.
 
-18. **Nothing re-tries a sync that failed while the app was closed.** The triggers are a
-    debounce after an edit, focus, `online`, and a five-minute timer (decision 99) — all of
-    which need the tab to be open. Phase 8's service worker could add a background sync;
-    whether that is worth the complexity for a single-user planner is not decided.
+18. **Nothing re-tries a sync that failed while the app was closed — answered: nothing will.**
+    Settled 2026-09-02 as decision 151. Not a judgement about complexity: a service worker has
+    no way to obtain a Drive token, because there is no refresh token in the browser and the
+    GIS token client needs a document. The triggers stay as decision 99 lists them, plus the
+    sync on start-up; the cost is staleness on the *other* device, never lost data.
 
 19. **The COOP `window.closed` warning is noise — answered.** Six
     `Cross-Origin-Opener-Policy policy would block the window.closed call` warnings are logged
