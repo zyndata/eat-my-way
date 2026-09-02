@@ -25,6 +25,9 @@ interface InitConfig {
   error_callback?: (error: { type?: string; message?: string }) => void;
 }
 
+/** Everything `requestAccessToken` was handed, in order. */
+type Override = { prompt?: string; hint?: string } | undefined;
+
 interface FakeScript {
   src: string;
   async: boolean;
@@ -37,6 +40,8 @@ class FakeGis {
   readonly configs: InitConfig[] = [];
   /** The `prompt` override of every `requestAccessToken` call, in order. */
   readonly prompts: (string | undefined)[] = [];
+  /** The whole override object of every call, for the ones that care about `hint`. */
+  readonly overrides: Override[] = [];
   readonly revoked: string[] = [];
 
   readonly accounts = {
@@ -44,8 +49,9 @@ class FakeGis {
       initTokenClient: (config: InitConfig) => {
         this.configs.push(config);
         return {
-          requestAccessToken: (overrides?: { prompt?: string }) => {
+          requestAccessToken: (overrides?: { prompt?: string; hint?: string }) => {
             this.prompts.push(overrides?.prompt);
+            this.overrides.push(overrides);
           }
         };
       },
@@ -79,6 +85,38 @@ interface Harness {
   breakScript(): void;
 }
 
+/**
+ * `sessionStorage` and `localStorage`, as much of them as the module touches. Kept across a
+ * `load()` on purpose: surviving a module reset is exactly what "survives a reload" means.
+ */
+class FakeStorage {
+  private readonly items = new Map<string, string>();
+  /** Set to make every access throw, as a browser with site data blocked does. */
+  blocked = false;
+
+  getItem(key: string): string | null {
+    if (this.blocked) throw new Error('storage is blocked');
+    return this.items.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    if (this.blocked) throw new Error('storage is blocked');
+    this.items.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    if (this.blocked) throw new Error('storage is blocked');
+    this.items.delete(key);
+  }
+
+  has(key: string): boolean {
+    return this.items.has(key);
+  }
+}
+
+let session: FakeStorage;
+let local: FakeStorage;
+
 function installDom(): Harness {
   const gis = new FakeGis();
   const scripts: FakeScript[] = [];
@@ -105,7 +143,7 @@ function installDom(): Harness {
     }
   };
 
-  Object.assign(globalThis, { window: win, document });
+  Object.assign(globalThis, { window: win, document, sessionStorage: session, localStorage: local });
 
   return {
     gis,
@@ -136,6 +174,8 @@ let harness: Harness;
 
 beforeEach(() => {
   vi.useFakeTimers();
+  session = new FakeStorage();
+  local = new FakeStorage();
   harness = installDom();
 });
 
@@ -144,6 +184,8 @@ afterEach(() => {
   vi.unstubAllEnvs();
   Reflect.deleteProperty(globalThis, 'window');
   Reflect.deleteProperty(globalThis, 'document');
+  Reflect.deleteProperty(globalThis, 'sessionStorage');
+  Reflect.deleteProperty(globalThis, 'localStorage');
 });
 
 describe('drive configuration', () => {
@@ -328,6 +370,121 @@ describe('failures', () => {
 
     expect(harness.scripts).toHaveLength(1);
     expect(harness.gis.configs).toHaveLength(1);
+  });
+});
+
+describe('surviving a reload', () => {
+  /** A fresh module graph reading the same web storage — what F5 does to this module. */
+  async function reload(): Promise<AuthModule> {
+    return load();
+  }
+
+  it('reuses the token a previous load obtained, without asking Google again', async () => {
+    const auth = await load();
+    const request = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token', expires_in: 3600 });
+    await request;
+
+    const reloaded = await reload();
+
+    expect(reloaded.hasAccessToken()).toBe(true);
+    await expect(reloaded.getAccessToken()).resolves.toBe('token');
+    // The whole point: the reload reached Google on no code path at all.
+    expect(harness.gis.prompts).toHaveLength(1);
+    expect(harness.scripts).toHaveLength(1);
+  });
+
+  it('ignores a stored token that has expired in the meantime', async () => {
+    const auth = await load();
+    const request = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'old', expires_in: 3600 });
+    await request;
+
+    vi.setSystemTime(Date.now() + 3_600_000);
+    const reloaded = await reload();
+
+    expect(reloaded.hasAccessToken()).toBe(false);
+    const renewed = reloaded.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'new', expires_in: 3600 });
+    await expect(renewed).resolves.toBe('new');
+  });
+
+  it('leaves nothing behind for a reload after the token is forgotten or revoked', async () => {
+    const auth = await load();
+    const request = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token', expires_in: 3600 });
+    await request;
+
+    auth.forgetAccessToken();
+    expect(await reload().then((module) => module.hasAccessToken())).toBe(false);
+
+    const second = (await load()).getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token-2', expires_in: 3600 });
+    await second;
+
+    await (await load()).revokeAccess();
+    expect(await reload().then((module) => module.hasAccessToken())).toBe(false);
+  });
+
+  it('works normally in a browser that refuses web storage', async () => {
+    session.blocked = true;
+    local.blocked = true;
+    const auth = await load();
+
+    const request = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token', expires_in: 3600 });
+
+    // No token across reloads, but this session is unharmed — storage is an optimisation.
+    await expect(request).resolves.toBe('token');
+    expect(auth.hasAccessToken()).toBe(true);
+  });
+});
+
+describe('the remembered account', () => {
+  it('hints a silent renewal at the connected account and leaves the popup free', async () => {
+    const auth = await load();
+    auth.rememberAccountHint('ktos@example.com');
+
+    const silent = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token', expires_in: 3600 });
+    await silent;
+
+    expect(harness.gis.overrides[0]).toEqual({ prompt: '', hint: 'ktos@example.com' });
+
+    auth.forgetAccessToken();
+    const interactive = auth.getAccessToken({ interactive: true });
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token-2', expires_in: 3600 });
+    await interactive;
+
+    // No hint on the consent popup: that is the screen a user switches account on.
+    expect(harness.gis.overrides[1]).toEqual({ prompt: 'consent' });
+  });
+
+  it('sends no hint before an account is known, and none after a revoke', async () => {
+    const auth = await load();
+
+    const first = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token', expires_in: 3600 });
+    await first;
+    expect(harness.gis.overrides[0]).toEqual({ prompt: '' });
+
+    auth.rememberAccountHint('ktos@example.com');
+    await auth.revokeAccess();
+
+    const second = auth.getAccessToken();
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token-2', expires_in: 3600 });
+    await second;
+    expect(harness.gis.overrides[1]).toEqual({ prompt: '' });
   });
 });
 

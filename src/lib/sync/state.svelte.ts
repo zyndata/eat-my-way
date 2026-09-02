@@ -67,6 +67,32 @@ let running: Promise<SyncOutcome> | null = null;
  */
 let silentAllowed = false;
 
+/**
+ * Set once a silent renewal has failed, so the next one is deferred to a user gesture.
+ *
+ * GIS has no truly silent path it can guarantee: when the stored token has expired it may fall
+ * back to a window, and a window opened by a script that runs on page load is blocked by every
+ * browser. That is why a start-up renewal could fail while the Google grant was perfectly
+ * intact. So the retry rides on the first tap or key press, which carries the user activation
+ * GIS needs — one attempt per failure, and never with `prompt: 'consent'`, so nothing pops up
+ * in the user's face uninvited. See STATE.md decision 173.
+ */
+let renewalArmed = false;
+
+function renewOnNextGesture(): void {
+  if (renewalArmed || !silentAllowed) return;
+  renewalArmed = true;
+
+  const attempt = (): void => {
+    window.removeEventListener('pointerdown', attempt);
+    window.removeEventListener('keydown', attempt);
+    void syncNow();
+  };
+
+  window.addEventListener('pointerdown', attempt);
+  window.addEventListener('keydown', attempt);
+}
+
 function describe(outcome: SyncOutcome, interactive: boolean): string {
   // Offline is not a failure of the app or of the account, and the app recovers from it on
   // its own — `startAutoSync` listens for `online`. Saying "sync failed" here would send the
@@ -130,6 +156,7 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
 
     if (outcome.status === 'ok') {
       silentAllowed = true;
+      renewalArmed = false;
       syncState.connected = true;
       syncState.account = outcome.account;
       syncState.phase = 'idle';
@@ -148,7 +175,12 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
     } else if (outcome.status === 'cancelled') {
       syncState.phase = 'idle';
     } else {
-      if (outcome.status === 'unauthenticated') syncState.connected = false;
+      if (outcome.status === 'unauthenticated') {
+        syncState.connected = false;
+        // A background renewal that failed for want of a user gesture gets one, on the next
+        // tap. An interactive attempt already had one, so there is nothing to defer.
+        if (options.interactive !== true) renewOnNextGesture();
+      }
       syncState.phase = 'error';
     }
 
@@ -182,6 +214,7 @@ export async function useDifferentAccount(): Promise<SyncOutcome> {
 export function disconnectDrive(): void {
   backend.signOut();
   silentAllowed = false;
+  renewalArmed = false;
   syncState.connected = false;
   syncState.account = null;
   syncState.message = '';

@@ -511,6 +511,66 @@ describe('resuming on start-up', () => {
   });
 });
 
+describe('the renewal deferred to a user gesture', () => {
+  it('retries once on the first tap after a start-up renewal failed', async () => {
+    const state = await load();
+    h.profile.value = { googleSub: 'sub-1' };
+    h.engine.sync.mockResolvedValue({ status: 'unauthenticated', message: 'no token' });
+
+    await state.resumeSync();
+    expect(h.engine.sync).toHaveBeenCalledTimes(1);
+
+    // GIS may need a user activation it cannot have on load; the first tap carries one.
+    h.engine.sync.mockResolvedValue(ok());
+    dom.fire('window', 'pointerdown');
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(h.engine.sync).toHaveBeenCalledTimes(2);
+    // Silent: this path renews a standing grant, it never asks for consent.
+    expect(h.engine.sync.mock.calls[1]?.[0]?.interactive).not.toBe(true);
+    expect(state.syncState.connected).toBe(true);
+    // The listener is gone the moment it fires: a tap is a retry, not a sync trigger.
+    expect(dom.registered()).toBe(0);
+  });
+
+  it('does not turn every tap into a request when the grant is really gone', async () => {
+    const state = await load();
+    h.profile.value = { googleSub: 'sub-1' };
+    h.engine.sync.mockResolvedValue({ status: 'unauthenticated', message: 'no token' });
+
+    await state.resumeSync();
+    dom.fire('window', 'pointerdown');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.engine.sync).toHaveBeenCalledTimes(2);
+
+    // The second failure re-arms nothing; the user is now looking at „Połącz konto ponownie".
+    dom.fire('window', 'keydown');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.engine.sync).toHaveBeenCalledTimes(2);
+    expect(dom.registered()).toBe(0);
+    expect(state.syncState.message).toContain('wygasło');
+  });
+
+  it('defers nothing after a sign-in the user watched fail', async () => {
+    const state = await load();
+    h.engine.sync.mockResolvedValue({ status: 'unauthenticated', message: 'popup closed' });
+
+    await state.connectDrive();
+
+    // The click already carried an activation, so a silent retry would only repeat it.
+    expect(dom.registered()).toBe(0);
+    expect(state.syncState.message).toBe('Nie udało się połączyć z Dyskiem Google.');
+  });
+
+  it('arms nothing on a device that has never connected Drive', async () => {
+    const state = await load();
+
+    await state.syncNow();
+
+    expect(dom.registered()).toBe(0);
+  });
+});
+
 describe('disconnecting', () => {
   it('ends the Google session and forgets it without touching local data', async () => {
     const state = await connected();

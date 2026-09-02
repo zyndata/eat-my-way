@@ -11,6 +11,7 @@ import {
   forgetAccessToken,
   getAccessToken,
   hasAccessToken,
+  rememberAccountHint,
   revokeAccess
 } from './google-auth';
 
@@ -171,6 +172,8 @@ export function createDriveBackend(options: DriveBackendOptions = {}): StorageBa
       const id = about.user?.permissionId;
       if (id === undefined) throw new NotAuthenticatedError('Drive did not identify the account');
       const label = about.user?.emailAddress ?? about.user?.displayName;
+      // Kept for the next silent renewal, which needs to know *which* account to renew.
+      rememberAccountHint(about.user?.emailAddress);
       return label === undefined ? { id } : { id, label };
     },
 

@@ -24,6 +24,12 @@ export interface GoogleSession {
   consented: boolean;
   /** Make the consent popup come back empty, as if the user closed it. */
   dismissPopup: boolean;
+  /**
+   * Model the constraint the real GIS puts on a silent renewal: it can fall back to a window,
+   * and a window a page opens without a user activation is blocked. On by default, because
+   * that is how browsers behave — a start-up renewal that has no gesture behind it fails.
+   */
+  silentNeedsGesture: boolean;
   /** The access token the next successful request hands out. */
   token: string;
   /** Seconds, as GIS reports it. */
@@ -34,6 +40,7 @@ export const DEFAULT_SESSION: GoogleSession = {
   signedIn: true,
   consented: false,
   dismissPopup: false,
+  silentNeedsGesture: true,
   token: 'e2e-token-1',
   expiresIn: 3600
 };
@@ -258,6 +265,9 @@ const GIS_STUB = `
             requestAccessToken: function (overrides) {
               var prompt = (overrides && overrides.prompt) || '';
               state.pending = prompt;
+              state.hints.push((overrides && overrides.hint) || null);
+              // Read now, not in the timeout: the real client would open its window here.
+              var activated = state.gestured;
               // The real client answers out of band; so does this one, or the app would see
               // a token before its own promise exists.
               setTimeout(function () {
@@ -268,10 +278,15 @@ const GIS_STUB = `
                   state.persist();
                   return issue(config);
                 }
-                // A silent request never opens a window: without a live session and a
-                // standing grant it simply fails.
+                // A silent request never opens a window on purpose: without a live session
+                // and a standing grant it simply fails.
                 if (!state.signedIn || !state.consented) {
                   return deny(config, 'suppressed_by_user', 'No silent grant');
+                }
+                // And even with both, GIS may need a window — which the browser blocks when
+                // no gesture is behind it. This is what a reload used to run into.
+                if (state.silentNeedsGesture && !activated) {
+                  return deny(config, 'popup_failed_to_open', 'Blocked without a user gesture');
                 }
                 issue(config);
               }, 0);
@@ -319,18 +334,34 @@ export async function installFakeGoogle(
         ...session,
         /** Reset per page load: these record what *this* load asked Google for. */
         prompts: [] as string[],
+        /** The `hint` of each request, in step with `prompts`. `null` when none was sent. */
+        hints: [] as (string | null)[],
+        /**
+         * Whether this document has seen a user gesture yet — the stand-in for
+         * `navigator.userActivation`, which Chromium can carry across a reload and so cannot
+         * express "this page load has not been touched". Reset by every load, like the real
+         * activation state a fresh document starts with.
+         */
+        gestured: false,
         clients: [] as { client_id: string; scope: string }[],
         revoked: [] as string[],
         pending: '',
         persist(): void {
-          const { signedIn, consented, dismissPopup, token, expiresIn } = state;
+          const { signedIn, consented, dismissPopup, silentNeedsGesture, token, expiresIn } = state;
           window.localStorage.setItem(
             KEY,
-            JSON.stringify({ signedIn, consented, dismissPopup, token, expiresIn })
+            JSON.stringify({ signedIn, consented, dismissPopup, silentNeedsGesture, token, expiresIn })
           );
         }
       };
       Object.defineProperty(window, '__emwGoogle', { value: state, writable: true, configurable: true });
+
+      // Capture, so this runs before the app's own handler on `window` whatever the target.
+      const gesture = (): void => {
+        state.gestured = true;
+      };
+      document.addEventListener('pointerdown', gesture, true);
+      document.addEventListener('keydown', gesture, true);
 
       // Collected rather than thrown: a violation must fail the test that caused it, and
       // `securitypolicyviolation` has no other way of reaching the test process.
@@ -364,6 +395,21 @@ export async function setGoogleSession(page: Page, patch: Partial<GoogleSession>
 /** The prompts GIS was asked for, in order. `''` is silent, `'consent'` is the popup. */
 export async function googlePrompts(page: Page): Promise<string[]> {
   return page.evaluate(() => (window as unknown as { __emwGoogle: { prompts: string[] } }).__emwGoogle.prompts);
+}
+
+/** The `hint` each request carried, in step with `googlePrompts`. */
+export async function googleHints(page: Page): Promise<(string | null)[]> {
+  return page.evaluate(() => (window as unknown as { __emwGoogle: { hints: (string | null)[] } }).__emwGoogle.hints);
+}
+
+/**
+ * Throw away the access token the app kept for this tab, leaving the Google grant standing.
+ * That is a new tab, or a token that has simply run out — the app has to get a fresh one.
+ */
+export async function forgetStoredToken(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    window.sessionStorage.clear();
+  });
 }
 
 /** CSP violations the page reported. Meaningful when the run targets the Caddy container. */

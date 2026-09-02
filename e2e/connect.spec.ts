@@ -1,5 +1,11 @@
 import type { Page } from '@playwright/test';
-import { cspViolations, googlePrompts, setGoogleSession } from './fake-google';
+import {
+  cspViolations,
+  forgetStoredToken,
+  googleHints,
+  googlePrompts,
+  setGoogleSession
+} from './fake-google';
 import { expect, test } from './fixtures';
 import { recipe, seedAccount } from './seed';
 
@@ -91,16 +97,42 @@ test('a dismissed consent popup says so and changes nothing', async ({ device, d
   });
 });
 
-test('a reload renews the session silently, with no second popup', async ({ device, drive }) => {
+test('a reload keeps the session without going back to Google at all', async ({ device, drive }) => {
   seedAccount(drive);
   await device.getByRole('button', { name: CONNECT }).click();
   await expect(status(device)).toContainText('Połączono');
+  const loadsBefore = drive.identityLoads;
 
   await device.reload();
 
   await expect(status(device)).toContainText('Połączono');
-  // The grant is standing, so this load renews without a window: `''`, never a second consent.
-  expect(await googlePrompts(device)).toEqual(['']);
+  // The token this tab already holds is enough. Asking Google again on a page load is exactly
+  // what used to fail — GIS may want a window, and a load has no gesture to open one with.
+  expect(await googlePrompts(device)).toEqual([]);
+  expect(drive.identityLoads, 'the reload loaded GIS for nothing').toBe(loadsBefore);
+});
+
+test('a session lost with the tab comes back on the first tap', async ({ device, drive }) => {
+  seedAccount(drive);
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+
+  // A new tab, or an hour later: the grant stands, the token is gone.
+  await forgetStoredToken(device);
+  await device.reload();
+
+  // The renewal on load cannot open a window, so this load starts disconnected — quietly.
+  await expect(status(device)).toHaveText('Niepołączono');
+  await expect(device.getByText('Nie udało się połączyć')).toHaveCount(0);
+
+  // The first tap anywhere — here the heading, not a button — carries the activation GIS was
+  // missing, and the renewal rides on it. Still no consent screen: `''`, never `'consent'`.
+  await device.getByRole('heading', { name: 'Dysk Google' }).click();
+
+  await expect(status(device)).toContainText('Połączono');
+  expect(await googlePrompts(device)).toEqual(['', '']);
+  // The renewal names the account, so a browser with several signed in renews the right one.
+  expect(await googleHints(device)).toEqual(['test@example.com', 'test@example.com']);
 });
 
 test('a lapsed Google session on reload is quiet, not an error', async ({ device, drive }) => {
@@ -108,8 +140,10 @@ test('a lapsed Google session on reload is quiet, not an error', async ({ device
   await device.getByRole('button', { name: CONNECT }).click();
   await expect(status(device)).toContainText('Połączono');
 
-  // Signed out of Google in this browser: the silent renewal has nothing to work with.
+  // Signed out of Google in this browser, and this tab's token gone with it: the silent
+  // renewal has nothing to work with.
   await setGoogleSession(device, { signedIn: false, consented: false });
+  await forgetStoredToken(device);
   await device.reload();
 
   await expect(status(device)).toHaveText('Niepołączono');

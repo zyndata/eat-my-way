@@ -10,8 +10,13 @@ import { NotAuthenticatedError } from './backend';
  * token request fails", and the answer is the same: ask again, interactively, touching
  * nothing in IndexedDB. See STATE.md decision 90.
  *
- * The token itself is held in memory only. It is never written to `localStorage`, IndexedDB
- * or Drive, so closing the tab ends the session; the silent renewal makes that cheap.
+ * The token itself never reaches IndexedDB or Drive. It is kept in memory and mirrored into
+ * `sessionStorage`, which is what makes a page reload keep the session: GIS will not reliably
+ * hand a token back to a script running at page load — its token flow can fall back to a
+ * window, and a window opened without a user gesture is blocked — so a reload that had to ask
+ * Google again ended up signed out. The mirror is deliberately `sessionStorage` and not
+ * `localStorage`: closing the tab still ends the session, exactly as before. See STATE.md
+ * decision 173.
  */
 
 export const DRIVE_APPDATA_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
@@ -30,7 +35,7 @@ interface TokenResponse {
 }
 
 interface TokenClient {
-  requestAccessToken(overrides?: { prompt?: string }): void;
+  requestAccessToken(overrides?: { prompt?: string; hint?: string }): void;
 }
 
 interface GoogleIdentityServices {
@@ -96,7 +101,76 @@ interface Token {
   expiresAt: number;
 }
 
-let token: Token | null = null;
+/** Where the live token is mirrored so a reload finds it: per tab, gone when the tab closes. */
+const TOKEN_KEY = 'emw.driveToken';
+/**
+ * The account the standing grant belongs to. Kept in `localStorage` because it has to outlive
+ * the tab to be useful: it is passed to GIS as `hint` so a silent renewal on a browser with
+ * several Google accounts signed in renews *this* one instead of failing on the ambiguity.
+ * It is an e-mail address the app already stores in IndexedDB (`driveAccountLabel`), never a
+ * credential.
+ */
+const HINT_KEY = 'emw.driveAccount';
+
+/** Web storage throws outright in a browser with site data blocked; treat that as "no store". */
+function store(kind: 'session' | 'local'): Storage | undefined {
+  try {
+    const value = kind === 'session' ? globalThis.sessionStorage : globalThis.localStorage;
+    return (value as Storage | undefined) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function persist(next: Token | null): void {
+  const session = store('session');
+  if (session === undefined) return;
+  try {
+    if (next === null) session.removeItem(TOKEN_KEY);
+    else session.setItem(TOKEN_KEY, JSON.stringify(next));
+  } catch {
+    // A full or blocked store costs this session its survival across a reload, nothing more.
+  }
+}
+
+function restore(): Token | null {
+  try {
+    const raw = store('session')?.getItem(TOKEN_KEY);
+    if (raw === undefined || raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    const { value, expiresAt } = parsed as { value?: unknown; expiresAt?: unknown };
+    if (typeof value !== 'string' || typeof expiresAt !== 'number') return null;
+    return { value, expiresAt };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remember which account the grant is for. Called by the Drive backend once `about.get` has
+ * said who is connected; cleared when the grant is revoked.
+ */
+export function rememberAccountHint(label: string | undefined): void {
+  const local = store('local');
+  if (local === undefined) return;
+  try {
+    if (label === undefined) local.removeItem(HINT_KEY);
+    else local.setItem(HINT_KEY, label);
+  } catch {
+    // Same as above: a lost hint only costs a silent renewal, never correctness.
+  }
+}
+
+function accountHint(): string | undefined {
+  try {
+    return store('local')?.getItem(HINT_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let token: Token | null = restore();
 let client: TokenClient | null = null;
 /** Set while a request is in flight, so two callers share one popup. */
 let pending: Promise<string> | null = null;
@@ -114,12 +188,15 @@ export function hasAccessToken(): boolean {
 
 export function forgetAccessToken(): void {
   token = null;
+  persist(null);
 }
 
 /** Drop the token and tell Google the grant is finished. */
 export async function revokeAccess(): Promise<void> {
   const current = token?.value;
   token = null;
+  persist(null);
+  rememberAccountHint(undefined);
   if (current === undefined) return;
   const gis = await loadGis().catch(() => null);
   gis?.accounts.oauth2.revoke(current);
@@ -145,6 +222,7 @@ async function ensureClient(): Promise<TokenClient> {
       }
       const lifetime = (response.expires_in ?? 3600) - EXPIRY_MARGIN_SECONDS;
       token = { value: response.access_token, expiresAt: Date.now() + Math.max(lifetime, 0) * 1000 };
+      persist(token);
       done.resolve(response.access_token);
     },
     error_callback: (error) => {
@@ -161,8 +239,13 @@ async function ensureClient(): Promise<TokenClient> {
  *
  * `interactive: false` asks GIS for a silent grant (`prompt: ''`): it succeeds when the user
  * is signed in to Google and has already consented, and fails without ever showing a window.
- * That is what runs on page load. `interactive: true` opens the consent popup and is only
- * ever reached from a click.
+ * That is what runs on page load, and what the stored token usually spares us entirely.
+ * `interactive: true` opens the consent popup and is only ever reached from a click.
+ *
+ * The remembered account is passed as `hint` on the silent path only. It removes the one
+ * ambiguity a silent renewal cannot resolve for itself — which of several signed-in Google
+ * accounts to renew — while leaving the interactive popup free to offer all of them, which is
+ * how a user switches account.
  */
 export function getAccessToken(options: { interactive?: boolean } = {}): Promise<string> {
   const now = Date.now();
@@ -171,10 +254,14 @@ export function getAccessToken(options: { interactive?: boolean } = {}): Promise
 
   pending = (async () => {
     const tokenClient = await ensureClient();
+    const hint = options.interactive === true ? undefined : accountHint();
     return new Promise<string>((resolve, reject) => {
       settle = { resolve, reject };
       // '' lets Google skip the dialog when it already has an answer; 'consent' forces it.
-      tokenClient.requestAccessToken({ prompt: options.interactive === true ? 'consent' : '' });
+      tokenClient.requestAccessToken({
+        prompt: options.interactive === true ? 'consent' : '',
+        ...(hint === undefined ? {} : { hint })
+      });
     });
   })();
 
