@@ -451,9 +451,11 @@
         </button>
       {/if}
       <p class="pt-1 text-xs text-(--color-ink-muted)">
-        Domyślnie {DEFAULT_GEMINI_MODEL}. Lista pochodzi z Twojego klucza, więc zawiera to, co
-        Google właśnie udostępnia — ale bywa, że model jest na liście, a mimo to nie da się go
-        już wywołać. Wtedy komunikat błędu podpowie nazwę zamiennika.
+        Domyślnie {DEFAULT_GEMINI_MODEL}. Lista pochodzi z Twojego klucza i pokazuje tylko modele
+        tekstowe — te, którymi da się czytać przepisy. Modele do obrazów, mowy, muzyki czy
+        transkrypcji są pomijane, bo import by na nich nie zadziałał; jeśli szukasz modelu, którego
+        tu nie ma, wpisz jego nazwę ręcznie. Bywa też, że model jest na liście, a mimo to nie da
+        się go już wywołać — wtedy komunikat błędu podpowie nazwę zamiennika.
       </p>
       <button type="button" class="{secondaryClass} mt-3" onclick={() => void saveModel()}>
         Zapisz model

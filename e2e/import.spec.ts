@@ -248,7 +248,9 @@ test('the model field is a list built from the key, and still accepts a typed na
 
   // Populated from models.list, not from a constant in the bundle.
   const field = device.getByLabel('Model Gemini');
-  await expect(field).toHaveValue('gemini-3.6-flash');
+  await expect(field).toHaveValue('gemini-3.5-flash-lite');
+  // „Nano Banana 2" is in the listing and must not be in the dropdown: a model that draws
+  // pictures is an offer to break the import (decision 167).
   await expect(field.locator('option')).toHaveText([
     'Gemini 3.6 Flash — gemini-3.6-flash',
     'Gemini 3.5 Flash Lite — gemini-3.5-flash-lite'

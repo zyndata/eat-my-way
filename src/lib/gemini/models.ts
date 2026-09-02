@@ -29,21 +29,47 @@ interface ModelsResponse {
 }
 
 /**
- * Newest-looking Gemini models first, then everything else alphabetically.
+ * A model this app could actually import a recipe with.
  *
- * Google's names carry their version (`gemini-3.7-flash` > `gemini-3.6-flash`), so a descending
- * sort puts the current generation on top — but only within the `gemini-` family, or unrelated
- * products like `lyria-` and `nano-banana-` would outrank it on the letter alone. That prefix is
- * a display nicety, not a filter: everything the API returned is still in the list.
+ * `models.list` answers with everything the key can reach — 41 entries on a personal key, of
+ * which the app can use 17. The rest are other products that happen to speak `generateContent`:
+ * „Nano Banana" draws pictures, Lyria writes music, there is a text-to-speech pair, a
+ * transcriber, a robotics model, computer-use, deep-research agents and Gemma. Offering them in
+ * the dropdown is offering the user a way to break their import.
+ *
+ * Two rules, both read off the API rather than off a list of names this app would have to keep
+ * current (PLAN.md: „free-tier catalogs change, never hardcode"):
+ *
+ *   1. `generateContent` **and** `createCachedContent` — context caching is offered on the
+ *      mainline text models and on nothing else, which is what removes the image, speech,
+ *      music, transcription and agent lines, and Gemma with them.
+ *   2. a `gemini-` name with no capability word in it — caching alone lets the robotics model
+ *      through, and `nano-banana-pro-preview` is not even called `gemini-`.
+ *
+ * Neither rule can tell whether a model still *works*: `gemini-2.5-flash` passes both and
+ * answers 404 (decision 120). And a text model that ships without caching would be filtered out
+ * wrongly — which is what „Wpisz nazwę ręcznie" in Settings is for, and why it stays.
  */
-function byUsefulness(a: GeminiModel, b: GeminiModel): number {
-  const aGemini = a.id.startsWith('gemini-');
-  const bGemini = b.id.startsWith('gemini-');
-  if (aGemini !== bGemini) return aGemini ? -1 : 1;
-  return aGemini ? b.id.localeCompare(a.id) : a.id.localeCompare(b.id);
+const SPECIALIZED =
+  /(^|-)(image|tts|transcribe|robotics|computer-use|embedding|audio|live|omni)(-|$)/;
+
+function isUsableForImport(id: string, methods: readonly string[]): boolean {
+  if (!id.startsWith('gemini-') || SPECIALIZED.test(id)) return false;
+  return methods.includes('generateContent') && methods.includes('createCachedContent');
 }
 
-/** Models the key can see that can actually generate text. Never throws; `[]` on any failure. */
+/**
+ * Newest-looking model first.
+ *
+ * Google's names carry their version (`gemini-3.7-flash` > `gemini-3.6-flash`), so a descending
+ * sort puts the current generation on top. Everything in the list is a `gemini-` text model by
+ * the time it gets here.
+ */
+function byUsefulness(a: GeminiModel, b: GeminiModel): number {
+  return b.id.localeCompare(a.id);
+}
+
+/** Models the key can see that this app can import a recipe with. Never throws; `[]` on failure. */
 export async function listGeminiModels(
   apiKey: string,
   fetchImpl: typeof fetch = fetch
@@ -63,12 +89,13 @@ export async function listGeminiModels(
   const body = (await response.json().catch(() => ({}))) as ModelsResponse;
 
   return (body.models ?? [])
-    .filter((model) => (model.supportedGenerationMethods ?? []).includes('generateContent'))
     .map((model) => {
       const id = (model.name ?? '').replace(/^models\//, '');
-      return { id, label: model.displayName ?? id };
+      const methods = model.supportedGenerationMethods ?? [];
+      return { id, label: model.displayName ?? id, methods };
     })
-    .filter((model) => model.id !== '')
+    .filter((model) => isUsableForImport(model.id, model.methods))
+    .map(({ id, label }) => ({ id, label }))
     .sort(byUsefulness);
 }
 

@@ -73,12 +73,19 @@ export async function installFakeGemini(context: BrowserContext, fake: FakeGemin
             {
               name: 'models/gemini-3.6-flash',
               displayName: 'Gemini 3.6 Flash',
-              supportedGenerationMethods: ['generateContent']
+              supportedGenerationMethods: ['generateContent', 'countTokens', 'createCachedContent']
             },
             {
               name: 'models/gemini-3.5-flash-lite',
               displayName: 'Gemini 3.5 Flash Lite',
-              supportedGenerationMethods: ['generateContent']
+              supportedGenerationMethods: ['generateContent', 'countTokens', 'createCachedContent']
+            },
+            // A picture model, shaped exactly as the real listing returns it: it speaks
+            // `generateContent` and belongs nowhere near a recipe import (decision 167).
+            {
+              name: 'models/gemini-3.1-flash-image',
+              displayName: 'Nano Banana 2',
+              supportedGenerationMethods: ['generateContent', 'countTokens']
             }
           ]
         })
