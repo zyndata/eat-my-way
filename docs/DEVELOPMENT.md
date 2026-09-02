@@ -176,18 +176,32 @@ well on real pages, but **never on the same page**, so the default model rests o
 that was never made. This is the protocol for making it — a hand run in the browser, with a real
 key in the vault; the key is not in the repository and not in CI.
 
-**Fix the pages first, and write them down here.** One is already chosen: kwestiasmaku's *Cukinia
-faszerowana mięsem i ricottą w sosie pomidorowym*, the page that exposed decision 131. Every
-ingredient it needs is in the bundled subset — „Mięso mielone wieprzowe", „Ser ricotta",
-„Cukinia", „Passata pomidorowa", „Pomidory krojone z puszki" — so a correct import matches every
-row and a wrong one is obvious. Add two more, ideally the hpba.pl pages the earlier lite runs
-used, and record the URLs before starting: the comparison is worthless if the inputs drift.
+**The pages are fixed, and these are they** — the same three every re-run must use, or the
+comparison is against a different experiment:
+
+| Page | URL |
+|------|-----|
+| Cukinia faszerowana mięsem i ricottą | `https://www.kwestiasmaku.com/przepis/cukinia-faszerowana-miesem-i-ricotta-w-sosie-pomidorowym` |
+| Tajski bowl z kurczakiem | `https://hpba.pl/tajski-bowl-z-kurczakiem-w-sosie-slodko-pikantnym/` |
+| Burgery warzywne | `https://hpba.pl/burgery-warzywne/` |
+
+The first is the page that exposed decision 131: nearly everything it needs is in the bundled
+subset — „Ser ricotta", „Cukinia", „Passata pomidorowa", „Pomidory krojone z puszki" — so a
+wrong import is obvious. **Its pass mark is 15 of 16 rows, not 16**: the page asks for „mielone
+mięso (np. indyka, wieprzowego, wołowego)", and a model that picks a species there is guessing,
+not matching (decision 170). The other two are the hpba.pl pages the earlier lite runs used.
 
 **Budget it, because one model is tight.** A link import costs 3 requests
 (`REQUESTS_PER_IMPORT.link`); a paste costs 2. Three pages on `gemini-3.6-flash` is 9 of its 20
 requests per day, and its rate is 5 per minute (decision 129), so leave a moment between imports
 and do the whole comparison **in one sitting** — a second attempt the same day will not fit.
 `gemini-3.5-flash-lite` has 500 a day and is not a constraint.
+
+**Budget for retries too — that is what sank the first sitting** (decision 168).
+`gemini-3.6-flash` answers 503 „high demand" intermittently, a retried import re-pays all three
+requests, and failed attempts count against the daily 20 even though the app's usage screen only
+counts answers. One completed page plus one abandoned one was the whole day. If the model 503s
+on the first import, stop and come back another day rather than spending the quota on retries.
 
 **Record, per page and per model:** matched rows out of total, which rows fell back to manual
 autocomplete, whether the household measures („2 łyżki mąki", „olej do smażenia") came out

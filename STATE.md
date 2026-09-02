@@ -1715,6 +1715,108 @@ one of which broke the feature outright.
      and the same `dragHandleZone` configuration the day's meal list has used since Phase 5,
      but it was not driven here.
 
+### 2026-09-02 — Model A/B, first sitting (and what the free tier did to it)
+
+167. **The model dropdown lists 17 models, not 41.** `models.list` on a real personal key
+     answers with everything the key can reach, and the old filter — „supports
+     `generateContent`" — kept all of it: „Nano Banana" and „Nano Banana Pro" (image
+     generation), two Lyria music models, three text-to-speech models, a transcriber, two Omni
+     models, Gemma, a robotics model, computer-use, Antigravity and three Deep Research agents.
+     Every one of them is an offer to break the import, and picking a picture model is exactly
+     the kind of mistake a dropdown invites.
+
+     Two rules, both read off the API rather than off a name list this repo would have to keep
+     current (PLAN.md: „free-tier catalogs change, never hardcode"): a model must support
+     **`createCachedContent` as well as `generateContent`** — context caching is offered on the
+     mainline text models and on nothing else, which removes the image, speech, music,
+     transcription and agent lines and Gemma with them — and its id must be a `gemini-` name
+     with no capability word in it (`image`, `tts`, `transcribe`, `robotics`, `computer-use`,
+     `embedding`, `audio`, `live`, `omni`). The second rule earns its place twice: caching alone
+     lets `gemini-robotics-er-2-preview` through, and `nano-banana-pro-preview` is not even
+     called `gemini-`.
+
+     Neither rule can tell whether a model still *works* — `gemini-2.5-flash` passes both and
+     answers 404 (decision 120) — and a future text model shipped without caching would be
+     filtered out wrongly. That is what „Wpisz nazwę ręcznie" is for, and why it stays; the hint
+     under the field now says so.
+
+168. **The A/B ran, and only half of it finished: `gemini-3.6-flash` spent its whole day on one
+     page.** The protocol of decision 156, driven through the app's own `importRecipe` — same
+     prompts, same candidate lists, same bundled ingredient table — against the live API on the
+     three fixed pages now written into
+     [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#comparing-two-gemini-models-on-the-same-recipes).
+
+     | Page | `gemini-3.5-flash-lite` | `gemini-3.6-flash` |
+     |------|------------------------|--------------------|
+     | Cukinia faszerowana (kwestiasmaku) | 13/16 rows matched · 3 req · 12 407 tok | **15/16** · 5 req (one retry) · 31 229 tok |
+     | Tajski bowl (hpba.pl) | 16/16 · 3 req · 6 647 tok | never completed — 503 |
+     | Burgery warzywne (hpba.pl) | 14/14 · 3 req · 5 669 tok | never completed — 429, day over |
+
+     On the one page both models saw, the flash model is better and the reason is visible in the
+     parsed names: it keeps the qualifier („oregano suszone", „bulion warzywny", „pomidory w
+     puszce") where the lite model flattens it („oregano", „bulion", „pomidory krojone"), and
+     the qualifier is what the local matcher needs — „Bulion warzywny" and „Papryczki chili
+     suszone" are the two rows lite lost. It also reads household measures the way the page
+     wrote them (1,5 sztuki cukinii at 333 g, pół cebuli at 100 g, a 55 g egg) instead of
+     converting everything to grams up front. It costs about 2,5× the tokens.
+
+     **And it never got to prove that twice.** `gemini-3.6-flash` returned 503 „This model is
+     currently experiencing high demand" on five separate calls across the sitting — confirmed
+     as genuinely intermittent, not a bug on this side: the *same* one-line request sent twice
+     by `curl` answered 200, then 503. Each retry re-pays for the whole import, so the daily 20
+     were gone after one completed page, one abandoned page and two probes, and the third page
+     ended on the 429 with `GenerateRequestsPerDayPerProjectPerModel-FreeTier`.
+
+     Which makes the flakiness part of the answer rather than an accident that interrupted it:
+     a model with 20 requests a day cannot absorb a retry. The lite model ran all three pages
+     back to back without a single failure and spent 9 of its 500. **The A/B is not finished —
+     two pages still owe `gemini-3.6-flash` a fair run** — but the default is not obviously
+     wrong today, and open question 24 now has numbers instead of two separate anecdotes.
+
+169. **The app's usage counter under-reports on a flaky day, and now says so.** The counter
+     records what Google *answered* (decision 127: „a call that never reached Google costs no
+     quota"), which is right for a network failure and wrong for a 503. Measured: the app
+     counted 12 answered requests against `gemini-3.6-flash`; Google's daily 20 fired anyway,
+     because the eight failed attempts counted too. The screen keeps counting answers — it has
+     no way to know which failures Google charged for — but the caveat under it now warns that
+     on a day when a model is overloaded the real usage is higher than the number shown.
+
+170. **„Mięso mielone" is not a miss, and open question 25's premise was wrong about it.** Both
+     models left that row unmatched on the cukinia page, and the candidate list was not the
+     problem — the matcher offered „Mięso mielone wieprzowe" first, checked offline against the
+     real bundle. The page is what is open: it asks for „400 g mielonego mięsa (np. indyka,
+     wieprzowego, wołowego)", so no species is defensible and 263 kcal of pork would be a
+     fabrication. Declining is the correct answer; the row lands in the editor as an empty one,
+     the user picks once, and decision 116's correction settles every later import of that name.
+
+     So the page is still the right regression page, with one row fewer: **15 of 16 rows is a
+     pass on it**, not 16 of 16.
+
+171. **The default model is `gemini-3.5-flash-lite`, chosen for the quota rather than for the
+     parse.** Decision 168 measured the trade and the user made the call the same day: on the
+     one page both models saw, `gemini-3.6-flash` was better (15/16 against 13/16, and better
+     names and household measures), and it is still not the model a fresh profile should start
+     on.
+
+     The two failure modes are not comparable. A row the lite model misses arrives in the editor
+     as an empty ingredient row: one tap, and decision 116 remembers the correction so the next
+     import of that name needs no model at all. A `gemini-3.6-flash` failure is the whole
+     import — 20 requests a day is about six link imports, a 503 retry re-pays all three
+     requests, and decision 168's sitting finished exactly one page out of three. Someone
+     importing an evening's worth of recipes on the old default would meet „limit dzienny już
+     wykorzystany" on their first day; on 500 a day they would not.
+
+     **Nothing is migrated.** `migrateRetiredDefaultModel` still rewrites only `gemini-2.5-flash`,
+     which 404s — a profile already holding `gemini-3.6-flash` keeps it, because that model works
+     and swapping a working model under someone is worse than leaving the choice in Settings.
+     The name is pinned rather than the `gemini-flash-lite-latest` alias: 500 requests a day was
+     measured against this name, and an alias can move under the user, taking its quota and its
+     behaviour with it.
+
+     `e2e/fake-gemini.ts` now serves „Nano Banana 2" alongside the two text models, so
+     `e2e/import.spec.ts` asserts through the real dropdown that decision 167's filter keeps a
+     picture model out of it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -1945,17 +2047,27 @@ one of which broke the feature outright.
 
 25. **A standing regression page for imports: kwestiasmaku's „Cukinia faszerowana mięsem i
     ricottą w sosie pomidorowym."** The page that exposed decision 131. Everything it needs is
-    in the bundled subset — „Mięso mielone wieprzowe", „Ser ricotta", „Cukinia", „Passata
-    pomidorowa", „Pomidory krojone z puszki" — so a correct import matches every row, which
-    makes it a sharp test rather than a vague one. It has **not** been re-run against the live
+    in the bundled subset — „Ser ricotta", „Cukinia", „Passata pomidorowa", „Pomidory krojone z
+    puszki" — so a correct import matches every row but one, which makes it a sharp test rather
+    than a vague one. **The exception is the meat**, and it is the page's doing, not the
+    model's: it asks for „mielone mięso (np. indyka, wieprzowego, wołowego)", so the pass mark
+    is 15 of 16 (decision 170). It has **not** been re-run against the live
     API since the fix: the candidate half was verified offline against the real bundle, the
-    model half was not. Run it on `gemini-3.5-flash-lite` and on `gemini-3.6-flash` when
+    model half was not. **Re-run live on 2026-09-02** on both models (decision 168): 13/16 on
+    the lite model, 15/16 — the pass mark — on `gemini-3.6-flash`. Run it on both when
     settling open question 24, and use the same page for both.
 
-    **Both now have a written protocol** — decision 156 and
-    [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#comparing-two-gemini-models-on-the-same-recipes) —
-    including the request budget that makes the run a one-sitting affair. What is left is the
-    run itself.
+    **Run on 2026-09-02, and half of it landed** (decision 168): on the cukinia page
+    `gemini-3.6-flash` matched 15/16 against the lite model's 13/16, and won on parsed names and
+    household measures. It then spent the rest of its 20 daily requests on 503s and never
+    reached the other two pages, which the lite model had already done 16/16 and 14/14 without a
+    failure. **Still owed: those two pages on `gemini-3.6-flash`, on a day it is not
+    overloaded** — plus the winner's determinism pass (open question 21), which has not been run
+    at all.
+
+    The default moved to `gemini-3.5-flash-lite` on the strength of that half (decision 171), so
+    what the remaining two pages settle is no longer „which default" but „how much parse quality
+    the quota is costing" — worth knowing, and no longer blocking anything.
 
 26. **Nothing has been installed on a real phone yet.** The installability criteria are
     asserted programmatically (decision 142) and the manifest, the icons and the service worker

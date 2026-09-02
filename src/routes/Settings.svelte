@@ -491,7 +491,9 @@
       </p>
       <p class="pt-1 text-xs text-(--color-ink-muted)">
         To licznik tej aplikacji, nie odczyt z Google: zapytania wysłane skądinąd na ten sam
-        klucz nie są tu widoczne, a licznik zeruje się o północy czasu pacyficznego. Prawdziwe
+        klucz nie są tu widoczne, a licznik zeruje się o północy czasu pacyficznego. Liczy tylko
+        odpowiedzi, które przyszły — a do limitu Google wlicza też próby zakończone błędem, więc
+        w dniu, w którym model bywa przeciążony, zużycie jest wyższe niż ta liczba. Prawdziwe
         limity i zużycie pokazuje
         <a
           class="font-medium text-(--color-accent) underline"
