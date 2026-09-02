@@ -1465,11 +1465,30 @@ one of which broke the feature outright.
      resume on start-up is fragile without a user gesture and that is worth knowing; if it is
      not, it joins decision 19's COOP warning as GIS noise.
 
+153. **The two Phase 7 criteria the model cannot meet stay worded as intended, and say so.**
+     Reviewing open question 21 on 2026-09-02 turned up a second one nobody had recorded: *„A
+     link to that same recipe produces the same draft as its pasted text"* rests on the same
+     assumption as the determinism criterion. A link is resolved into text and then imported
+     along exactly the same path (decision 113) — but that is a *second call to the model*, so
+     „the same draft" is as unreachable there as it is for two identical pastes. Its other half
+     — the Polish failure message for an unreadable URL, and `connect-src` unchanged — does hold.
+
+     Both criteria keep their original wording in PLAN.md, unchecked, each with a note saying
+     what was measured and pointing here. This follows decision 142: a criterion checked
+     differently from how it is written gets the difference recorded, not the wording quietly
+     adjusted to what was achieved. Rewriting them to the achievable version would make the plan
+     agree with the outcome, which is the one thing a plan must not do.
+
+     What *is* guaranteed is unchanged and worth restating: unit normalization, candidate
+     selection, correction lookup and draft assembly are pure and asserted; the draft is reviewed
+     before it is saved; a saved recipe never recomputes; and a name corrected once stops
+     reaching the model at all.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
-> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20 — see decisions
-> 143–152. **Next up: 21.** Still unreviewed after it: 24, 25, 26, 27, 28.
+> 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21 — see decisions
+> 143–153. **Next up: 24.** Still unreviewed after it: 25, 26, 27, 28.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -1645,23 +1664,22 @@ one of which broke the feature outright.
     live checklist (decision 149) — reload a few times, watch the console, write down what
     happens. Noise or fragility, that visit decides it.
 
-21. **Import determinism does NOT hold against the real model — the acceptance criterion
-    fails, honestly.** Measured, not assumed. Two identical pastes of the same recipe text
-    through the full app prompt produced different drafts: „2 łyżki mąki" came back as 30 g
-    once and 25 g the next time, „olej do smażenia" as 30 ml then 40 ml, and „pieprz czarny"
-    became „pieprz". `temperature: 0`, `topK: 1` and a fixed `seed` are all sent and are not
-    enough. A shorter prompt was stable across four runs, which points at the wobble living in
-    the judgement calls the prompt *asks* for — converting household measures — rather than in
-    decoding noise.
+21. **Import determinism does NOT hold against the real model — answered on what to do about
+    it.** Measured, not assumed: two identical pastes of the same text produced different
+    drafts („2 łyżki mąki" as 30 g then 25 g, „olej do smażenia" as 30 ml then 40 ml, „pieprz
+    czarny" shortened to „pieprz"). `temperature: 0`, `topK: 1` and a fixed `seed` are all sent
+    and are not enough; a shorter prompt was stable across four runs, which points at the wobble
+    living in the judgement calls the prompt *asks* for rather than in decoding noise.
 
-    So PLAN.md's „importing the same text twice yields identical drafts" is met by everything
-    the app controls (unit normalization, candidate selection, correction lookup, draft
-    assembly are pure and asserted) and **not** by the model. Three things make this survivable
-    rather than serious: the draft is reviewed before it is saved, a saved recipe never
-    recomputes (`macroSnapshot` is frozen), and a name the user corrects once stops reaching the
-    model at all. What it costs is that re-importing a page is not a way to reproduce a recipe.
-    Not worth chasing with retries or self-consistency voting for a single-user planner; worth
-    revisiting only if the amounts turn out to drift enough to notice in daily use.
+    Three things make this survivable rather than serious: the draft is reviewed before it is
+    saved, a saved recipe never recomputes (`macroSnapshot` is frozen), and a name the user
+    corrects once stops reaching the model at all. What it costs is that re-importing a page is
+    not a way to reproduce a recipe. Not worth chasing with retries or self-consistency voting
+    for a single-user planner.
+
+    Settled 2026-09-02 as decision 153: the criterion — and a second one found alongside it,
+    about a link and its pasted text — stay in PLAN.md worded as intended, unchecked, each
+    annotated with what was measured. The plan is not edited to agree with the result.
 
 22. **The prompts have met the real model, and they work — answered.** First live run,
     decision 122: 6/6 and 7/7 ingredients matched on real pages, fats quantified where the

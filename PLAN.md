@@ -501,8 +501,12 @@ Progress is tracked in [STATE.md](STATE.md).
       and quantified fat; nutrition values come only from the local DB.
 - [ ] A link to that same recipe produces the same draft as its pasted text; a URL the model cannot
       read fails with a Polish message that points at pasting the text, and `connect-src` is
-      unchanged.
-- [ ] Importing the same text twice yields identical drafts (determinism).
+      unchanged. *(Measured: the second half holds; „the same draft" does not, for the reason
+      below — a link is resolved into text and then imported by a second model call.)*
+- [ ] Importing the same text twice yields identical drafts (determinism). *(Measured and **not
+      met** — STATE.md decision 153. Everything the app controls is deterministic and asserted
+      by tests; the model is not, and two identical pastes differ on household measures. Left
+      worded as intended rather than rewritten to what was achieved.)*
 - [ ] Correcting a mismatch once makes the next import of that name match automatically.
 - [ ] Invalid/revoked key → clear Polish error; the key string appears in no console output,
       no error object, no network log statement (code audit + grep).
