@@ -6,6 +6,16 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.4.0] - 2026-09-03
+
+### Bug Fixes
+
+- **sync:** Pull the profile, refresh the screens and carry tag renames
+
+### Features
+
+- **icons:** Use the brand mark, and take the accent from it
+
 ## [1.3.0] - 2026-09-03
 
 ### Features
