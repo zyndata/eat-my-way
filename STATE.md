@@ -2611,6 +2611,39 @@ one of which broke the feature outright.
      0.17 of itself, so the test fails on the old build for the reported reason.
 
 
+### 2026-09-03 — the app can say which build it is
+
+224. **The About screen names the version, and the version comes from the git tag.** The app
+     had no way to say which build it was: `package.json` still reads `0.1.0` because releases
+     are cut by tagging (`vX.Y.Z`) and nothing bumps that field, so it is a stale number, not a
+     version. For a PWA that gap matters more than usual — a service worker can keep yesterday's
+     build alive on a device until the user accepts the update (`registerType: 'prompt'`), so
+     „which version am I looking at" is a question only the app itself can answer, and it is the
+     first thing a bug report needs.
+
+     „O aplikacji" now ends with a **Wersja aplikacji** section: the version, the short commit,
+     and the build date. The values are frozen into the bundle at build time by
+     `vite.config.ts`'s `define`, computed in `scripts/app-version.mjs`:
+
+     - `GITHUB_REF_NAME` first when it is a SemVer tag — on a tagged CI build the tag *is* the
+       release, and `actions/checkout` clones too shallowly for `git describe` to be trusted;
+     - otherwise `git describe --tags --always --dirty`, which gives a local build the last
+       release plus how far past it it is (`v1.1.1-1-g7973f64-dirty`) — precisely what makes a
+       report from a dev build useful;
+     - `package.json` only as a last resort, for a checkout with no git at all.
+
+     **The git call lives in a `.mjs` build script rather than in `vite.config.ts` on purpose.**
+     Reading git needs `node:child_process` and `process.env`, and pulling `@types/node` in to
+     type them puts Node globals into the whole program — the repo has twice refused that
+     (`playwright.config.ts` and `e2e/backup.spec.ts` declare the one global they need instead),
+     and it was tried here: it costs a devDependency and immediately broke the hand-declared
+     `Buffer` in the backup spec. The build script is outside the TypeScript program, so
+     `vite.config.ts` imports one function and the app's type environment stays free of Node.
+     `src/lib/version.ts` reads the three defines, declared in `src/vite-env.d.ts`.
+
+     `e2e/screens.spec.ts` asserts the section shows a SemVer and a build date, so a broken
+     `define` fails the suite rather than shipping an empty line.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

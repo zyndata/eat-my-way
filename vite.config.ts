@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { versionDefines } from './scripts/app-version.mjs';
 
 /** `--color-accent` from `src/app.css`, as the hex a manifest and a meta tag can carry. */
 const ACCENT = '#399e43';
@@ -68,6 +69,8 @@ export default defineConfig({
       devOptions: { enabled: false }
     })
   ],
+  // Which build this is. Read by `src/lib/version.ts`, declared in `src/vite-env.d.ts`.
+  define: versionDefines(),
   build: {
     // Vite's module-preload polyfill is injected as an inline <script>, which the
     // production CSP (no 'unsafe-inline') blocks. Every browser we target supports
