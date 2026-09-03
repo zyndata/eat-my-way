@@ -457,6 +457,7 @@
       <IngredientAutocomplete
         id="replacement-ingredient"
         label="Zastąp składnikiem"
+        flow
         onselect={chooseReplacement}
       />
     </div>

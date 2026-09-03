@@ -39,6 +39,23 @@ test('the iOS share-sheet route is still offered, because it is one someone can 
   await expect(device.getByText('Do ekranu początkowego')).toBeVisible();
 });
 
+test('a Chromium phone with no prompt yet is given the menu route (STATE.md decision 222)', async ({
+  openDevice
+}) => {
+  const device = await openDevice();
+  // `navigator.userAgentData.mobile` is Chromium's own answer to „am I on a phone", and the
+  // only signal this needs — no UA string, same rule as iOS above.
+  await device.addInitScript(() => {
+    Object.defineProperty(navigator, 'userAgentData', { value: { mobile: true }, configurable: true });
+  });
+  await device.reload();
+
+  await expect(device.getByRole('heading', { name: 'Aplikacja na urządzeniu' })).toBeVisible();
+  await expect(device.getByText('Dodaj do ekranu głównego')).toBeVisible();
+  // Still no button — the browser never offered one; the copy says it will appear here.
+  await expect(device.getByRole('button', { name: 'Zainstaluj aplikację' })).toHaveCount(0);
+});
+
 // ---- task 2: the wizard on a database that has never been used ---------------------------
 
 test('a browser that has never been used meets the wizard, and skipping it sticks', async ({

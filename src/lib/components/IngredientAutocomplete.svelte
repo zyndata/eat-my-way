@@ -8,8 +8,14 @@
    * Ingredient picker. Queries only the local IndexedDB snapshot — no network, ever.
    *
    * ARIA combobox pattern: focus stays in the input, the active option is named through
-   * `aria-activedescendant`, and the listbox is reachable by pointer and by touch. Options
-   * commit on `pointerdown` so a tap lands before the input's blur closes the list.
+   * `aria-activedescendant`, and the listbox is reachable by pointer and by touch.
+   *
+   * Options commit on `click`, and the panel keeps the input focused by cancelling the
+   * *mouse* press instead of the pointer press (STATE.md decision 221). Cancelling
+   * `pointerdown` — which is what this did — also cancels the touch gesture that grew out
+   * of it, so on Android a finger placed on an option to scroll the list selected it
+   * instead of scrolling, and on a mouse a press on the panel's own scrollbar landed
+   * outside any option, blurred the input and closed the list mid-drag.
    */
 
   let {
@@ -18,6 +24,7 @@
     placeholder = 'Zacznij pisać, np. „ser zolty”',
     limit = 8,
     index = defaultIndex,
+    flow = false,
     onselect,
     oncreate
   }: {
@@ -26,6 +33,13 @@
     placeholder?: string;
     limit?: number;
     index?: IngredientIndex;
+    /**
+     * Put the suggestion panel in the flow instead of over the field, and let whatever scrolls
+     * around it do the scrolling. An overlay panel is clipped by any scrolling ancestor, and
+     * in the „replace this ingredient" sheet that left one suggestion visible through a slot
+     * a few pixels tall (STATE.md decision 223).
+     */
+    flow?: boolean;
     onselect?: (ingredient: Ingredient) => void;
     /**
      * Offered when nothing matches, so a recipe is never blocked by a gap in the bundled
@@ -42,6 +56,10 @@
   let searchToken = 0;
 
   const listboxId = $derived(`${id}-listbox`);
+  /** Over the field, capped and scrolling; or in the flow, as tall as it needs to be. */
+  const panelPosition = $derived(
+    flow ? 'mt-1' : 'absolute inset-x-0 top-full z-10 mt-1 max-h-72 overflow-y-auto overscroll-contain'
+  );
   const optionId = $derived((position: number) => `${id}-option-${position}`);
 
   async function runSearch(text: string): Promise<void> {
@@ -97,6 +115,30 @@
     open = true;
     void runSearch(query);
   }
+
+  /**
+   * Keep the caret in the input when the panel is pressed. `mousedown` is the event that
+   * moves focus — on touch it arrives only after the gesture has been resolved as a tap,
+   * so cancelling it costs scrolling nothing.
+   */
+  function keepFocus(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
+  /**
+   * In the flow the panel can open below the fold of whatever is scrolling around it, so it
+   * asks to be brought into view. `block: 'nearest'` scrolls only when something is actually
+   * cut off, and never touches the page when the panel already fits.
+   */
+  let panel = $state<HTMLElement>();
+  $effect(() => {
+    if (flow && open && panel !== undefined) panel.scrollIntoView({ block: 'nearest' });
+  });
+
+  /** Hover follows the mouse only; on touch the finger is scrolling, not pointing. */
+  function onOptionEnter(event: PointerEvent, position: number): void {
+    if (event.pointerType === 'mouse') active = position;
+  }
 </script>
 
 <div class="relative">
@@ -125,22 +167,22 @@
 
   {#if open && matches.length > 0}
     <ul
+      bind:this={panel}
       id={listboxId}
-      class="absolute inset-x-0 top-full z-10 mt-1 max-h-72 overflow-y-auto overscroll-contain rounded-lg border border-(--color-border) bg-(--color-surface-raised) py-1 shadow-lg"
+      class="{panelPosition} rounded-lg border border-(--color-border) bg-(--color-surface-raised) py-1 shadow-lg"
       role="listbox"
       aria-label={label}
+      onmousedown={keepFocus}
     >
       {#each matches as match, position (match.ingredient.id)}
+        <!-- svelte-ignore a11y_click_events_have_key_events -- combobox options are not focusable; the keyboard drives them from the input -->
         <li
           id={optionId(position)}
           class="cursor-pointer px-3 py-2 {position === active ? 'bg-(--color-accent) text-(--color-accent-ink)' : ''}"
           role="option"
           aria-selected={position === active}
-          onpointerdown={(event) => {
-            event.preventDefault();
-            choose(match);
-          }}
-          onpointerenter={() => (active = position)}
+          onclick={() => choose(match)}
+          onpointerenter={(event) => onOptionEnter(event, position)}
         >
           <span class="block text-sm font-medium">{match.ingredient.name}</span>
           <span
@@ -159,8 +201,11 @@
       {/each}
     </ul>
   {:else if open && query.trim() !== ''}
+    <!-- svelte-ignore a11y_no_static_element_interactions -- the press is cancelled, never handled -->
     <div
-      class="absolute inset-x-0 top-full z-10 mt-1 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 shadow-lg"
+      bind:this={panel}
+      class="{flow ? 'mt-1' : 'absolute inset-x-0 top-full z-10 mt-1'} rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 shadow-lg"
+      onmousedown={keepFocus}
     >
       <p class="text-sm text-(--color-ink-muted)" role="status">
         Brak składników pasujących do „{query}”.
@@ -169,11 +214,7 @@
         <button
           type="button"
           class="mt-2 text-sm font-medium text-(--color-accent) underline"
-          onpointerdown={(event) => {
-            // Commit before the input's blur closes this panel.
-            event.preventDefault();
-            oncreate?.(query.trim());
-          }}
+          onclick={() => oncreate?.(query.trim())}
         >
           Dodaj własny składnik „{query.trim()}”
         </button>

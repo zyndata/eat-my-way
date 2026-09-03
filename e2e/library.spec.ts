@@ -233,3 +233,53 @@ test('ingredient rows can be reordered from the keyboard, and the order is saved
   await device.getByRole('link', { name: /Sałatka/ }).click();
   await expect(rows.first()).toContainText('Olej');
 });
+
+// ---- the suggestion list under a pointer (STATE.md decision 221) -------------------------
+
+test('a suggestion commits when the pointer is released, not when it lands', async ({
+  device
+}) => {
+  await device.goto('#/recipes/new/edit');
+  await device.getByRole('button', { name: 'Dodaj składnik' }).click();
+
+  // The open listbox carries the same accessible name, so the input is taken by role.
+  const input = device.getByRole('combobox', { name: 'Składnik 1' });
+  await input.fill('jajk');
+  const listbox = device.locator('#recipe-item-1-listbox');
+  const first = listbox.getByRole('option').first();
+  await expect(first).toBeVisible();
+
+  // On a touch screen a press on an option is just as likely to be the start of a scroll, so
+  // nothing may be chosen by it — this is what selected the wrong ingredient under a finger.
+  await first.dispatchEvent('pointerdown');
+  await expect(listbox).toBeVisible();
+  await expect(input).toHaveValue('jajk');
+
+  await first.click();
+  await expect(listbox).toHaveCount(0);
+  // The row swaps the picker for the chosen ingredient, so the combobox is gone entirely.
+  await expect(device.getByRole('list', { name: 'Składniki przepisu' })).toContainText('Jajko');
+});
+
+test('pressing the suggestion list itself does not close it', async ({ device }) => {
+  await device.goto('#/recipes/new/edit');
+  await device.getByRole('button', { name: 'Dodaj składnik' }).click();
+
+  // The open listbox carries the same accessible name, so the input is taken by role.
+  const input = device.getByRole('combobox', { name: 'Składnik 1' });
+  await input.fill('jajk');
+  const listbox = device.locator('#recipe-item-1-listbox');
+  await expect(listbox).toBeVisible();
+
+  // The panel's own padding stands in for its scrollbar: both make the press land on the
+  // `<ul>` rather than on an option, which used to blur the input and close the list mid-drag.
+  const box = await listbox.boundingBox();
+  if (box === null) throw new Error('the listbox has no box');
+  await device.mouse.move(box.x + box.width / 2, box.y + 2);
+  await device.mouse.down();
+  await expect(listbox).toBeVisible();
+  await device.mouse.up();
+
+  await expect(listbox).toBeVisible();
+  await expect(input).toHaveValue('jajk');
+});

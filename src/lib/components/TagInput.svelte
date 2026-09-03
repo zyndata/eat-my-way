@@ -8,8 +8,10 @@
    * tags from the library. Labels are kept exactly as typed — normalization to a `key`
    * happens on save, in the repository, so „Śniadanie" and „sniadanie" become one tag.
    *
-   * Same combobox conventions as the ingredient autocomplete: focus stays in the input and
-   * options commit on `pointerdown`, before the blur that closes the list.
+   * Same combobox conventions as the ingredient autocomplete: focus stays in the input,
+   * options commit on `click`, and the panel holds focus by cancelling the mouse press
+   * rather than the pointer press — cancelling the latter also cancels a touch scroll
+   * started on an option (STATE.md decision 221).
    */
 
   let {
@@ -50,6 +52,16 @@
 
   function remove(index: number): void {
     labels = labels.filter((_, position) => position !== index);
+  }
+
+  /** See the ingredient autocomplete: `mousedown` is what moves focus, and only a tap sends it. */
+  function keepFocus(event: MouseEvent): void {
+    event.preventDefault();
+  }
+
+  /** Hover follows the mouse only; on touch the finger is scrolling, not pointing. */
+  function onOptionEnter(event: PointerEvent, position: number): void {
+    if (event.pointerType === 'mouse') active = position;
   }
 
   function onKeydown(event: KeyboardEvent): void {
@@ -148,8 +160,10 @@
         class="absolute inset-x-0 top-full z-10 mt-1 max-h-60 overflow-y-auto overscroll-contain rounded-lg border border-(--color-border) bg-(--color-surface-raised) py-1 shadow-lg"
         role="listbox"
         aria-label="Podpowiedzi tagów"
+        onmousedown={keepFocus}
       >
         {#each suggestions as tag, position (tag.key)}
+          <!-- svelte-ignore a11y_click_events_have_key_events -- combobox options are not focusable; the keyboard drives them from the input -->
           <li
             id="{id}-option-{position}"
             class="cursor-pointer px-3 py-2 text-sm {position === active
@@ -157,11 +171,8 @@
               : ''}"
             role="option"
             aria-selected={position === active}
-            onpointerdown={(event) => {
-              event.preventDefault();
-              add(tag.label);
-            }}
-            onpointerenter={() => (active = position)}
+            onclick={() => add(tag.label)}
+            onpointerenter={(event) => onOptionEnter(event, position)}
           >
             {tag.label}
             <span class={position === active ? 'text-(--color-accent-ink)/80' : 'text-(--color-ink-muted)'}>

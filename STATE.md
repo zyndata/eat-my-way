@@ -29,9 +29,11 @@ reach the live app when a tag is pushed, and the one exception is Phase 11's las
 the repository's About box, which is not in the build and took effect the moment it was set
 (decision 217).
 
-**Phase 11 left one thing unfinished, deliberately and on the record**: why Chrome on Android
-offered no install button. That needs the phone the report came from, so the copy was fixed
-here and the diagnosis moved to open question 26 (decisions 207, 216).
+Phase 11 left one thing unfinished — why Chrome on Android offered no install button — and
+**it is now settled**: against v1.1.0 the „Zainstaluj aplikację" button appears and installs
+the app on Chrome on Android, and the „already installed, opened in a tab" line works too.
+Nothing was broken. Every acceptance criterion of Phase 11 is verified; see decisions 219 and
+220, and open question 26.
 
 Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
 which is where a release belongs — not inside a phase (decision 141). Live at
@@ -2368,6 +2370,9 @@ one of which broke the feature outright.
      install on a real phone" item, with the procedure named there. Acceptance criterion 1 is
      verified for the copy and **not** verified for the cause.
 
+     **Superseded the same day by decision 219**: the device answered, and the answer is that
+     there was nothing to fix.
+
 208. **`getInstalledRelatedApps()` needs the manifest to point back at itself, so the manifest
      gains `related_applications`.** The API answers only for applications the manifest
      declares as related, so calling it against today's manifest would return an empty list on
@@ -2453,14 +2458,171 @@ one of which broke the feature outright.
      metadata is not in the build, so this took effect the moment it was set and no tag carries
      it.
 
+### 2026-09-03 — v1.1.0 released
+
+218. **The one CSP violation on the live site is Cloudflare's, not ours, and the policy is
+     doing its job.** Found while verifying the release in a real browser against
+     https://eatmyway.gorny.dev: the console reports exactly one blocked inline script, and it
+     is Cloudflare's bot-detection injection — `window.__CF$cv$params` and
+     `/cdn-cgi/challenge-platform/scripts/jsd/main.js`, appended to `<body>` at the edge.
+
+     Our own `dist/index.html` carries exactly one `<script>`, the hashed module bundle;
+     `grep` it and there is nothing else, which is what decision 10 has been protecting since
+     Phase 1. The container run under the same policy reports zero violations, so this appears
+     only through the proxy that decisions 14 and 21 already record.
+
+     Nothing to fix. Whitelisting `/cdn-cgi/` would widen `script-src` for a script the app
+     does not need and cannot audit; the block costs Cloudflare a signal and costs the app
+     nothing. Written down because the next person to run this check will find it again and
+     spend the same twenty minutes deciding it is not a regression.
+
+
+### 2026-09-03 — the Android install button, answered on the device
+
+219. **The install button works on Chrome on Android, and no criterion was ever failing.**
+     Confirmed by the user against the live v1.1.0: the „Zainstaluj aplikację" button appears
+     in „Aplikacja na urządzeniu" and installs the app. That is the device verdict PLAN.md
+     asked for and decision 207 could not produce from a development machine.
+
+     What it settles, and what it does not:
+
+     - **`beforeinstallprompt` does fire.** Chromium only fires it for a page that passes every
+       installability check, so the manifest, the icons and the service worker are all correct
+       on the live origin. Decision 190 ruled out the static configuration by reading; the
+       device has now confirmed it by installing.
+     - **The original report was a transient state, not a bug.** The three candidates named in
+       decision 190 and open question 26 were an incognito tab, an app already installed, and
+       Chrome's engagement heuristic. The last is the one that fits a button that is missing
+       once and present later: Chrome may withhold the event until a visit it counts as real,
+       so „the button was not there" and „the button is there" are both correct behaviour on
+       the same build. Nothing in this repository was changed to make it appear.
+     - **Phase 11 task 1 was worth doing anyway, for the other half.** The section used to
+       print „look in your browser's menu" whenever the prompt was absent, which is what turned
+       a temporary absence into a screen that read as broken. It now shows the button when
+       there is one and says nothing when there is not, so the same transient state is
+       invisible rather than alarming.
+
+     Acceptance criterion 1 of Phase 11 is therefore verified in full: the copy by test, the
+     button by installation on the reporting device.
+
+     One thing this visit did **not** establish: the „already installed, opened in a tab" copy,
+     which needs `navigator.getInstalledRelatedApps()` to answer (decision 208). It is now
+     cheap to check — the app is installed on that phone, so opening
+     https://eatmyway.gorny.dev in a normal Chrome tab either shows that paragraph or shows
+     nothing. Left as the only unconfirmed line in the section.
+
+
+220. **`getInstalledRelatedApps()` answers, and the last unverified line of Phase 11 is
+     confirmed.** Reported by the user from the same phone, in a normal Chrome tab: „Aplikacja
+     jest już zainstalowana na tym urządzeniu — teraz oglądasz ją w karcie przeglądarki."
+
+     That is the copy decision 191 was written for and decision 208 gambled on, and it settles
+     both at once:
+
+     - **The manifest entry works.** `related_applications: [{ platform: 'webapp', url:
+       '/manifest.webmanifest' }]` is what makes the API able to answer at all, and the
+       relative URL resolves per origin as intended — no absolute production address in the
+       build, and the container run is not a special case.
+     - **The defect decision 191 found is really gone.** Before Phase 11 this exact state — an
+       installed app, opened in a tab — printed „Ta przeglądarka nie daje przycisku
+       instalacji", telling a user who had already installed the app that their browser could
+       not. That was the dead-end sentence the whole task started from.
+
+     Taken with decision 219, the section's three states have now each been seen on one device,
+     in the order a user meets them: the install button before installing, this line in a tab
+     afterwards, and „działa jak zwykły program" when launched from the home screen. **Every
+     acceptance criterion of Phase 11 is verified**, and nothing in the phase is now carried by
+     reasoning alone.
+
+
+### 2026-09-03 — two reports from daily use: the suggestion list, and a second phone
+
+221. **A suggestion list must not commit on the press — a press is where a scroll starts.**
+     Reported from both machines at once, and it is one defect with two faces. The ingredient
+     and tag pickers chose an option on `pointerdown` with `preventDefault()`, which was
+     written to beat the input's `blur` to the commit. It does, and it also cancels everything
+     the browser would have grown out of that press:
+
+     - **On Android**, a finger placed on an option to drag the list up cannot scroll — the
+       cancelled `pointerdown` takes the touch gesture with it — and the option under the
+       finger is chosen instead. The user meant to look further down the list and got the
+       ingredient they happened to touch first.
+     - **With a mouse**, pressing the panel's own scrollbar lands on the `<ul>`, outside any
+       option, so nothing commits, the input blurs and the whole list closes mid-drag.
+
+     The fix separates the two jobs the one handler was doing. Options commit on `click`, which
+     on touch fires only after the gesture is resolved as a tap and never after a scroll.
+     Focus is held by cancelling `mousedown` on the *panel* — the event that actually moves
+     focus, and the one event touch sends only once the tap is settled — so a press anywhere in
+     the panel, scrollbar included, leaves the caret in the input and the list open. Hover
+     highlighting is gated on `pointerType === 'mouse'`, so a finger dragging across options no
+     longer paints them as it goes.
+
+     Both pickers carried the same code and both are fixed; `e2e/library.spec.ts` now holds the
+     two regressions — a press on an option changes nothing, and a press on the panel itself
+     does not close it.
+
+222. **The Android install route is named again, but only where it exists.** Reported from a
+     second Android phone: Chrome shows no „Zainstaluj aplikację" button, and the section
+     therefore says nothing about installing at all. That is decision 189 working exactly as
+     written — and decision 219 explains the state: Chrome withholds `beforeinstallprompt`
+     until a visit its engagement heuristic counts as real, so a working install can look like
+     an absent feature for a visit or two.
+
+     What decision 189 removed was „look in your browser's menu", printed to everyone including
+     browsers with no such item. What goes back is narrower: on a Chromium browser that reports
+     itself as mobile, the section names the one path that is real there — „⋮ → Zainstaluj
+     aplikację / Dodaj do ekranu głównego" — and says the button will appear here by itself
+     when the browser offers it. That is the same standard the iOS share-sheet copy already
+     meets, and it is off on every other browser.
+
+     The platform test is `navigator.userAgentData?.mobile === true`: Chromium-only, and the
+     browser's own answer to „am I on a phone", so this stays a capability check rather than a
+     UA string — the rule decision 189 set for iOS. Samsung Internet answers it too and has the
+     same menu.
+
+     Nothing about installability changed, and nothing needed to: decision 219 proved on a
+     device that every criterion passes on the live origin. This is copy for the window before
+     Chrome makes up its mind.
+
+223. **A suggestion panel inside a sheet has to be in the flow, not over it.** Third report of
+     the day: „Zastąp składnikiem" in the „Ten składnik jest używany" sheet showed its
+     suggestions through a slot about one option tall, with a scrollbar inside a scrollbar.
+
+     The cause is not the sheet's height — it is that an absolutely positioned panel is clipped
+     by the nearest scrolling ancestor, and the sheet's body is one (`overflow-y-auto`, so a
+     long list of recipes can scroll). Over a field on a page that is the right design: the
+     panel covers what is below instead of pushing it. Inside a scroll box it is the wrong one,
+     and no amount of `z-index` fixes it — the element is cut, not painted under.
+
+     The picker takes a `flow` prop: the panel renders in the normal flow, uncapped, and the
+     sheet grows around it to its own 85 dvh and scrolls if it must. When it opens it asks for
+     `scrollIntoView({ block: 'nearest' })`, which does nothing when the panel already fits and
+     brings it up when it does not. Only the replace sheet passes `flow`; everywhere else the
+     picker sits on a page that scrolls at the document level, where the overlay is still right.
+
+     Positioning the panel from JavaScript was not an option and is not a loss: `style-src
+     'self'` blocks the `style` attribute a floating layer would need (decision 44), and the
+     sheet already exists because of that constraint.
+
+     `e2e/ingredients.spec.ts` asserts the first suggestions are fully in the viewport.
+     Playwright's `toBeInViewport` reads the intersection rectangle, which an overflow-hidden
+     ancestor clips just as scrolling does — with the panel absolute the first option measures
+     0.17 of itself, so the test fails on the old build for the reported reason.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
 > 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 27, 28 — see
-> decisions 143–156. **The pass is finished.** What is left — 15, 20, 24, 25 and 26 — is not
+> decisions 143–156. **The pass is finished.** What is left — 15, 20, 24 and 25 — is not
 > undecided but unobserved: each one now names a procedure and waits on a real device. 15 and 20
-> and 26 are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model
-> A/B in DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
+> are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model A/B in
+> DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
+>
+> **26 is now answered** (2026-09-03, decisions 219 and 220): the app installs on Chrome on
+> Android from its own button, and the „already installed, opened in a tab" copy works too.
+> That closed Phase 11's one unfinished task and its last unverified line.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -2705,33 +2867,27 @@ one of which broke the feature outright.
     what the remaining two pages settle is no longer „which default" but „how much parse quality
     the quota is costing" — worth knowing, and no longer blocking anything.
 
-26. **Nothing has been installed on a real phone yet — and the Android install button is now
-    part of this question.** The installability criteria are asserted programmatically
-    (decision 142) and the manifest, the icons and the service worker are all in place, but
-    „it installs on Android and launches standalone" has been verified by proxy, not by
-    installing it. Do this on the first real visit to `eatmyway.gorny.dev` after the `v1.0.0`
-    release, along with open question 15's live Drive round trip — the same visit can settle
-    both, and that visit now has a written checklist (decision 149,
-    [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
+26. **The app installs on a real phone — answered 2026-09-03.** Confirmed on Chrome on
+    Android against the live v1.1.0: the „Zainstaluj aplikację" button appears in Settings and
+    installs the app. That settles both halves of this question at once — „it installs on
+    Android" was verified by proxy until now (decision 142), and „why did Chrome show no
+    install button" was Phase 11's one unfinished task. Neither needed a fix: `beforeinstallprompt`
+    fires, so every installability criterion passes on the live origin, and the original report
+    was a transient state Chrome's engagement heuristic explains. Full reasoning in decision 219.
 
-    Phase 11 added the second half and could not run it from a development machine (decision
-    207). In this order, on a normal tab of a device with no Eat My Way icon:
+    The „already installed, opened in a tab" copy was checked on the same phone and **also
+    works** (decision 220), so `getInstalledRelatedApps()` and the `related_applications` entry
+    do what decision 208 hoped. All three states of the install section have now been seen on a
+    real device.
 
-    - **Rule out Chrome's two deliberate refusals first.** It fires `beforeinstallprompt` in
-      neither an incognito tab nor for an app that is already installed.
-    - **Read the browser's own verdict** rather than guessing: Lighthouse's installability
-      audit against the live URL, and `chrome://inspect` from a desktop for the console of the
-      real tab. Chrome names the failing criterion if there is one.
-    - **Then fix what it names.** A failing criterion is a bug in the manifest, the icons or
-      the service worker; Chrome's engagement heuristic — the event can wait for a real visit
-      rather than the first paint — is not a bug and is the answer if that is what it turns
-      out to be.
+    **A second Android phone, 2026-09-03, showed no button at all** — which does not reopen
+    this question: it is the transient state decision 219 named, seen from the other side. The
+    section now names the browser's own menu route while Chrome makes up its mind (decision
+    222), so the wait is explained rather than silent.
 
-    Two things Phase 11 shipped are waiting on the same visit: the „already installed, opened
-    in a tab" copy, which needs `navigator.getInstalledRelatedApps()` to actually answer
-    (decision 208), and the fact that the install section now shows nothing at all where it
-    has nothing to offer — which is right regardless, and also means a missing button no
-    longer announces itself.
+    One thread tied to this question is **not** closed by it: **open question 15's live Drive
+    round trip** still wants the same visit; the checklist is in
+    [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it).
 
 27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
     argument for leaving it (a two-step red-button action, the export one click away) was

@@ -996,8 +996,10 @@ since the first commit.
 - [x] On a browser that offers no install prompt and is not iOS, the settings screen shows no
       install instructions at all; on iOS the „Do ekranu początkowego" instruction is still
       there, and where the prompt exists the button still works.
-      *(The copy: verified. Why Chrome on Android withheld the prompt: **not** verified — it
-      needs the device, and moved to STATE.md open question 26; decision 207.)*
+      *(Verified in full, on the reporting device. The button appears on Chrome on Android
+      against v1.1.0 and installs the app — so no installability criterion was ever failing and
+      the original report was a transient state — and the „already installed, opened in a tab"
+      line shows afterwards. STATE.md decisions 219 and 220.)*
 - [x] A fresh browser profile with no Drive connection reaches the wizard, can skip the Drive
       step, and does not see it again after skipping — while a second device that syncs an
       existing account is never sent there.

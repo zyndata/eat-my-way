@@ -88,3 +88,31 @@ test('deleting an ingredient a recipe uses names the recipe and asks for a repla
   await expect(device.getByRole('link', { name: 'Serniczki' })).toBeVisible();
   await expect(device.getByRole('button', { name: 'Zastąp i usuń' })).toBeDisabled();
 });
+
+test('the replacement picker has room for its suggestions', async ({ device }) => {
+  await device.goto('#/recipes/new/edit');
+  await device.getByLabel('Nazwa').fill('Serniczki');
+  await device.getByRole('button', { name: 'Dodaj składnik' }).click();
+  await device.getByLabel('Składnik 1').fill('Twaróg babci');
+  await device.getByRole('button', { name: /Dodaj własny składnik/ }).click();
+  await fillMacros(device, { kcal: '130', protein: '18', carbs: '3', fat: '4' });
+  await device.getByRole('button', { name: 'Zapisz składnik' }).click();
+  await device.getByLabel('Ilość').first().fill('200');
+  await device.getByRole('button', { name: 'Zapisz przepis' }).click();
+
+  await device.goto('#/ingredients');
+  await device.getByRole('button', { name: 'Usuń' }).click();
+  await device.getByRole('combobox', { name: 'Zastąp składnikiem' }).fill('jaj');
+
+  const options = device.locator('#replacement-ingredient-listbox').getByRole('option');
+  await expect(options.first()).toBeVisible();
+
+  // The panel sits in the flow of the sheet, so the sheet grows around it. Clipped to the
+  // sheet's own scroll box it was a slot one option tall (STATE.md decision 223) — this is
+  // the assertion that would have caught that, since an overflow-hidden ancestor takes an
+  // element out of the viewport as surely as scrolling does.
+  const visible = Math.min(await options.count(), 4);
+  for (let position = 0; position < visible; position += 1) {
+    await expect(options.nth(position)).toBeInViewport({ ratio: 1 });
+  }
+});
