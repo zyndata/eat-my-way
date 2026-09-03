@@ -2644,6 +2644,43 @@ one of which broke the feature outright.
      `e2e/screens.spec.ts` asserts the section shows a SemVer and a build date, so a broken
      `define` fails the suite rather than shipping an empty line.
 
+### 2026-09-03 — a stale build has to be able to notice itself
+
+225. **The app checks for a new version when you come back to it, and Settings has a button
+     that answers.** Reported straight after v1.2.0 shipped: „jestem w O aplikacji i nie widzę
+     wersji". The server was right — `sw.js` precached the v1.2.0 bundle, `index.html` and
+     `sw.js` both go out with `cache-control: no-cache` — and the browser was running the
+     previous build, because `registerType: 'prompt'` means a waiting worker never takes over a
+     tab on its own (decision 10's reasoning, unchanged and still correct).
+
+     The gap was not consent, it was **discovery**. The browser re-fetches the worker when a
+     page is loaded, and an installed app that sits open for days is hardly ever loaded, so the
+     update bar had no occasion to appear. Two changes, and the order matters:
+
+     - **`visibilitychange` → `registration.update()`, throttled to once an hour.** Returning to
+       the app is what stands in for a page load. No UI, no gesture, and the existing bar does
+       the asking as before.
+     - **„Sprawdź aktualizacje" in Ustawienia**, in its own „Wersja i aktualizacje" section next
+       to the version number. A button alone would not have helped here — it only serves someone
+       who already suspects, and the reporter had no reason to suspect. It earns its place by
+       being able to say **„Masz najnowszą wersję"**: a button that appears to do nothing when
+       there is no update reads as broken, so the answer is not optional.
+
+     **The answer is not in the promise.** `registration.update()` resolves when the *check* is
+     done, and a worker it just found is still installing at that moment. `checkForUpdate()`
+     therefore reads what the registration holds afterwards — `waiting`, or an `installing`
+     worker watched to `installed` — and only counts it as an update while
+     `serviceWorker.controller` is non-null, because the first worker of a first visit is an
+     installation, not an update. Offline and failed checks say so rather than claiming currency.
+
+     **Verified against a real worker swap**, not by reading: with the app controlled by its
+     worker, `dist/sw.js` was mutated on disk (one precache revision) and both paths ran —
+     the button turned „Masz najnowszą wersję" into „Jest nowa wersja i czeka na wczytanie",
+     and, in a second run with nothing clicked, a dispatched `visibilitychange` raised the
+     update bar by itself. `e2e/pwa.spec.ts` keeps the half that is true in both runs (the
+     version line and the „you are current" answer); the swap needs to write to what the server
+     serves, which the container run cannot do.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

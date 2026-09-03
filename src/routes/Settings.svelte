@@ -4,6 +4,7 @@
   import GoalsForm from '../lib/components/GoalsForm.svelte';
   import BackupSection from '../lib/components/BackupSection.svelte';
   import InstallSection from '../lib/components/InstallSection.svelte';
+  import UpdateSection from '../lib/components/UpdateSection.svelte';
   import TagSection from '../lib/components/TagSection.svelte';
   import Spinner from '../lib/components/Spinner.svelte';
   import type { Macros, Profile } from '../lib/types';
@@ -677,6 +678,8 @@
   <BackupSection />
 
   <InstallSection />
+
+  <UpdateSection />
 
   <a class="mt-4 inline-block text-sm font-medium text-(--color-accent) underline" href="#/about">
     O aplikacji i źródłach danych
