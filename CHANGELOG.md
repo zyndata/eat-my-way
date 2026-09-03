@@ -17,6 +17,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Features
 
 - Phase 10 — składniki i pełna kopia danych
+- Phase 11 — zgłoszenia z użytkowania
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [1.0.0] - 2026-09-02
 
