@@ -6,7 +6,7 @@
   import { emptyDay } from '../day';
   import { dayTotals } from '../macros';
   import { repository } from '../repository';
-  import { scheduleSync } from '../sync/state.svelte';
+  import { scheduleSync, syncState } from '../sync/state.svelte';
   import BottomSheet from './BottomSheet.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DateMultiSelect from './DateMultiSelect.svelte';
@@ -102,7 +102,11 @@
     loading = false;
   }
 
+  // The date, the month being browsed — and a sync that brought something in. Without the
+  // last one, a day planned on the other device stays invisible for as long as this screen is
+  // open, while `startAutoSync` keeps pulling it every few minutes (STATE.md decision 228).
   $effect(() => {
+    syncState.dataVersion;
     void load(date, monthAnchor, monthShown);
   });
 

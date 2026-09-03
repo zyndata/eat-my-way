@@ -106,6 +106,46 @@ describe('first sync', () => {
     ]);
   });
 
+  /**
+   * Reported after a cleared site: everything came back except the daily goals. A device
+   * always holds a profile — the database seeds `DEFAULT_PROFILE` when it is created — so on
+   * an empty baseline the untouched defaults read as „this side edited it too" and `localWins`
+   * handed the account's real goals to a document nobody had written (STATE.md decision 227).
+   */
+  it('takes the goals from Drive onto a device that has only its defaults', async () => {
+    const drive = new FakeDrive();
+    const a = device(drive);
+    const profile = await a.repository.getProfile();
+    await a.repository.saveProfile({ ...profile, goals: macros(2600, 180, 240, 80) });
+    await a.engine.sync();
+
+    const b = device(drive);
+    await b.engine.sync();
+
+    expect((await b.repository.getProfile()).goals).toEqual(macros(2600, 180, 240, 80));
+    // And the defaults must not have been pushed over the account's own goals on the way.
+    expect((drive.snapshot()[PROFILE_FILE] as { goals: unknown }).goals).toEqual(
+      macros(2600, 180, 240, 80)
+    );
+  });
+
+  /** The other side of the same rule: goals this device's user actually set are not given up. */
+  it('keeps goals the device set itself when the account has different ones', async () => {
+    const drive = new FakeDrive();
+    const a = device(drive);
+    const profile = await a.repository.getProfile();
+    await a.repository.saveProfile({ ...profile, goals: macros(2600, 180, 240, 80) });
+    await a.engine.sync();
+
+    // A second browser that planned on its own before ever connecting this account.
+    const b = device(drive);
+    const own = await b.repository.getProfile();
+    await b.repository.saveProfile({ ...own, goals: macros(1800, 120, 150, 50) });
+    await b.engine.sync();
+
+    expect((await b.repository.getProfile()).goals).toEqual(macros(1800, 120, 150, 50));
+  });
+
   it('is a no-op the second time, and downloads nothing that did not move', async () => {
     const drive = new FakeDrive();
     const a = device(drive);
@@ -371,6 +411,52 @@ describe('two devices', () => {
     expect(await b.repository.getIngredient('custom:1')).toBeUndefined();
     expect((await b.repository.getRecipe('recipe-1'))?.items[0]?.ingredientId).toBe('custom:2');
     expect((await b.repository.allCorrections())[0]?.ingredientId).toBe('custom:2');
+  });
+
+  /**
+   * A rename that only changes the spelling touches no recipe, and the upload used to be gated
+   * on recipes alone — so it never left the device; and the other device discarded the remote
+   * label anyway. The two disagreed for good (STATE.md decision 229).
+   */
+  it('carries a tag rename to the other device', async () => {
+    const [a, b] = await paired();
+
+    await a.repository.saveRecipe(makeRecipe({ tags: ['obiad'] }));
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    await a.repository.renameTag('obiad', 'Obiad');
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    expect((await b.repository.allTags())[0]?.label).toBe('Obiad');
+    // And it stays renamed: B must not push its old spelling back over A's.
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    expect((await a.repository.allTags())[0]?.label).toBe('Obiad');
+  });
+
+  it('carries a tag deletion, and leaves a tag no recipe uses alone', async () => {
+    const [a, b] = await paired();
+
+    await a.repository.saveRecipe(makeRecipe({ tags: ['obiad', 'szybkie'] }));
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    await a.repository.deleteTag('szybkie');
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    expect((await b.repository.allTags()).map((tag) => tag.key)).toEqual(['obiad']);
+
+    // Taking a tag off the last recipe that carried it is not deleting it: the row stays, at
+    // zero uses, and a sync must not quietly finish the job the user did not ask for.
+    await a.repository.saveRecipe(makeRecipe({ tags: [] }));
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    for (const target of [a, b]) {
+      expect((await target.repository.allTags()).map((tag) => tag.key)).toEqual(['obiad']);
+    }
   });
 
   it('sums the Gemini tally from both devices instead of letting one overwrite the other', async () => {

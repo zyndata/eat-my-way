@@ -14,6 +14,7 @@
     syncState,
     useDifferentAccount
   } from '../lib/sync/state.svelte';
+  import type { SyncOutcome } from '../lib/sync/engine';
   import { createVault, saveSecrets, vaultState } from '../lib/vault/session.svelte';
 
   /**
@@ -57,11 +58,28 @@
     void push(target);
   }
 
+  /**
+   * After a sync, the only question this wizard has left: did the account already hold a
+   * profile? `freshFolder` is the sync's own answer — the listing it made before writing
+   * anything — and the same fact that decides whether Drive opens the wizard at all
+   * (`state.svelte.ts`). An account that already has data has nothing left to set up: goals,
+   * the vault and the Gemini key came back with it, so the wizard gets out of the way instead
+   * of asking the user to build what they already own (STATE.md decision 226).
+   */
+  function afterConnect(outcome: SyncOutcome): void {
+    if (outcome.status !== 'ok') return;
+    if (outcome.freshFolder) {
+      step = 'profile';
+      return;
+    }
+    leave('/');
+  }
+
   async function connect(): Promise<void> {
     error = '';
     const outcome = await connectDrive();
     if (outcome.status === 'ok') {
-      step = 'profile';
+      afterConnect(outcome);
       return;
     }
     if (outcome.status === 'foreign-account') return; // handled by its own panel below
@@ -160,7 +178,7 @@
               type="button"
               class={buttonClass}
               onclick={async () => {
-                if ((await useDifferentAccount()).status === 'ok') step = 'profile';
+                afterConnect(await useDifferentAccount());
               }}
             >
               Używaj tego konta

@@ -13,8 +13,8 @@
   --color-border: oklch(90% 0.008 95);
   --color-ink: oklch(25% 0.02 95);
   --color-ink-muted: oklch(52% 0.015 95);
-  --color-accent: oklch(62% 0.16 145);
-  --color-accent-ink: oklch(99% 0.01 145);
+  --color-accent: oklch(63% 0.076 177);
+  --color-accent-ink: oklch(99% 0.01 177);
 
   /*
    * Warning and danger. Added in Phase 11 (STATE.md decision 206): these were literal Tailwind
@@ -40,7 +40,7 @@
    * The muted ink is the one that needed real work. At 52% lightness it is readable on white
    * and invisible on a dark surface, so it moves up rather than down — dark themes need *more*
    * contrast from a muted colour, not less. The accent moves up for the same reason and its
-   * ink moves down, because a light-green button now carries dark text.
+   * ink moves down, because a light teal button now carries dark text.
    */
   :root[data-theme='dark'] {
     --color-surface: oklch(21% 0.008 95);
@@ -48,8 +48,8 @@
     --color-border: oklch(34% 0.008 95);
     --color-ink: oklch(93% 0.008 95);
     --color-ink-muted: oklch(74% 0.012 95);
-    --color-accent: oklch(72% 0.15 145);
-    --color-accent-ink: oklch(21% 0.04 145);
+    --color-accent: oklch(73% 0.072 177);
+    --color-accent-ink: oklch(21% 0.04 177);
 
     --color-warn: oklch(83% 0.13 82);
     --color-warn-border: oklch(45% 0.09 76);

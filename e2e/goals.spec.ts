@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
-import { seedAccount } from './seed';
+import { profileDocument, recipesDocument, seedAccount } from './seed';
 
 /**
  * „Cele dzienne" → „Zapisz cele", the flow that hung.
@@ -50,4 +50,42 @@ test('saved goals reach Drive', async ({ device, drive }) => {
   await expect
     .poll(() => JSON.stringify(drive.snapshot()['profile.json']), { timeout: 20_000 })
     .toContain('1800');
+});
+
+/**
+ * Reported from a phone after clearing the site data: everything came back from Drive except
+ * the daily goals. The database seeds a default profile the moment it is created, so an
+ * untouched browser looked to the merge like a device that had edited its goals (STATE.md
+ * decision 227).
+ */
+test('goals on the account come back to a browser that has none', async ({ openDevice, drive }) => {
+  drive.put(
+    'profile.json',
+    profileDocument({ googleSub: 'sub-1', goals: { kcal: 2600, protein: 180, carbs: 240, fat: 80 } })
+  );
+  drive.put('recipes.json', recipesDocument([]));
+
+  const device = await openDevice();
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+
+  await expect(kcalField(device)).toHaveValue('2600');
+  // And the defaults were not pushed over them on the way out.
+  expect(JSON.stringify(drive.snapshot()['profile.json'])).toContain('2600');
+});
+
+/** The rule the refresh must not break: what you are typing outranks what Drive just sent. */
+test('a sync landing under the screen does not overwrite an unsaved edit', async ({
+  device,
+  drive
+}) => {
+  seedAccount(drive);
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+
+  await kcalField(device).fill('1234');
+  await device.getByRole('button', { name: 'Synchronizuj teraz' }).click();
+  await expect(device.getByRole('button', { name: 'Synchronizuj teraz' })).toBeEnabled();
+
+  await expect(kcalField(device)).toHaveValue('1234');
 });

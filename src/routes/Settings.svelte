@@ -66,12 +66,34 @@
   let createPassword = $state('');
   let createEncrypted = $state(true);
 
+  /**
+   * What `load()` last put on screen. Plain `let`s, not `$state`: they are a record of what
+   * was shown, not something to render, and the sync effect below reads them.
+   */
+  let shownGoals: string | null = null;
+  let shownModel: string | null = null;
+
   async function load(): Promise<void> {
     const loaded = await repository.getProfile();
     profile = loaded;
-    goals = loaded.goals;
-    model = loaded.geminiModel;
+    // A pull rewrites the profile under an open screen, but an unsaved edit outranks anything
+    // the background just fetched — so each field follows Drive only while untouched.
+    if (shownGoals === null || JSON.stringify(goals) === shownGoals) goals = { ...loaded.goals };
+    if (shownModel === null || model === shownModel) model = loaded.geminiModel;
+    shownGoals = JSON.stringify(goals);
+    shownModel = model;
   }
+
+  /**
+   * The first sync of a restored browser lands *while this screen is open* — it is the screen
+   * the „Połącz Dysk Google" button is on — and until it was re-read, Settings kept showing
+   * the empty profile the database had been created with (STATE.md decision 227). Every other
+   * screen now follows the same signal (decision 228).
+   */
+  $effect(() => {
+    syncState.dataVersion;
+    void load();
+  });
 
   /**
    * How full the connected Google account is, as Drive reported it on the last sync. Only
@@ -247,7 +269,6 @@
     { value: 'system', label: 'Jak system' }
   ];
 
-  void load();
 </script>
 
 <Screen title="Ustawienia" lead="Konto Google, sejf na klucz Gemini, cele dzienne i tagi.">

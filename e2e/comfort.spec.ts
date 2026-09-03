@@ -94,10 +94,10 @@ test('a device that syncs an existing account is never sent to the wizard', asyn
 
   const device = await openDevice({ keepSetup: true });
   await device.getByRole('button', { name: 'Połącz Dysk Google' }).click();
-  // The wizard only leaves step 1 on a sync that came back `ok`, which is also when the pull
-  // has been written — so this is the signal that the account has landed.
-  await expect(device.getByRole('heading', { name: '2. Twój profil' })).toBeVisible();
-  await device.getByRole('button', { name: 'Pomiń kreator' }).click();
+  // Connecting an account that already holds a profile ends the wizard by itself: there is
+  // nothing left to set up, and the calendar is where the pulled data is (decision 226).
+  await expect(device.getByRole('heading', { name: 'Dziś' })).toBeVisible();
+  expect(device.url()).not.toContain('#/setup');
 
   await forgetSetupDone(device);
   await device.reload();

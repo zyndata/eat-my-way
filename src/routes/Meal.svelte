@@ -19,7 +19,7 @@
     todayDate
   } from '../lib/dates';
   import { repository } from '../lib/repository';
-  import { scheduleSync } from '../lib/sync/state.svelte';
+  import { scheduleSync, syncState } from '../lib/sync/state.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
   import ShoppingListSheet from '../lib/components/ShoppingListSheet.svelte';
@@ -114,7 +114,10 @@
     loading = false;
   }
 
+  // Also on a sync: every field on this screen writes through on change, so there is no
+  // half-typed state a pull could tread on (STATE.md decision 228).
   $effect(() => {
+    syncState.dataVersion;
     void load(date, mealId);
   });
 

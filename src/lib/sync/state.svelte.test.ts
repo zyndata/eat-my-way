@@ -17,8 +17,7 @@ import type { DayConflict, SyncOptions, SyncOutcome } from './engine';
 const h = vi.hoisted(() => ({
   configured: { value: true },
   engine: {
-    sync: vi.fn<(options: SyncOptions) => Promise<SyncOutcome>>(),
-    isRemoteEmpty: vi.fn<() => Promise<boolean>>()
+    sync: vi.fn<(options: SyncOptions) => Promise<SyncOutcome>>()
   },
   backend: { signOut: vi.fn<() => void>() },
   meta: new Map<string, string>(),
@@ -130,7 +129,6 @@ beforeEach(() => {
   h.meta.clear();
   h.profile.value = {};
   h.engine.sync.mockReset();
-  h.engine.isRemoteEmpty.mockReset();
   h.backend.signOut.mockReset();
   h.loadVault.mockReset();
   h.loadVault.mockResolvedValue(undefined);
@@ -171,6 +169,46 @@ describe('when Drive may run at all', () => {
 
     await state.syncNow();
     expect(h.engine.sync).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * A background sync has no user activation, so GIS cannot open a window for it and its
+   * „unauthenticated" means „not without asking". Adopting that as the answer to a tap on
+   * „Połącz Dysk Google" reported a failed sign-in that was never attempted — reliably, since
+   * `resumeSync()` runs at start-up, right where the button is (STATE.md decision 230).
+   */
+  it('does not answer a click with a background sync that could not ask', async () => {
+    const state = await connected();
+    let release: (outcome: SyncOutcome) => void = () => undefined;
+    h.engine.sync.mockReturnValueOnce(new Promise<SyncOutcome>((resolve) => (release = resolve)));
+
+    const background = state.syncNow();
+    const click = state.syncNow({ interactive: true });
+
+    h.engine.sync.mockResolvedValue(ok());
+    release({ status: 'unauthenticated', message: 'silent' });
+
+    expect((await background).status).toBe('unauthenticated');
+    expect((await click).status).toBe('ok');
+    expect(h.engine.sync).toHaveBeenCalledTimes(2);
+    expect(h.engine.sync.mock.calls[1]?.[0]).toMatchObject({ interactive: true });
+  });
+
+  it('sends an edit made while a sync was already running', async () => {
+    const state = await connected();
+    let release: (outcome: SyncOutcome) => void = () => undefined;
+    h.engine.sync.mockReturnValueOnce(new Promise<SyncOutcome>((resolve) => (release = resolve)));
+
+    void state.syncNow();
+    state.scheduleSync();
+
+    h.engine.sync.mockResolvedValue(ok());
+    await vi.advanceTimersByTimeAsync(5000);
+    release(ok());
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The edit gets its own pass rather than waiting for the five-minute timer.
+    expect(h.engine.sync).toHaveBeenCalledTimes(2);
   });
 
   it('joins an in-flight sync instead of starting a second one', async () => {
@@ -594,14 +632,5 @@ describe('disconnecting', () => {
 
     await state.connectDrive();
     expect(h.engine.sync).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe('isRemoteEmpty', () => {
-  it('asks the engine', async () => {
-    const state = await load();
-    h.engine.isRemoteEmpty.mockResolvedValue(true);
-
-    await expect(state.isRemoteEmpty()).resolves.toBe(true);
   });
 });

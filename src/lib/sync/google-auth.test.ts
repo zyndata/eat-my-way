@@ -325,6 +325,28 @@ describe('failures', () => {
     expect(auth.hasAccessToken()).toBe(false);
   });
 
+  /**
+   * The two callers of `shares one popup` are not interchangeable: the silent one cannot open
+   * a window, so when it fails the click that joined it must ask for itself rather than
+   * inherit „no token" (STATE.md decision 230).
+   */
+  it('lets a click ask for itself when the silent request it joined failed', async () => {
+    const auth = await load();
+
+    const silent = auth.getAccessToken();
+    const click = auth.getAccessToken({ interactive: true });
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.fail('needs a window');
+
+    await expect(silent).rejects.toBeInstanceOf(NotAuthenticated);
+
+    await vi.advanceTimersByTimeAsync(0);
+    harness.gis.respond({ access_token: 'token', expires_in: 3600 });
+    await expect(click).resolves.toBe('token');
+    // The silent attempt, then the click's own — and only the second one asks for consent.
+    expect(harness.gis.prompts).toEqual(['', 'consent']);
+  });
+
   it('lets a later attempt succeed after a rejected one', async () => {
     const auth = await load();
 

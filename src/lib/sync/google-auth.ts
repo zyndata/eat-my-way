@@ -174,6 +174,8 @@ let token: Token | null = restore();
 let client: TokenClient | null = null;
 /** Set while a request is in flight, so two callers share one popup. */
 let pending: Promise<string> | null = null;
+/** Whether that request may open a window. A silent one cannot; see `getAccessToken`. */
+let pendingInteractive = false;
 /** Resolvers for the in-flight request; GIS answers through a single client callback. */
 let settle: { resolve: (value: string) => void; reject: (error: Error) => void } | null = null;
 
@@ -249,17 +251,30 @@ async function ensureClient(): Promise<TokenClient> {
  */
 export function getAccessToken(options: { interactive?: boolean } = {}): Promise<string> {
   const now = Date.now();
+  const interactive = options.interactive === true;
   if (valid(now) && token !== null) return Promise.resolve(token.value);
-  if (pending !== null) return pending;
 
+  if (pending !== null) {
+    // Whoever is waiting can use the token this request comes back with. Its *failure* is
+    // another matter: a silent request has no user activation, so it cannot open the window
+    // GIS falls back to — and inheriting that failure made a click report a sign-in that was
+    // never attempted (STATE.md decision 230). A click waits, then asks for itself.
+    if (!interactive || pendingInteractive) return pending;
+    return pending.then(
+      (value) => value,
+      () => getAccessToken(options)
+    );
+  }
+
+  pendingInteractive = interactive;
   pending = (async () => {
     const tokenClient = await ensureClient();
-    const hint = options.interactive === true ? undefined : accountHint();
+    const hint = interactive ? undefined : accountHint();
     return new Promise<string>((resolve, reject) => {
       settle = { resolve, reject };
       // '' lets Google skip the dialog when it already has an answer; 'consent' forces it.
       tokenClient.requestAccessToken({
-        prompt: options.interactive === true ? 'consent' : '',
+        prompt: interactive ? 'consent' : '',
         ...(hint === undefined ? {} : { hint })
       });
     });
@@ -267,5 +282,6 @@ export function getAccessToken(options: { interactive?: boolean } = {}): Promise
 
   return pending.finally(() => {
     pending = null;
+    pendingInteractive = false;
   });
 }

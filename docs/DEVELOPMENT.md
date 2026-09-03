@@ -71,11 +71,17 @@ src/lib/nutrition/meta.ts            version, source ids and attribution, for th
 
 ## The PWA icons
 
-`public/icons/*.png` is **generated and committed**, like the nutrition bundle. They are drawn
-by [`scripts/build-icons.mjs`](../scripts/build-icons.mjs) — plain arithmetic plus Node's own
-`zlib`, no image library and no design-tool export nobody can reproduce. The brand colour is
-the `oklch(62% 0.16 145)` of `--color-accent` in `src/app.css`, converted in the script, so
-changing the token and re-running is all it takes to recolour the set.
+`public/icons/*.png` is **generated and committed**, like the nutrition bundle. The whole set
+is resampled from one source — [`data/icon-source.png`](../data/icon-source.png), the brand
+mark as a square 1024 px image — by [`scripts/build-icons.mjs`](../scripts/build-icons.mjs).
+Still no image library: the source is a plain 8-bit non-interlaced PNG, which Node's own
+`zlib` and a short unfilter loop can read.
+
+**To change the icon,** replace `data/icon-source.png` and run `npm run build:icons`. Keep it
+square, and keep the mark inside the middle 80 % — Android crops a maskable icon to a shape of
+its own choosing, and only that part is guaranteed to survive. The colour behind the mark is
+read from the source's own top-left pixel, so the padding around the maskable variant always
+matches the image.
 
 They are committed because the production image is built from `dist/` in CI, which must not
 depend on this script having run.

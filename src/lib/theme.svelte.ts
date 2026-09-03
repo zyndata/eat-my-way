@@ -33,7 +33,7 @@ const STORAGE_KEY = 'emw.theme';
 
 /** `--color-accent` in the light theme; `--color-surface` in the dark one. */
 const THEME_COLOR: Record<ResolvedTheme, string> = {
-  light: '#399e43',
+  light: '#529888',
   dark: '#22211f'
 };
 

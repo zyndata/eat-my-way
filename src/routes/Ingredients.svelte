@@ -16,7 +16,7 @@
     type IngredientDraft
   } from '../lib/custom-ingredients';
   import { ingredientIndex } from '../lib/ingredients';
-  import { scheduleSync } from '../lib/sync/state.svelte';
+  import { scheduleSync, syncState } from '../lib/sync/state.svelte';
   import { todayDate } from '../lib/dates';
   import { pluralPl } from '../lib/text';
   import { nutritionStatus } from '../lib/nutrition/status.svelte';
@@ -244,6 +244,7 @@
    * navigated away and back — the one moment a new user is most likely to be looking.
    */
   $effect(() => {
+    syncState.dataVersion;
     if (nutritionStatus.phase === 'importing') return;
     void load();
   });

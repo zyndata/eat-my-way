@@ -241,3 +241,51 @@ test('an edit made while Drive is unreachable is pushed when it comes back', asy
     .poll(() => JSON.stringify(drive.snapshot()['recipes.json']), { timeout: 20_000 })
     .toContain('Zupa pomidorowa');
 });
+
+/**
+ * Reported after a day of two-device use, and the reason the sync felt broken when it was not:
+ * every screen read its data once, when it mounted, so a pull that landed under an open screen
+ * was invisible — for as long as the user kept looking at it, while `startAutoSync` went on
+ * pulling every few minutes (STATE.md decision 228).
+ */
+test('a day planned on the other device appears under an open calendar', async ({
+  openDevice,
+  drive
+}) => {
+  seedAccount(drive);
+
+  const device = await openDevice();
+  await connect(device);
+
+  // The other device plans today's dinner and syncs it.
+  const today = await device.evaluate(() => {
+    const now = new Date();
+    const pad = (value: number) => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  });
+  drive.put(
+    `days/${today.slice(0, 7)}.json`,
+    daysDocument({
+      [today]: {
+        date: today,
+        meals: [
+          {
+            id: 'meal-elsewhere',
+            recipeId: 'recipe-drive-1',
+            cookingScale: 1,
+            portionsEaten: 1,
+            macroSnapshot: { kcal: 500, protein: 20, carbs: 60, fat: 15 }
+          }
+        ]
+      }
+    })
+  );
+
+  // Stand on the calendar and let a sync land, without navigating anywhere: coming back to
+  // the app is one of the three moments `startAutoSync` syncs on.
+  await device.goto('#/');
+  await expect(device.getByRole('heading', { name: 'Dziś' })).toBeVisible();
+  await device.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+
+  await expect(device.getByText(DRIVE_RECIPE)).toBeVisible();
+});
