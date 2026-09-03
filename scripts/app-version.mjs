@@ -13,6 +13,9 @@ import { readFileSync } from 'node:fs';
 /** A released version is exactly the SemVer tag the deploy workflow was triggered by. */
 const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
 
+/** What `git describe` may answer with: a tag, optionally with how far past it we are. */
+const DESCRIBED = /^v\d+\.\d+\.\d+(-|$)/;
+
 /** Ask git something, or accept that this checkout cannot answer (a tarball, a stale image). */
 function git(...args) {
   try {
@@ -33,9 +36,15 @@ function version() {
   const ref = process.env.GITHUB_REF_NAME;
   if (ref !== undefined && RELEASE_TAG.test(ref)) return ref;
 
-  const described = git('describe', '--tags', '--always', '--dirty');
-  if (described) return described;
+  // No `--always`: without it git says nothing when the checkout has no tags, and with it says
+  // the commit hash — which the app would then show under „Wersja aplikacji" as if a hash were
+  // a version. That is exactly what every CI build of `dev` displayed, because
+  // `actions/checkout` clones without tags unless told otherwise (STATE.md decision 235).
+  const described = git('describe', '--tags', '--dirty');
+  if (described !== null && DESCRIBED.test(described)) return described;
 
+  // Last resort, for a checkout with no git at all. It can lag a release: nothing bumps it
+  // automatically, so treat it as „this build could not say", not as an authority.
   const url = new URL('../package.json', import.meta.url);
   return `v${JSON.parse(readFileSync(url, 'utf8')).version}`;
 }

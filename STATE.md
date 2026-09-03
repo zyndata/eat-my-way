@@ -2872,6 +2872,66 @@ one of which broke the feature outright.
      `theme-color` meta, `theme.svelte.ts`'s status-bar mirror and the manifest's `theme_color`
      in `vite.config.ts` — all carry `#529888` now.
 
+### 2026-09-03 — the version that called itself by a commit hash
+
+235. **`git describe --always` was making CI builds name themselves after a hash.** The CI run
+     on `dev` had been failing since v1.2.0 — on exactly the two tests that assert the app can
+     say which build it is (`pwa.spec.ts`, `screens.spec.ts`) — and the deploy workflow does not
+     run e2e, so the failure never blocked a release and every release was in fact correct.
+
+     The cause is in `scripts/app-version.mjs`, decision 224's own code. `--always` makes
+     `git describe` answer with the abbreviated commit when it finds no tag, and
+     `actions/checkout` clones **without tags**, so every CI build displayed something like
+     `a1b2c3d` where the screen promises a version. The tests were right and I had only ever
+     run them where tags exist.
+
+     Three changes, because the fault has three layers:
+
+     - `--always` is gone. Git either describes a tag or says nothing, and the answer is
+       accepted only if it *looks* like one (`v1.4.0`, `v1.4.0-3-gabc1234`).
+     - `ci.yml` checks out with `fetch-depth: 0`, so the environment can answer at all —
+       otherwise CI would now show the package.json fallback, which is honest but says less.
+     - `package.json` is bumped to `1.4.0`. It is the last resort, for a checkout with no git,
+       and it had been sitting at `0.1.0` since the first commit — the very staleness that made
+       decision 224 derive the version from tags in the first place. Nothing bumps it
+       automatically, so it can lag again; it is a fallback, not an authority.
+
+     Verified the way it failed: a `--depth 1 --no-tags` clone of this repo now falls back to
+     the package version instead of a hash, a full checkout describes `v1.4.0-1-g…`, and
+     `GITHUB_REF_NAME=v1.4.0` still wins over both.
+
+### 2026-09-03 — „Sprawdź aktualizacje" said only that it had failed
+
+236. **A rejected `update()` is no longer taken at its word, and it now says what threw.**
+     Reported from the phone against v1.3.0: the button answered „Nie udało się sprawdzić" while
+     the account was online and the server was serving v1.4.0 correctly.
+
+     What was ruled out, from here rather than by guessing: all fifteen URLs in the live
+     precache manifest answer 200; `/sw.js` answers 200 even to a cookie-less request carrying
+     `Service-Worker: script` and a mobile user agent, so Cloudflare is not turning the worker
+     script away; and `registration.update()` against the live site from a fresh client
+     **succeeds**. The failure is therefore not reproducible from a desktop on a good link,
+     which points at the difference that remains: the phone was updating from v1.3.0 to a build
+     whose precache had just grown by 385 KB of icons, over a mobile connection.
+
+     That matters because `update()` rejects for two different things: the script fetch, and an
+     installation that fails behind it — and a precache of more than a megabyte gives the second
+     one plenty of room on a weak link. Two changes follow:
+
+     - **The registration is asked before the rejection is believed.** A worker that reached
+       `waiting` is a found update whatever the promise said, so the button reports it.
+     - **The error is logged.** `console.warn` with the actual exception, because „nie udało
+       się" tells a bug report nothing; the screen still says only what the user can act on, and
+       now says what it means — the download did not finish, try on a better connection, nothing
+       is broken.
+
+     **Separately, and confirmed:** production logs one CSP violation on every page load, and it
+     is Cloudflare's. The edge injects an inline `challenge-platform/scripts/jsd/main.js`
+     bootstrap into the document; `script-src 'self'` blocks it, so it never runs and the app is
+     unaffected — but it contradicts Phase 8's „zero CSP violations" and it is noise that could
+     hide a real one. The fix is not in this repo: JavaScript Detections / Bot Fight Mode has to
+     be turned off for this hostname in the Cloudflare dashboard.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

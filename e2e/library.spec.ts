@@ -84,6 +84,10 @@ test('„Powiel" makes an independent copy that keeps the tags', async ({ device
 
   // Rewrite the copy from top to bottom.
   await device.getByRole('link', { name: /Ryż z warzywami \(kopia\)/ }).click();
+  // The editor fills its fields from IndexedDB after it mounts. Waiting for the copy's own
+  // name is what tells the two apart — filling before that raced the load and, in CI, hit the
+  // heading instead of the input.
+  await expect(device.getByLabel('Nazwa')).toHaveValue('Ryż z warzywami (kopia)');
   await device.getByLabel('Nazwa').fill('Kasza z warzywami');
   await device.getByLabel('Ilość').first().fill('500');
   await device.getByRole('button', { name: 'Zapisz przepis' }).click();

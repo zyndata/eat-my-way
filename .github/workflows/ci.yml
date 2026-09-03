@@ -20,7 +20,11 @@ jobs:
     name: Check, test & build
     runs-on: ubuntu-latest
     steps:
+      # Full history: the app's version comes from `git describe`, and a shallow clone with
+      # no tags would leave every CI build calling itself by a commit hash (decision 235).
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -45,7 +49,11 @@ jobs:
     name: End-to-end (login & sync)
     runs-on: ubuntu-latest
     steps:
+      # Full history: the app's version comes from `git describe`, and a shallow clone with
+      # no tags would leave every CI build calling itself by a commit hash (decision 235).
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
