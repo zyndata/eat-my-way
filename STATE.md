@@ -2535,6 +2535,57 @@ one of which broke the feature outright.
      reasoning alone.
 
 
+### 2026-09-03 — two reports from daily use: the suggestion list, and a second phone
+
+221. **A suggestion list must not commit on the press — a press is where a scroll starts.**
+     Reported from both machines at once, and it is one defect with two faces. The ingredient
+     and tag pickers chose an option on `pointerdown` with `preventDefault()`, which was
+     written to beat the input's `blur` to the commit. It does, and it also cancels everything
+     the browser would have grown out of that press:
+
+     - **On Android**, a finger placed on an option to drag the list up cannot scroll — the
+       cancelled `pointerdown` takes the touch gesture with it — and the option under the
+       finger is chosen instead. The user meant to look further down the list and got the
+       ingredient they happened to touch first.
+     - **With a mouse**, pressing the panel's own scrollbar lands on the `<ul>`, outside any
+       option, so nothing commits, the input blurs and the whole list closes mid-drag.
+
+     The fix separates the two jobs the one handler was doing. Options commit on `click`, which
+     on touch fires only after the gesture is resolved as a tap and never after a scroll.
+     Focus is held by cancelling `mousedown` on the *panel* — the event that actually moves
+     focus, and the one event touch sends only once the tap is settled — so a press anywhere in
+     the panel, scrollbar included, leaves the caret in the input and the list open. Hover
+     highlighting is gated on `pointerType === 'mouse'`, so a finger dragging across options no
+     longer paints them as it goes.
+
+     Both pickers carried the same code and both are fixed; `e2e/library.spec.ts` now holds the
+     two regressions — a press on an option changes nothing, and a press on the panel itself
+     does not close it.
+
+222. **The Android install route is named again, but only where it exists.** Reported from a
+     second Android phone: Chrome shows no „Zainstaluj aplikację" button, and the section
+     therefore says nothing about installing at all. That is decision 189 working exactly as
+     written — and decision 219 explains the state: Chrome withholds `beforeinstallprompt`
+     until a visit its engagement heuristic counts as real, so a working install can look like
+     an absent feature for a visit or two.
+
+     What decision 189 removed was „look in your browser's menu", printed to everyone including
+     browsers with no such item. What goes back is narrower: on a Chromium browser that reports
+     itself as mobile, the section names the one path that is real there — „⋮ → Zainstaluj
+     aplikację / Dodaj do ekranu głównego" — and says the button will appear here by itself
+     when the browser offers it. That is the same standard the iOS share-sheet copy already
+     meets, and it is off on every other browser.
+
+     The platform test is `navigator.userAgentData?.mobile === true`: Chromium-only, and the
+     browser's own answer to „am I on a phone", so this stays a capability check rather than a
+     UA string — the rule decision 189 set for iOS. Samsung Internet answers it too and has the
+     same menu.
+
+     Nothing about installability changed, and nothing needed to: decision 219 proved on a
+     device that every criterion passes on the live origin. This is copy for the window before
+     Chrome makes up its mind.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -2803,6 +2854,11 @@ one of which broke the feature outright.
     works** (decision 220), so `getInstalledRelatedApps()` and the `related_applications` entry
     do what decision 208 hoped. All three states of the install section have now been seen on a
     real device.
+
+    **A second Android phone, 2026-09-03, showed no button at all** — which does not reopen
+    this question: it is the transient state decision 219 named, seen from the other side. The
+    section now names the browser's own menu route while Chrome makes up its mind (decision
+    222), so the wait is explained rather than silent.
 
     One thread tied to this question is **not** closed by it: **open question 15's live Drive
     round trip** still wants the same visit; the checklist is in
