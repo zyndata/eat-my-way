@@ -15,7 +15,7 @@ import { cspViolations } from './fake-google';
  */
 
 /** Every route the app has, in the order a user would meet them. */
-const ROUTES = ['/', '/recipes', '/settings', '/about', '/setup', '/nie-ma-takiej-strony'];
+const ROUTES = ['/', '/recipes', '/ingredients', '/settings', '/about', '/setup', '/nie-ma-takiej-strony'];
 
 test('every screen renders under the production policy and reports no violation', async ({
   device

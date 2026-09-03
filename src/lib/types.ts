@@ -30,6 +30,16 @@ export interface Ingredient {
   state: IngredientState;
   per100g: Macros;
   source: IngredientSource;
+  /**
+   * When this row was last written, ISO 8601. Custom rows only: the bundled subset is
+   * rewritten wholesale by every data refresh, so an edit time would say nothing about it.
+   *
+   * Absent means "written before Phase 10", when a custom ingredient could only ever be
+   * created. That is exactly why it is optional and unindexed — no schema version, no
+   * migration — and why the merge counts a row without it as the older side (STATE.md
+   * decision 182).
+   */
+  updatedAt?: string;
 }
 
 export interface RecipeItem {

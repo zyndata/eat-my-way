@@ -201,7 +201,9 @@
   }
 
   async function saveCustomIngredient(rowId: string, ingredient: Ingredient): Promise<void> {
-    await repository.putIngredient(ingredient);
+    // `saveCustomIngredient` rather than `putIngredient`: it stamps the `updatedAt` the
+    // ingredient merge needs now that these rows can be edited (STATE.md decision 182).
+    await repository.saveCustomIngredient(ingredient);
     scheduleSync();
     // The autocomplete keeps an in-memory snapshot — see STATE.md decision 39.
     ingredientIndex.invalidate();

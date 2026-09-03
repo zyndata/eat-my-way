@@ -80,6 +80,55 @@ test('a backup taken on one device restores the whole calendar on a fresh one', 
   await second.getByRole('button', { name: 'Anuluj' }).click();
 });
 
+test('the copy carries the vault, and says which of two files it is about to write', async ({
+  openDevice
+}) => {
+  const source = await openDevice();
+
+  // With no vault at all there is no key to warn about.
+  await expect(source.getByText('nie ma jeszcze sejfu')).toBeVisible();
+
+  // An unencrypted vault: the key ends up in the file in the clear, and the export says so.
+  await source.getByLabel('Szyfruj sejf hasłem głównym (zalecane)').uncheck();
+  await source.getByRole('button', { name: 'Utwórz sejf' }).click();
+  await source.getByLabel('Klucz API Gemini').fill('AIza-e2e-secret');
+  await source.getByRole('button', { name: 'Sprawdź i zapisz klucz' }).click();
+  await expect(source.getByText('Klucz działa.')).toBeVisible();
+  await expect(source.getByText('Uwaga: sejf na tym urządzeniu nie jest zaszyfrowany')).toBeVisible();
+
+  const [download] = await Promise.all([
+    source.waitForEvent('download'),
+    source.getByRole('button', { name: 'Zapisz kopię' }).click()
+  ]);
+  const file = await download.path();
+
+  // A device that has never had a vault reads the file and ends up with the key in place —
+  // no step left for the user (STATE.md decision 184).
+  const fresh = await openDevice();
+  await expect(fresh.getByText('Nie masz jeszcze sejfu na tym urządzeniu.')).toBeVisible();
+
+  await fresh.locator('input[type="file"]').setInputFiles(file);
+  const dialog = fresh.getByRole('dialog', { name: 'Wczytać kopię i zastąpić dane?' });
+  await expect(dialog).toContainText('Kopia zawiera też sejf');
+  await Promise.all([
+    fresh.waitForEvent('load'),
+    fresh.getByRole('button', { name: 'Tak, zastąp dane' }).click()
+  ]);
+
+  await expect(fresh.getByText('Sejf jest otwarty (bez szyfrowania)')).toBeVisible();
+  await expect(fresh.getByLabel('Klucz API Gemini')).toHaveValue('AIza-e2e-secret');
+});
+
+test('with an encrypted vault the copy says the key travels sealed', async ({ device }) => {
+  await device.locator('input[autocomplete="new-password"]').fill('bardzo-tajne-haslo');
+  await device.getByRole('button', { name: 'Utwórz sejf' }).click();
+  await expect(device.getByText('Sejf jest otwarty (zaszyfrowany)')).toBeVisible();
+
+  // The password itself never enters the file, and that is the half a user needs to hear.
+  await expect(device.getByText('Kopia zawiera sejf z kluczem API Gemini')).toBeVisible();
+  await expect(device.getByText('Samo hasło nie trafia do pliku')).toBeVisible();
+});
+
 test('a file that is not one of ours is refused without touching anything', async ({ device }) => {
   await device.locator('input[type="file"]').setInputFiles({
     name: 'coś-innego.json',

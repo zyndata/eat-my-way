@@ -314,7 +314,11 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
       byKey(snapshot.customIngredients, (ingredient) => ingredient.id),
       scoped(baseline, 'ingredient:'),
       () => byKey(ingredientsDoc?.ingredients ?? [], (ingredient) => ingredient.id),
-      localWins<Ingredient>()
+      // Custom ingredients became editable in Phase 10, which retired the „only ever added to"
+      // premise `localWins` rested on: two devices that both corrected one row would otherwise
+      // keep whichever synced last, silently. A row written before that phase carries no
+      // `updatedAt` and loses to an edited copy (STATE.md decision 182).
+      newerWins<Ingredient>()
     );
     const correctionMerge = mergeAgainst(
       remoteIngredients,

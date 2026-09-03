@@ -139,6 +139,29 @@ describe('automatic tie-breaks', () => {
     expect(result.merged.get('a')?.text).toBe('theirs');
   });
 
+  it('newerWins counts a row with no updatedAt as the older side', () => {
+    // Custom ingredients written before Phase 10 carry no timestamp (STATE.md decision 182).
+    // An un-stamped row must lose to an edited copy, whichever device it happens to sit on.
+    const undated = { id: 'a', text: 'przed fazą 10' } as Note;
+    const base = baselineOf(index(note('a', 'old', '2026-08-01T00:00:00.000Z')));
+
+    const theirsIsNewer = mergeCollection(
+      base,
+      index(undated),
+      index(note('a', 'poprawione', '2026-09-02T00:00:00.000Z')),
+      newerWins<Note>()
+    );
+    expect(theirsIsNewer.merged.get('a')?.text).toBe('poprawione');
+
+    const oursIsNewer = mergeCollection(
+      base,
+      index(note('a', 'poprawione', '2026-09-02T00:00:00.000Z')),
+      index(undated),
+      newerWins<Note>()
+    );
+    expect(oursIsNewer.merged.get('a')?.text).toBe('poprawione');
+  });
+
   it('localWins keeps this device’s value', () => {
     const base = baselineOf(index(note('a', 'old')));
     const result = mergeCollection(

@@ -53,7 +53,8 @@ const input: BackupInput = {
   customIngredients: [custom],
   corrections: [{ nameKey: 'twarog', ingredientId: 'custom-1', updatedAt: '2026-09-01T10:00:00.000Z' }],
   days: [day],
-  schemaVersion: 3
+  schemaVersion: 3,
+  settings: {}
 };
 
 describe('building a backup', () => {
@@ -69,10 +70,20 @@ describe('building a backup', () => {
     expect(backup.corrections).toHaveLength(1);
   });
 
-  it('never carries the vault — that is the whole point of leaving it out', () => {
-    const serialized = JSON.stringify(buildBackup(input));
-    expect(serialized).not.toContain('vault');
-    expect(serialized).not.toContain('geminiApiKey');
+  it('carries the vault verbatim when the device has one', () => {
+    // The vault is opaque here: whatever the device holds is what travels (decision 184).
+    const backup = buildBackup({ ...input, vaultFile: '{"v":1,"cipher":"…"}' });
+    expect(backup.vault).toBe('{"v":1,"cipher":"…"}');
+  });
+
+  it('leaves the section out entirely when there is no vault', () => {
+    expect(buildBackup(input).vault).toBeUndefined();
+    expect(JSON.stringify(buildBackup(input))).not.toContain('vault');
+  });
+
+  it('carries the per-device list settings', () => {
+    const backup = buildBackup({ ...input, settings: { recipeSort: 'name', recipeGrouped: true } });
+    expect(backup.settings).toEqual({ recipeSort: 'name', recipeGrouped: true });
   });
 
   it('names the file by the day it was written', () => {
@@ -98,8 +109,13 @@ describe('reading a backup', () => {
       days: 1,
       meals: 1,
       ingredients: 1,
-      exportedAt: '2026-09-01T12:00:00.000Z'
+      exportedAt: '2026-09-01T12:00:00.000Z',
+      vault: false
     });
+  });
+
+  it('says when the file brings a vault with it', () => {
+    expect(summarizeBackup(buildBackup({ ...input, vaultFile: '{}' })).vault).toBe(true);
   });
 
   it('fills in profile fields a file predates', () => {
@@ -108,6 +124,48 @@ describe('reading a backup', () => {
 
     expect(backup.profile.geminiModel).toBe(DEFAULT_PROFILE.geminiModel);
     expect(backup.profile.encryptVault).toBe(DEFAULT_PROFILE.encryptVault);
+  });
+
+  it('round-trips the vault and the settings', () => {
+    const document = buildBackup({
+      ...input,
+      vaultFile: '{"v":1}',
+      settings: { recipeSort: 'kcal', recipeGrouped: true }
+    });
+    const backup = readBackup(JSON.stringify(document));
+
+    expect(backup.vault).toBe('{"v":1}');
+    expect(backup.settings).toEqual({ recipeSort: 'kcal', recipeGrouped: true });
+  });
+
+  it('reads a file written before either section existed', () => {
+    // The reverse of the compatibility `BACKUP_VERSION` stays at 1 for (decision 188).
+    const { vault: _v, settings: _s, ...older } = buildBackup({ ...input, vaultFile: '{}' });
+    const backup = readBackup(JSON.stringify(older));
+
+    expect(backup.vault).toBeUndefined();
+    expect(backup.settings).toEqual({});
+    expect(backup.recipes).toHaveLength(1);
+  });
+
+  it('stays readable by a build that predates the two new sections', () => {
+    // An older build reads `version` 1, constructs its own document from the fields it knows
+    // and never looks at `vault` or `settings` — so what it sees is exactly the file this
+    // version would have written without them (decision 188).
+    const current = buildBackup(
+      { ...input, vaultFile: '{"v":1}', settings: { recipeSort: 'name' } },
+      new Date('2026-09-01T12:00:00.000Z')
+    );
+    const { vault: _v, settings: _s, ...asAnOlderBuildSeesIt } = current;
+    const { settings: _old, ...v1Shape } = buildBackup(input, new Date('2026-09-01T12:00:00.000Z'));
+
+    expect(current.version).toBe(1);
+    expect(asAnOlderBuildSeesIt).toEqual(v1Shape);
+  });
+
+  it('drops a settings value it does not recognise instead of refusing the file', () => {
+    const document = { ...buildBackup(input), settings: { recipeSort: 'nonsense', recipeGrouped: 'tak' } };
+    expect(readBackup(JSON.stringify(document)).settings).toEqual({});
   });
 
   it('refuses anything that is not one of our files', () => {

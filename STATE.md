@@ -16,7 +16,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 7     | Gemini import               | done    | 2026-09-01 |
 | 8     | PWA & polish                | done    | 2026-09-01 |
 | 9     | Daily-use comfort           | done    | 2026-09-02 |
-| 10    | Składniki i pełna kopia     | pending | —          |
+| 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
 | 11    | Zgłoszenia z użytkowania    | pending | —          |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
@@ -24,7 +24,8 @@ Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
 after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
 ingredient library, and an export that finally holds everything); Phase 11 is the pile of
-things daily use reported about what the app says. Both are planned, not started.
+things daily use reported about what the app says. Phase 10 is done; Phase 11 is planned,
+not started, and does not ship until it is released under a tag of its own.
 
 Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
 which is where a release belongs — not inside a phase (decision 141). Live at
@@ -2280,6 +2281,51 @@ one of which broke the feature outright.
      doing the right thing and saying nothing about it — but it is worth noting that it is the
      one task in either phase that ships **outside a tag**: repository metadata is not in the
      build, so it takes effect the moment it is set and no release carries it.
+
+### 2026-09-03 — Phase 10 built
+
+201. **Phase 10 shipped as planned, with one addition and no deviations.** Every task landed as
+     decisions 176-188 described it, so this entry records only what those did not say.
+
+     The addition: **the ingredients screen re-reads itself when the first-run nutrition import
+     lands.** It was found by the e2e test, not by reasoning — a device opening „Składniki"
+     during the import saw an empty base and stayed that way until the screen was navigated
+     away from and back, which is precisely the first minute of a new install. The list now
+     reads on mount and again when `nutritionStatus.phase` leaves `importing`.
+
+202. **The pure rules live in `custom-ingredients.ts`, and the repository enforces the two that
+     protect a number.** The split follows this project's usual line: `custom-ingredients.ts`
+     holds the draft, the validation, the copy-and-edit seeding and the item rewrite, all
+     testable without a database; `repository.ts` holds `saveCustomIngredient`,
+     `deleteIngredient`, `replaceIngredient` and `ingredientReferences`.
+
+     Two refusals are in the repository rather than only in the screen, and both throw a named
+     error the UI can act on: `IngredientInUseError` (a delete that would silently zero a
+     recipe) and `NotCustomIngredientError` (a write to a bundled row, which no data refresh
+     would preserve). A screen is the wrong place for either, because the damage would be
+     silent and permanent, and because the same repository is what sync writes through.
+
+203. **The bundled list is capped at 50 rows on screen.** ~1300 rows behind one toggle is a
+     page a phone renders slowly and nobody reads; the cap comes with the count it is hiding
+     and a line saying to narrow the search. The cap is on rendering only — the ranking runs
+     over everything, so the right row is in the first fifty whenever the query says enough.
+
+204. **The „update future days?" question is asked once for the whole edit, not once per
+     recipe.** An ingredient in five recipes could raise five prompts, which is five ways to
+     answer one question inconsistently. The count in the prompt is the total planned meals
+     from today onwards across every affected recipe, and „Tak" runs `refreshFutureSnapshots`
+     per recipe behind that single answer.
+
+     For a replacement the recipes counted are the ones that used the *old* ingredient — taken
+     before the swap, because afterwards they are indistinguishable from recipes that already
+     used the replacement and whose macros never moved.
+
+205. **`vaultState` is what the export copy reads to decide what it is about to write.** Three
+     states, because „the file contains your API key" is true in two very different ways and
+     false in the third: no vault at all, an encrypted one (the key travels sealed, the
+     password never enters the file), and an unencrypted one (the key is in the file in the
+     clear, said in red at the moment of export). Decision 184 required the sentence; this is
+     where it comes from.
 
 ## Open questions
 

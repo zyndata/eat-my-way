@@ -183,9 +183,15 @@ export function toIngredientRecord(ingredient: Ingredient): IngredientRecord {
   return { ...ingredient, ...ingredientIndexKeys(ingredient) };
 }
 
-/** Stored row -> wire shape, with the local-only index keys dropped. */
+/**
+ * Stored row -> wire shape, with the local-only index keys dropped.
+ *
+ * `updatedAt` is absent on every row written before Phase 10 and on every bundled one, and it
+ * stays absent here rather than being invented: an unknown edit time must lose a merge, and a
+ * fabricated one would win it.
+ */
 export function fromIngredientRecord(record: IngredientRecord): Ingredient {
-  return {
+  const ingredient: Ingredient = {
     id: record.id,
     name: record.name,
     aliases: record.aliases,
@@ -193,6 +199,8 @@ export function fromIngredientRecord(record: IngredientRecord): Ingredient {
     per100g: record.per100g,
     source: record.source
   };
+  if (record.updatedAt !== undefined) ingredient.updatedAt = record.updatedAt;
+  return ingredient;
 }
 
 export class EatMyWayDb extends Dexie {
