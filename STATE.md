@@ -31,7 +31,9 @@ the repository's About box, which is not in the build and took effect the moment
 
 Phase 11 left one thing unfinished — why Chrome on Android offered no install button — and
 **it is now settled**: against v1.1.0 the „Zainstaluj aplikację" button appears and installs
-the app on Chrome on Android. Nothing was broken; see decision 219 and open question 26.
+the app on Chrome on Android, and the „already installed, opened in a tab" line works too.
+Nothing was broken. Every acceptance criterion of Phase 11 is verified; see decisions 219 and
+220, and open question 26.
 
 Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
 which is where a release belongs — not inside a phase (decision 141). Live at
@@ -2510,6 +2512,29 @@ one of which broke the feature outright.
      nothing. Left as the only unconfirmed line in the section.
 
 
+220. **`getInstalledRelatedApps()` answers, and the last unverified line of Phase 11 is
+     confirmed.** Reported by the user from the same phone, in a normal Chrome tab: „Aplikacja
+     jest już zainstalowana na tym urządzeniu — teraz oglądasz ją w karcie przeglądarki."
+
+     That is the copy decision 191 was written for and decision 208 gambled on, and it settles
+     both at once:
+
+     - **The manifest entry works.** `related_applications: [{ platform: 'webapp', url:
+       '/manifest.webmanifest' }]` is what makes the API able to answer at all, and the
+       relative URL resolves per origin as intended — no absolute production address in the
+       build, and the container run is not a special case.
+     - **The defect decision 191 found is really gone.** Before Phase 11 this exact state — an
+       installed app, opened in a tab — printed „Ta przeglądarka nie daje przycisku
+       instalacji", telling a user who had already installed the app that their browser could
+       not. That was the dead-end sentence the whole task started from.
+
+     Taken with decision 219, the section's three states have now each been seen on one device,
+     in the order a user meets them: the install button before installing, this line in a tab
+     afterwards, and „działa jak zwykły program" when launched from the home screen. **Every
+     acceptance criterion of Phase 11 is verified**, and nothing in the phase is now carried by
+     reasoning alone.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -2519,8 +2544,9 @@ one of which broke the feature outright.
 > are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model A/B in
 > DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
 >
-> **26 is now answered** (2026-09-03, decision 219): the app installs on Chrome on Android from
-> its own button, which also closed Phase 11's one unfinished task.
+> **26 is now answered** (2026-09-03, decisions 219 and 220): the app installs on Chrome on
+> Android from its own button, and the „already installed, opened in a tab" copy works too.
+> That closed Phase 11's one unfinished task and its last unverified line.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -2773,14 +2799,14 @@ one of which broke the feature outright.
     fires, so every installability criterion passes on the live origin, and the original report
     was a transient state Chrome's engagement heuristic explains. Full reasoning in decision 219.
 
-    Two threads that were tied to this question are **not** closed by it:
+    The „already installed, opened in a tab" copy was checked on the same phone and **also
+    works** (decision 220), so `getInstalledRelatedApps()` and the `related_applications` entry
+    do what decision 208 hoped. All three states of the install section have now been seen on a
+    real device.
 
-    - **Open question 15's live Drive round trip** still wants the same visit; the checklist is
-      in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it).
-    - **The „already installed, opened in a tab" copy** (decision 208) has still never been
-      seen. It needs `navigator.getInstalledRelatedApps()` to answer on a browser that has the
-      app installed — which that phone now is, so opening the site in a normal tab settles it in
-      one look.
+    One thread tied to this question is **not** closed by it: **open question 15's live Drive
+    round trip** still wants the same visit; the checklist is in
+    [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it).
 
 27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
     argument for leaving it (a two-step red-button action, the export one click away) was
