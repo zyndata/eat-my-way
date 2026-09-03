@@ -2681,6 +2681,197 @@ one of which broke the feature outright.
      version line and the „you are current" answer); the swap needs to write to what the server
      serves, which the container run cannot do.
 
+### 2026-09-03 — the wizard told a full account that it was empty
+
+226. **Connecting an account that already holds a profile now ends the wizard instead of
+     offering to build one.** Reported from the phone, while recovering from a cleared site:
+     signing back in opened the first-run wizard, and after „Połącz Dysk Google" step 2
+     announced „W folderze aplikacji na tym koncie nie ma jeszcze żadnych danych" — to the
+     owner of the account that had just handed every recipe back.
+
+     Two faults, one cause. `Setup.connect()` advanced to step 2 unconditionally, and step 2's
+     sentence was **static text**, not a reading of the folder. The fact was available all
+     along: the sync returns `freshFolder` — the listing it made before writing anything
+     ([engine.ts](src/lib/sync/engine.ts): `listed.size === 0`) — and that same flag is what
+     decides whether Drive opens the wizard at all. The wizard never consulted it, because it
+     was written for the Drive-driven trigger, where an empty folder is a precondition. Phase
+     11 added the *local* trigger (`isNeverUsed`, decision 193) for a fresh browser with no
+     account, and clearing a site on a device whose account is full lands exactly between the
+     two: locally never used, remotely complete.
+
+     `afterConnect()` now branches on `freshFolder` — a fresh folder walks on to step 2, an
+     account with data leaves the wizard for the calendar. Nothing is lost by leaving: goals,
+     the vault and the Gemini key all came back with the pull, and each remaining step exists
+     in Ustawienia anyway. The „Używaj tego konta" button of the foreign-account panel goes
+     through the same branch, because it is the same question asked twice.
+
+     **This was not cosmetic.** The path the wizard was offering was destructive: step 2 →
+     step 3 → „Utwórz sejf" calls `createVault`, which persists an *empty* vault over the one
+     that had just arrived, and the next sync uploads it (local moved, remote did not), taking
+     the Gemini key on Drive with it. Step 5 would have overwritten the pulled goals the same
+     way. Recipes, days and ingredients were never at risk.
+
+     `e2e/connect.spec.ts` asserts both branches, and the fixed one was checked against the old
+     code first: with the branch removed it fails. `e2e/comfort.spec.ts`'s „a device that syncs
+     an existing account is never sent to the wizard" asserted the old waypoint (step 2) and
+     now asserts the new one.
+
+     `isRemoteEmpty()` — documented in `sync/state.svelte.ts` as „the first-run wizard's step 2"
+     and called by nothing — was the half of this feature that was never wired up. It is
+     deleted, along with the engine method behind it: `freshFolder` answers the same question
+     out of a listing the sync already made, without a second request to Drive.
+
+### 2026-09-03 — the goals that did not come back
+
+227. **A device with only its default profile no longer overwrites the account's goals.** Same
+     recovery, next report: everything returned from Drive except the daily goals. Two separate
+     faults, and the first one was writing to Drive.
+
+     **The merge.** Every collection is keyed, so a wiped device holds no key and each entity
+     is taken from Drive — except the profile, which is a single row the database *seeds* with
+     `DEFAULT_PROFILE` the moment it is created ([db.ts](src/lib/db.ts)). With no baseline to
+     compare against, those untouched defaults hashed as „this side edited it too", the merge
+     read a two-sided edit, and `localWins` — right when two devices really have both been used
+     — handed the account's goals to a profile nobody had written. Worse, the merge result is
+     then uploaded: the defaults were **pushed over the real goals on Drive**, so the loss
+     spread to every other device on its next sync.
+
+     `engine.ts` now asks a narrower question before falling back to `localWins`: has this
+     device ever recorded a profile baseline, and is its profile still exactly the defaults? If
+     both, it has nothing of its own to keep and the account's profile wins whole. A profile the
+     user actually set still wins, including on a device that never synced — that is the case
+     `localWins` was written for, and it has its own test now.
+
+     **The screen.** Even with the pull fixed, Ustawienia went on showing the old numbers: the
+     profile is read once, on mount, and the first sync of a restored browser lands *while that
+     screen is open* — it is the screen the „Połącz Dysk Google" button is on. It now re-reads
+     on every change of `lastSyncedAt`, and each field follows Drive **only while untouched**,
+     so a sync arriving mid-edit cannot overwrite what is being typed.
+
+     Both halves are covered: `engine.test.ts` for the merge in each direction, and
+     `goals.spec.ts` for the screen — the goals appearing without a reload, and an unsaved edit
+     surviving a sync. Every one of them fails on the old code.
+
+     Recovery for an account this already hit: the defaults are on Drive now, so the goals have
+     to be entered once more on any device; the next sync spreads them.
+
+### 2026-09-03 — audit of login, sync and the profile merge
+
+228. **Every screen now re-reads what a sync brought in.** The most consequential finding of the
+     audit, and the one that made the whole sync feel broken when it was not: no screen in the
+     app ever re-read its data. `Recipes`, `Ingredients`, `Meal` and `DayScreen` load on mount
+     (or on a route change) and nothing else; `Settings` was fixed a decision earlier for the
+     same reason. Proven, not deduced: with a day planned on the other device, the calendar
+     sat empty while the data was already in IndexedDB — visible only after navigating away and
+     back.
+
+     What makes it worse than a stale render is `startAutoSync`: the app pulls on every return
+     to the tab and **every five minutes** while it is visible. So a user could watch a screen
+     for an hour, have the changes arrive again and again, and never see one of them.
+
+     `syncState.dataVersion` is bumped whenever a sync writes locally (`outcome.pulled`), and
+     every screen's load effect reads it. A counter, not `lastSyncedAt`: only a sync that
+     *changed* something has any reason to make a screen re-read. Where a screen holds text the
+     user is editing — the goals form — the refresh follows Drive only while the field is
+     untouched (decision 227). `e2e/sync.spec.ts` asserts it against a sync landing under an
+     open calendar, with nothing navigated; the test fails on the old code.
+
+229. **Tag renames now travel.** Two faults, one effect. A rename whose new label normalizes to
+     the same key (`obiad` → `Obiad`) rewrites no recipe, and the upload of `recipes.json` — the
+     file tags live in — was gated on recipes alone, so the rename never left the device. And
+     when the file *was* uploaded for another reason, the receiving device threw the remote
+     label away: `mergeTags` preferred the local spelling „because one side has to". Two devices
+     disagreed for good, silently.
+
+     Labels are now merged like every other keyed collection: through `mergeAgainst` against a
+     `tag:` baseline, with `localWins` only for a genuine two-sided rename. `useCount` stays
+     derived and is recomputed from the merged recipes — merging a counter would make every
+     sync look like a change — so the baseline stores the **label**, not the row.
+
+     One behaviour changes with it, deliberately: a tag whose last recipe let it go keeps its
+     row and now survives a sync. Before, `mergeTags` kept only keys some recipe carried, so a
+     connected device quietly finished a deletion the user had not asked for while an
+     unconnected one kept the tag. Deleting a tag is `deleteTag`, and that still propagates —
+     as a key that left the baseline.
+
+230. **A click is no longer answered by the background sync it landed on.** `syncNow` returned
+     the in-flight promise to any caller, and `getAccessToken` shared its pending request the
+     same way. But the two are not interchangeable: a background pass has no user activation, so
+     GIS cannot open a window for it, and its `unauthenticated` means „not without asking" —
+     not „this sign-in failed". Since `resumeSync()` runs at start-up, on the very screen the
+     „Połącz Dysk Google" button is on, a tap in the first seconds after opening the app
+     reported a failure for a sign-in that was never attempted. That is the likeliest source of
+     „it doesn't log in the first time".
+
+     Both layers now branch on it: a silent caller still joins anything, an interactive one
+     waits for the background pass and then runs its own. A token that the silent request does
+     obtain is still shared — it is a token either way; only the *failure* is no longer
+     inherited.
+
+231. **An edit made while a sync was running is no longer left behind.** `scheduleSync` fires
+     four seconds after an edit; if that landed on a sync already in flight, it joined it —
+     sending nothing, because that pass had been assembled before the edit existed — and nothing
+     re-armed. The edit then waited for the five-minute timer or a tab switch, and a tab closed
+     in between never sent it at all. The debounced callback now waits for the running pass and
+     starts its own.
+
+232. **Drive is retried when it asks for a moment.** 429 and 5xx were treated as ordinary
+     failures, ending the sync. Two short retries (500 ms, 1.5 s), honouring `Retry-After` up to
+     a ten-second cap, because this runs while someone may be watching a button.
+
+     **One finding from the audit was withdrawn on re-reading.** „A failed upload leaves local
+     ahead of the baseline, so the next sync may raise a spurious day conflict" does not hold:
+     `mergeCollection` compares the two sides *before* consulting the baseline, and an entity
+     adopted from Drive is byte-identical on both sides, so it never reaches the conflict
+     branch. What is left is the honest case — the other device changed the same day in the
+     meantime — and a prompt there is correct. No change made.
+
+### 2026-09-03 — the brand mark becomes the icon
+
+233. **`public/icons/` is now resampled from one committed image instead of drawn.** The plate
+     and fork were signed distance fields in `scripts/build-icons.mjs`, chosen so that no binary
+     nobody could regenerate lived in the repo (decision 11's spirit). The brand mark — the
+     plate with the sprig and „EAT MY WAY" — replaces them, and the premise survives: there is
+     exactly one source, `data/icon-source.png`, committed beside `pl-ingredients.tsv`, and the
+     five PNGs are reproduced from it by `npm run build:icons`.
+
+     **Still no image library.** The source is a plain 8-bit non-interlaced PNG, which
+     `node:zlib` plus a short unfilter loop reads; the encoder was already there. Resampling is
+     a box filter, which is the correct one for shrinking and needs no window function.
+
+     The supplied file was 1076×1052 JPEG with the plate off-centre. It was squared once, here:
+     the plate cropped at its own bounding circle and set on the image's own teal at 92 %, so
+     the mark has an even margin and the ground colour is read from the source's corner rather
+     than typed in. **The maskable variant scales the whole square to 80 %** — Android crops a
+     maskable icon to a shape of its own and only the middle survives, and the name runs close
+     to the plate's rim. At 32 px the lettering is unreadable, as it would be for any mark with
+     words in it; the plate and the teal ring are what identify the tab, so the favicon crops
+     slightly tighter to make them fill the tile.
+
+     **The set costs 424 KB instead of 39 KB**, and the service worker precaches all of it — the
+     price of a photographic mark over a drawn one. Two things were tried against it: choosing a
+     row filter per row by the PNG specification's own heuristic saved 2 % and cost bytes on the
+     small icons, so it was dropped; writing RGB rather than RGBA wherever every pixel is opaque
+     (the maskable and Apple icons) kept 12 KB and left the code simpler than before. Palette
+     quantisation would save far more and band the plate's shadow, so it was not attempted.
+
+234. **The accent is taken from the icon.** The separate decision named above, made
+     immediately after: the interface's green and the mark's teal had no reason to disagree, so
+     `--color-accent` now carries the icon's own hue. Taken as measured from
+     `data/icon-source.png` — `#529989` is `oklch(63.2% 0.076 177.3)` — and rounded to
+     `oklch(63% 0.076 177)`, which renders as `#529888`.
+
+     **Lightness was kept, not just hue.** The old accent was `oklch(62% 0.16 145)`, and the
+     icon's teal happens to sit at almost exactly the same lightness — so contrast against the
+     accent ink is 3.30 where it was 3.34, and 7.58 in the dark theme where it was 7.52. The
+     recolour therefore changes no contrast decision; the chroma is a third of what it was,
+     which is what makes the interface quieter than the old green.
+
+     The dark theme moves the same way it did before (up in lightness, down in chroma):
+     `oklch(73% 0.072 177)`. The three places that repeat the accent as a hex — the
+     `theme-color` meta, `theme.svelte.ts`'s status-bar mirror and the manifest's `theme_color`
+     in `vite.config.ts` — all carry `#529888` now.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

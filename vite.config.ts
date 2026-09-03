@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 import { versionDefines } from './scripts/app-version.mjs';
 
 /** `--color-accent` from `src/app.css`, as the hex a manifest and a meta tag can carry. */
-const ACCENT = '#399e43';
+const ACCENT = '#529888';
 const SURFACE = '#fdfcf8';
 
 export default defineConfig({
