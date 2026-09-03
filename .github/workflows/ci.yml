@@ -22,11 +22,11 @@ jobs:
     steps:
       # Full history: the app's version comes from `git describe`, and a shallow clone with
       # no tags would leave every CI build calling itself by a commit hash (decision 235).
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -51,11 +51,11 @@ jobs:
     steps:
       # Full history: the app's version comes from `git describe`, and a shallow clone with
       # no tags would leave every CI build calling itself by a commit hash (decision 235).
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -67,7 +67,7 @@ jobs:
       # real cost of this job.
       - name: Cache the Playwright browser
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -86,7 +86,7 @@ jobs:
       - name: End-to-end tests
         run: npm run test:e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
