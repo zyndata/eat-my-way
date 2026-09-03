@@ -2900,6 +2900,38 @@ one of which broke the feature outright.
      the package version instead of a hash, a full checkout describes `v1.4.0-1-g…`, and
      `GITHUB_REF_NAME=v1.4.0` still wins over both.
 
+### 2026-09-03 — „Sprawdź aktualizacje" said only that it had failed
+
+236. **A rejected `update()` is no longer taken at its word, and it now says what threw.**
+     Reported from the phone against v1.3.0: the button answered „Nie udało się sprawdzić" while
+     the account was online and the server was serving v1.4.0 correctly.
+
+     What was ruled out, from here rather than by guessing: all fifteen URLs in the live
+     precache manifest answer 200; `/sw.js` answers 200 even to a cookie-less request carrying
+     `Service-Worker: script` and a mobile user agent, so Cloudflare is not turning the worker
+     script away; and `registration.update()` against the live site from a fresh client
+     **succeeds**. The failure is therefore not reproducible from a desktop on a good link,
+     which points at the difference that remains: the phone was updating from v1.3.0 to a build
+     whose precache had just grown by 385 KB of icons, over a mobile connection.
+
+     That matters because `update()` rejects for two different things: the script fetch, and an
+     installation that fails behind it — and a precache of more than a megabyte gives the second
+     one plenty of room on a weak link. Two changes follow:
+
+     - **The registration is asked before the rejection is believed.** A worker that reached
+       `waiting` is a found update whatever the promise said, so the button reports it.
+     - **The error is logged.** `console.warn` with the actual exception, because „nie udało
+       się" tells a bug report nothing; the screen still says only what the user can act on, and
+       now says what it means — the download did not finish, try on a better connection, nothing
+       is broken.
+
+     **Separately, and confirmed:** production logs one CSP violation on every page load, and it
+     is Cloudflare's. The edge injects an inline `challenge-platform/scripts/jsd/main.js`
+     bootstrap into the document; `script-src 'self'` blocks it, so it never runs and the app is
+     unaffected — but it contradicts Phase 8's „zero CSP violations" and it is noise that could
+     hide a real one. The fix is not in this repo: JavaScript Detections / Bot Fight Mode has to
+     be turned off for this hostname in the Cloudflare dashboard.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

@@ -187,8 +187,16 @@ export async function checkForUpdate(): Promise<UpdateCheck> {
 
   try {
     await reg.update();
-  } catch {
+  } catch (error) {
     lastCheck = Date.now();
+    // `update()` rejects for the fetch *and* for an installation that fails behind it — a
+    // precache is more than a megabyte, and a phone that lost the link halfway through lands
+    // here. So the registration is asked before the failure is believed: a worker that made it
+    // to `waiting` is a found update, whatever the promise said (STATE.md decision 236).
+    if (reg.waiting !== null && navigator.serviceWorker.controller !== null) return ready();
+    // The one line that makes a report from a phone worth anything. It says what threw; the
+    // screen still says only what the user can act on.
+    console.warn('[eat-my-way] update check failed', error);
     return navigator.onLine ? 'failed' : 'offline';
   }
   lastCheck = Date.now();

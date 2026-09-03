@@ -59,7 +59,8 @@
         {:else if result === 'offline'}
           Bez połączenia nie mogę sprawdzić. Spróbuj, kiedy będziesz online.
         {:else}
-          Nie udało się sprawdzić. Spróbuj później.
+          Nie udało się sprawdzić — pobieranie nowej wersji się nie powiodło. Spróbuj przy
+          lepszym połączeniu; nic się nie zepsuło i nic nie zginęło.
         {/if}
       </p>
     {/if}
