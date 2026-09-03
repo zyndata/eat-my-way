@@ -6,6 +6,7 @@
     NUTRITION_SOURCES
   } from '../lib/nutrition/meta';
   import { nutritionStatus } from '../lib/nutrition/status.svelte';
+  import { APP_COMMIT, APP_VERSION_LABEL, builtOn } from '../lib/version';
 
   /** Human-readable names for the pinned FoodData Central releases. */
   const SOURCE_LABELS: Record<string, string> = {
@@ -78,6 +79,19 @@
         Baza składników nie została jeszcze wczytana.
       {/if}
     </p>
+  </section>
+
+  <!-- An installed PWA can keep serving an old build until the user accepts the update, so the
+       version is the one thing the app must be able to say about itself (STATE.md decision 224). -->
+  <section class="space-y-2 pt-6">
+    <h2 class="text-base font-semibold">Wersja aplikacji</h2>
+    <p class="text-sm text-(--color-ink-muted)">
+      <strong class="font-medium text-(--color-ink)">{APP_VERSION_LABEL}</strong>
+      <span class="text-(--color-ink-muted)">({APP_COMMIT})</span>
+    </p>
+    {#if builtOn() !== null}
+      <p class="text-sm text-(--color-ink-muted)">Zbudowano: {builtOn()}.</p>
+    {/if}
   </section>
 
   <section class="space-y-2 pt-6">

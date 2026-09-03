@@ -52,3 +52,18 @@ test('every screen renders under the production policy and reports no violation'
   expect(await cspViolations(device), 'the page reported a CSP violation').toEqual([]);
   expect(errors, 'the page logged a console error').toEqual([]);
 });
+
+/**
+ * An installed PWA can keep serving yesterday's build until the user accepts the update, so
+ * „which version am I looking at" has to be answerable from inside the app itself.
+ */
+test('the about screen names the build it is running', async ({ device }) => {
+  await device.goto('#/about');
+
+  const section = device.locator('section', {
+    has: device.getByRole('heading', { name: 'Wersja aplikacji' })
+  });
+  // Whatever git said at build time, it starts with a SemVer — never the empty string.
+  await expect(section.getByText(/^\d+\.\d+\.\d+/)).toBeVisible();
+  await expect(section.getByText(/^Zbudowano: /)).toBeVisible();
+});
