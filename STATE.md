@@ -2453,6 +2453,25 @@ one of which broke the feature outright.
      metadata is not in the build, so this took effect the moment it was set and no tag carries
      it.
 
+### 2026-09-03 — v1.1.0 released
+
+218. **The one CSP violation on the live site is Cloudflare's, not ours, and the policy is
+     doing its job.** Found while verifying the release in a real browser against
+     https://eatmyway.gorny.dev: the console reports exactly one blocked inline script, and it
+     is Cloudflare's bot-detection injection — `window.__CF$cv$params` and
+     `/cdn-cgi/challenge-platform/scripts/jsd/main.js`, appended to `<body>` at the edge.
+
+     Our own `dist/index.html` carries exactly one `<script>`, the hashed module bundle;
+     `grep` it and there is nothing else, which is what decision 10 has been protecting since
+     Phase 1. The container run under the same policy reports zero violations, so this appears
+     only through the proxy that decisions 14 and 21 already record.
+
+     Nothing to fix. Whitelisting `/cdn-cgi/` would widen `script-src` for a script the app
+     does not need and cannot audit; the block costs Cloudflare a signal and costs the app
+     nothing. Written down because the next person to run this check will find it again and
+     spend the same twenty minutes deciding it is not a regression.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
