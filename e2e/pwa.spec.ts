@@ -113,3 +113,26 @@ test('the app meets the installability requirements', async ({ device }) => {
     expect(status, `${icon.src} is missing`).toBe(200);
   }
 });
+
+/**
+ * The build a device is running is invisible to its user, and with `registerType: 'prompt'` an
+ * installed app can serve an old one for as long as nobody reloads it. Settings answers both
+ * halves: which version this is, and whether anything newer is waiting.
+ *
+ * Only the „you are current" answer is asserted here, because it is the one true in both runs —
+ * the `vite preview` run and the container run serve the same build the browser already has.
+ * The other answer needs a *different* worker on the server, which no run can arrange without
+ * writing to what it serves; it was verified against a mutated `dist/sw.js` (STATE.md
+ * decision 225).
+ */
+test('settings names the version and can say that it is the newest', async ({ device }) => {
+  await waitForServiceWorker(device);
+
+  const section = device.locator('section', {
+    has: device.getByRole('heading', { name: 'Wersja i aktualizacje' })
+  });
+  await expect(section.getByText(/^Masz wersję \d+\.\d+\.\d+/)).toBeVisible();
+
+  await section.getByRole('button', { name: 'Sprawdź aktualizacje' }).click();
+  await expect(section.getByText('Masz najnowszą wersję.')).toBeVisible();
+});

@@ -48,6 +48,11 @@ export const pwaState = $state<{
    * one platform where „⋮ → Dodaj do ekranu głównego" is a path that exists (decision 222).
    */
   androidMenu: boolean;
+  /**
+   * The browser gave us a registration, so „sprawdź aktualizacje" is a question that can be
+   * asked. False in `npm run dev`, where the worker is deliberately not registered.
+   */
+  canCheckUpdates: boolean;
 }>({
   updateReady: false,
   offlineReady: false,
@@ -55,7 +60,8 @@ export const pwaState = $state<{
   installed: false,
   installedElsewhere: false,
   ios: false,
-  androidMenu: false
+  androidMenu: false,
+  canCheckUpdates: false
 });
 
 /** Resolved by `registerSW`; calling it activates the waiting worker and reloads. */
@@ -63,6 +69,18 @@ let update: ((reload?: boolean) => Promise<void>) | null = null;
 
 /** The captured `beforeinstallprompt` event. A browser allows it to be used exactly once. */
 let installEvent: BeforeInstallPromptEvent | null = null;
+
+/** The service worker registration, once there is one. The only thing that can be asked. */
+let registration: ServiceWorkerRegistration | null = null;
+
+/** When the last check finished, so returning to the app does not re-ask on every glance. */
+let lastCheck = 0;
+
+/** How stale an answer may be before returning to the app asks again. A manual check ignores it. */
+const AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+
+/** What a check found. `unavailable` means there is no worker to ask, not that nothing is new. */
+export type UpdateCheck = 'update-ready' | 'current' | 'offline' | 'failed' | 'unavailable';
 
 /** True when the page is running as an installed app rather than in a browser tab. */
 function isStandalone(): boolean {
@@ -137,8 +155,62 @@ export function startPwa(): void {
 
   update = registerSW({
     onNeedRefresh: () => (pwaState.updateReady = true),
-    onOfflineReady: () => (pwaState.offlineReady = true)
+    onOfflineReady: () => (pwaState.offlineReady = true),
+    onRegisteredSW: (_url, found) => {
+      if (found === undefined) return;
+      registration = found;
+      pwaState.canCheckUpdates = true;
+    }
   });
+
+  // The browser re-fetches the worker when a page is loaded — which an installed app, left
+  // running for days, hardly ever is. Coming back to it is the moment that stands in for a
+  // page load, so that is where the check goes (STATE.md decision 225).
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastCheck < AUTO_CHECK_INTERVAL_MS) return;
+    void checkForUpdate();
+  });
+}
+
+/**
+ * Ask the browser to re-fetch the worker and answer what it found.
+ *
+ * The answer is not in the promise: `update()` resolves when the *check* is done, and a worker
+ * it found is still installing at that point. What settles it is what the registration is
+ * holding afterwards — and only while a controller exists, because the very first worker of a
+ * first visit is an installation, not an update.
+ */
+export async function checkForUpdate(): Promise<UpdateCheck> {
+  const reg = registration;
+  if (reg === null) return 'unavailable';
+
+  try {
+    await reg.update();
+  } catch {
+    lastCheck = Date.now();
+    return navigator.onLine ? 'failed' : 'offline';
+  }
+  lastCheck = Date.now();
+
+  if (navigator.serviceWorker.controller === null) return 'current';
+  if (reg.waiting !== null) return ready();
+
+  const installing = reg.installing;
+  if (installing === null) return 'current';
+
+  return await new Promise<UpdateCheck>((resolve) => {
+    installing.addEventListener('statechange', () => {
+      if (installing.state === 'installed') resolve(ready());
+      if (installing.state === 'redundant') resolve('current');
+    });
+  });
+}
+
+/** A waiting worker is exactly what the update bar means, so say it in both places at once. */
+function ready(): UpdateCheck {
+  pwaState.updateReady = true;
+  return 'update-ready';
 }
 
 /** Hand the tab over to the waiting version. Reloads the page. */
