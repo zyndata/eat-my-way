@@ -6,6 +6,22 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.1.1] - 2026-09-03
+
+### Bug Fixes
+
+- **ui:** Commit a suggestion on release, not on the press
+- **pwa:** Name the Android install route while Chrome withholds the prompt
+- **ingredients:** Give the replacement picker room for its suggestions
+
+### Documentation
+
+- Record that the live CSP violation is Cloudflare's edge script
+- The Android install button works — open question 26 answered
+- The "already installed" copy works too — Phase 11 fully verified
+- **state:** Record decisions 221 and 222
+- **state:** Record decision 223
+
 ## [1.1.0] - 2026-09-03
 
 ### Documentation
