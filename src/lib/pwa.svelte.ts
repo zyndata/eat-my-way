@@ -41,13 +41,21 @@ export const pwaState = $state<{
    * is what the section used to say to everyone else (STATE.md decision 189).
    */
   ios: boolean;
+  /**
+   * A Chromium browser on a phone: the other platform whose install route is a menu item.
+   * Chrome on Android withholds `beforeinstallprompt` until a visit its engagement heuristic
+   * counts as real (STATE.md decision 219), and until then this app had nothing to say to the
+   * one platform where „⋮ → Dodaj do ekranu głównego" is a path that exists (decision 222).
+   */
+  androidMenu: boolean;
 }>({
   updateReady: false,
   offlineReady: false,
   installable: false,
   installed: false,
   installedElsewhere: false,
-  ios: false
+  ios: false,
+  androidMenu: false
 });
 
 /** Resolved by `registerSW`; calling it activates the waiting worker and reloads. */
@@ -70,6 +78,16 @@ function isStandalone(): boolean {
  */
 function isIos(): boolean {
   return 'standalone' in navigator;
+}
+
+/**
+ * A Chromium browser on a phone or tablet. `navigator.userAgentData` is Chromium-only and its
+ * `mobile` hint is the browser's own answer to „am I on a phone", so this stays a capability
+ * check rather than a UA string — the rule decision 189 set for iOS. Chrome and Samsung
+ * Internet both answer, and both put installing behind the same menu.
+ */
+function isAndroidMenu(): boolean {
+  return (navigator as { userAgentData?: { mobile?: boolean } }).userAgentData?.mobile === true;
 }
 
 /**
@@ -96,6 +114,7 @@ async function findInstalledApp(): Promise<boolean> {
 export function startPwa(): void {
   pwaState.installed = isStandalone();
   pwaState.ios = isIos();
+  pwaState.androidMenu = !pwaState.ios && isAndroidMenu();
 
   // Only interesting in a tab: inside the installed app the answer is already known.
   if (!pwaState.installed) {

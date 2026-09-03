@@ -10,10 +10,14 @@
    * decision 189). It used to end with „look in your browser's menu for Install", which is not
    * an instruction — the item is in a different place in every browser and absent in most — so
    * on Android, where the prompt never appeared, the whole screen read as a broken feature.
-   * Now there are exactly two offers, and where neither applies the section renders nothing:
+   * Now there are exactly three offers, and where none applies the section renders nothing:
    *
-   * - the captured `beforeinstallprompt`, which is a button that works; and
-   * - the iOS share-sheet route, which is one real menu path on one platform.
+   * - the captured `beforeinstallprompt`, which is a button that works;
+   * - the iOS share-sheet route, which is one real menu path on one platform; and
+   * - the Android menu route, for a Chromium phone browser that has not offered the prompt.
+   *   Chrome withholds it until a visit its engagement heuristic counts as real (STATE.md
+   *   decision 219), so „no button" is a state a user meets on a working install — and „⋮ →
+   *   Dodaj do ekranu głównego" is as real a path as the iOS one (decision 222).
    *
    * Two states are informational rather than offers and get their own copy: running as an
    * installed app, and — new — a *tab* of a browser that already has the app installed. Chrome
@@ -28,7 +32,11 @@
 
   /** Anything to say about installing at all — otherwise only the offline note can show. */
   const hasInstallCopy = $derived(
-    pwaState.installed || pwaState.installedElsewhere || pwaState.installable || pwaState.ios
+    pwaState.installed ||
+      pwaState.installedElsewhere ||
+      pwaState.installable ||
+      pwaState.ios ||
+      pwaState.androidMenu
   );
 </script>
 
@@ -66,10 +74,18 @@
             Nic nie zainstalowano. Możesz wrócić tu w każdej chwili.
           </p>
         {/if}
-      {:else}
-        <!-- iOS: the only platform where „look in the menu" names one real, stable path. -->
+      {:else if pwaState.ios}
         <p class="pt-3 text-sm text-(--color-ink-muted)">
           Na iPhonie i iPadzie: „Udostępnij” → „Do ekranu początkowego”.
+        </p>
+      {:else}
+        <p class="pt-3 text-sm text-(--color-ink-muted)">
+          Na Androidzie: menu przeglądarki („⋮” w prawym górnym rogu) → „Zainstaluj aplikację”
+          albo „Dodaj do ekranu głównego”.
+        </p>
+        <p class="pt-2 text-sm text-(--color-ink-muted)">
+          Przycisk instalacji pojawi się tu sam, kiedy przeglądarka go zaproponuje — Chrome
+          czeka z tym do kolejnej wizyty na stronie.
         </p>
       {/if}
     {/if}
