@@ -2265,6 +2265,22 @@ one of which broke the feature outright.
      they come back with a key. And it needs no CSP change: the policy governs what the page
      loads and connects to, not where a link may take the browser.
 
+200. **The GitHub repository has said nothing about itself since the first commit.** Checked
+     while planning: `zyndata/eat-my-way` has an empty `description`, an empty `homepageUrl`
+     and no topics, so the About panel — the first thing a visitor reads, and on mobile the
+     thing they read *instead* of the README — is blank, and nothing on the page links to the
+     running app at https://eatmyway.gorny.dev.
+
+     The description is taken from the README's opening sentence rather than written afresh, so
+     the two cannot drift; it stays in **English**, like every other word of documentation here
+     — the Polish rule is about the interface, not about the repository. Topics describe what
+     the thing is (`pwa`, `svelte`, `typescript`, `indexeddb`, `meal-planner`, `offline-first`).
+
+     It sits in Phase 11 because it is the same failure as the rest of that phase — the project
+     doing the right thing and saying nothing about it — but it is worth noting that it is the
+     one task in either phase that ships **outside a tag**: repository metadata is not in the
+     build, so it takes effect the moment it is set and no release carries it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

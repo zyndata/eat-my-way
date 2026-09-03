@@ -823,15 +823,16 @@ items reported alongside it are Phase 11.
 
 ## Phase 11 — What daily use reported
 
-Six things reported from real use after 1.0. They are grouped into one phase because they
+Seven things reported from real use after 1.0. They are grouped into one phase because they
 share a shape rather than a subject: each is a place where the app is doing the right thing and
 saying the wrong one, or saying nothing at all. None of them touches a stored number, which is
 what separates them from Phase 10 and lets them be built in any order.
 
 Three of them — the install box, the missing wizard and the API-key address that is not a link
 — name something the user cannot reach from where they are standing. One is the app doing long
-work in silence. The last two are comfort it never offered: a dark theme, and the way back to
-the page a recipe came from.
+work in silence. Two are comfort it never offered: a dark theme, and the way back to the page a
+recipe came from. The last one is not in the app at all: the repository's own About box, empty
+since the first commit.
 
 ### Tasks
 
@@ -977,6 +978,19 @@ the page a recipe came from.
    key. This widens nothing in the CSP: the policy governs what the page loads and connects to,
    not where a link may take the browser.
 
+7. **Fill in the repository's About box on GitHub.** `zyndata/eat-my-way` has an empty
+   description, an empty homepage and no topics, so the one panel every visitor reads before
+   the README says nothing at all — and the deployed app is not linked from anywhere on the
+   page. Set all three: a one-line description drawn from the README's own opening sentence
+   rather than newly invented, so the two never drift apart; the homepage to
+   `https://eatmyway.gorny.dev`; and topics that describe what it actually is (`pwa`, `svelte`,
+   `typescript`, `indexeddb`, `meal-planner`, `offline-first`).
+
+   The description is in **English**, like the README and unlike the app: the interface is
+   Polish, the repository is a public codebase and its documentation has been English
+   throughout. Repository metadata is not in the build, so this is one `gh repo edit` recorded
+   in STATE.md — not a code change, and nothing here ships in a tag.
+
 ### Acceptance criteria
 
 - [ ] On a browser that offers no install prompt and is not iOS, the settings screen shows no
@@ -1002,6 +1016,8 @@ the page a recipe came from.
       `http`/`https` (tests).
 - [ ] Both the settings key field and the wizard's key step offer a working link straight to
       the AI Studio page that creates a key.
+- [ ] The GitHub repository shows a description, a homepage pointing at the live app, and
+      topics; the description says the same thing as the README's opening line.
 - [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero
       console violations under `npm run docker:up`.
 - [ ] All UI text in Polish; code/comments in English.
