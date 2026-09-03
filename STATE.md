@@ -2872,6 +2872,34 @@ one of which broke the feature outright.
      `theme-color` meta, `theme.svelte.ts`'s status-bar mirror and the manifest's `theme_color`
      in `vite.config.ts` — all carry `#529888` now.
 
+### 2026-09-03 — the version that called itself by a commit hash
+
+235. **`git describe --always` was making CI builds name themselves after a hash.** The CI run
+     on `dev` had been failing since v1.2.0 — on exactly the two tests that assert the app can
+     say which build it is (`pwa.spec.ts`, `screens.spec.ts`) — and the deploy workflow does not
+     run e2e, so the failure never blocked a release and every release was in fact correct.
+
+     The cause is in `scripts/app-version.mjs`, decision 224's own code. `--always` makes
+     `git describe` answer with the abbreviated commit when it finds no tag, and
+     `actions/checkout` clones **without tags**, so every CI build displayed something like
+     `a1b2c3d` where the screen promises a version. The tests were right and I had only ever
+     run them where tags exist.
+
+     Three changes, because the fault has three layers:
+
+     - `--always` is gone. Git either describes a tag or says nothing, and the answer is
+       accepted only if it *looks* like one (`v1.4.0`, `v1.4.0-3-gabc1234`).
+     - `ci.yml` checks out with `fetch-depth: 0`, so the environment can answer at all —
+       otherwise CI would now show the package.json fallback, which is honest but says less.
+     - `package.json` is bumped to `1.4.0`. It is the last resort, for a checkout with no git,
+       and it had been sitting at `0.1.0` since the first commit — the very staleness that made
+       decision 224 derive the version from tags in the first place. Nothing bumps it
+       automatically, so it can lag again; it is a fallback, not an authority.
+
+     Verified the way it failed: a `--depth 1 --no-tags` clone of this repo now falls back to
+     the package version instead of a hash, a full checkout describes `v1.4.0-1-g…`, and
+     `GITHUB_REF_NAME=v1.4.0` still wins over both.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
