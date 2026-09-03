@@ -6,6 +6,12 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.2.0] - 2026-09-03
+
+### Features
+
+- **about:** Show which build the app is running
+
 ## [1.1.1] - 2026-09-03
 
 ### Bug Fixes
