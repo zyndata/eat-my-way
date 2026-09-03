@@ -24,6 +24,7 @@
     placeholder = 'Zacznij pisać, np. „ser zolty”',
     limit = 8,
     index = defaultIndex,
+    flow = false,
     onselect,
     oncreate
   }: {
@@ -32,6 +33,13 @@
     placeholder?: string;
     limit?: number;
     index?: IngredientIndex;
+    /**
+     * Put the suggestion panel in the flow instead of over the field, and let whatever scrolls
+     * around it do the scrolling. An overlay panel is clipped by any scrolling ancestor, and
+     * in the „replace this ingredient" sheet that left one suggestion visible through a slot
+     * a few pixels tall (STATE.md decision 223).
+     */
+    flow?: boolean;
     onselect?: (ingredient: Ingredient) => void;
     /**
      * Offered when nothing matches, so a recipe is never blocked by a gap in the bundled
@@ -48,6 +56,10 @@
   let searchToken = 0;
 
   const listboxId = $derived(`${id}-listbox`);
+  /** Over the field, capped and scrolling; or in the flow, as tall as it needs to be. */
+  const panelPosition = $derived(
+    flow ? 'mt-1' : 'absolute inset-x-0 top-full z-10 mt-1 max-h-72 overflow-y-auto overscroll-contain'
+  );
   const optionId = $derived((position: number) => `${id}-option-${position}`);
 
   async function runSearch(text: string): Promise<void> {
@@ -113,6 +125,16 @@
     event.preventDefault();
   }
 
+  /**
+   * In the flow the panel can open below the fold of whatever is scrolling around it, so it
+   * asks to be brought into view. `block: 'nearest'` scrolls only when something is actually
+   * cut off, and never touches the page when the panel already fits.
+   */
+  let panel = $state<HTMLElement>();
+  $effect(() => {
+    if (flow && open && panel !== undefined) panel.scrollIntoView({ block: 'nearest' });
+  });
+
   /** Hover follows the mouse only; on touch the finger is scrolling, not pointing. */
   function onOptionEnter(event: PointerEvent, position: number): void {
     if (event.pointerType === 'mouse') active = position;
@@ -145,8 +167,9 @@
 
   {#if open && matches.length > 0}
     <ul
+      bind:this={panel}
       id={listboxId}
-      class="absolute inset-x-0 top-full z-10 mt-1 max-h-72 overflow-y-auto overscroll-contain rounded-lg border border-(--color-border) bg-(--color-surface-raised) py-1 shadow-lg"
+      class="{panelPosition} rounded-lg border border-(--color-border) bg-(--color-surface-raised) py-1 shadow-lg"
       role="listbox"
       aria-label={label}
       onmousedown={keepFocus}
@@ -180,7 +203,8 @@
   {:else if open && query.trim() !== ''}
     <!-- svelte-ignore a11y_no_static_element_interactions -- the press is cancelled, never handled -->
     <div
-      class="absolute inset-x-0 top-full z-10 mt-1 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 shadow-lg"
+      bind:this={panel}
+      class="{flow ? 'mt-1' : 'absolute inset-x-0 top-full z-10 mt-1'} rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 shadow-lg"
       onmousedown={keepFocus}
     >
       <p class="text-sm text-(--color-ink-muted)" role="status">
