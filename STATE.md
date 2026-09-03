@@ -2585,6 +2585,31 @@ one of which broke the feature outright.
      device that every criterion passes on the live origin. This is copy for the window before
      Chrome makes up its mind.
 
+223. **A suggestion panel inside a sheet has to be in the flow, not over it.** Third report of
+     the day: „Zastąp składnikiem" in the „Ten składnik jest używany" sheet showed its
+     suggestions through a slot about one option tall, with a scrollbar inside a scrollbar.
+
+     The cause is not the sheet's height — it is that an absolutely positioned panel is clipped
+     by the nearest scrolling ancestor, and the sheet's body is one (`overflow-y-auto`, so a
+     long list of recipes can scroll). Over a field on a page that is the right design: the
+     panel covers what is below instead of pushing it. Inside a scroll box it is the wrong one,
+     and no amount of `z-index` fixes it — the element is cut, not painted under.
+
+     The picker takes a `flow` prop: the panel renders in the normal flow, uncapped, and the
+     sheet grows around it to its own 85 dvh and scrolls if it must. When it opens it asks for
+     `scrollIntoView({ block: 'nearest' })`, which does nothing when the panel already fits and
+     brings it up when it does not. Only the replace sheet passes `flow`; everywhere else the
+     picker sits on a page that scrolls at the document level, where the overlay is still right.
+
+     Positioning the panel from JavaScript was not an option and is not a loss: `style-src
+     'self'` blocks the `style` attribute a floating layer would need (decision 44), and the
+     sheet already exists because of that constraint.
+
+     `e2e/ingredients.spec.ts` asserts the first suggestions are fully in the viewport.
+     Playwright's `toBeInViewport` reads the intersection rectangle, which an overflow-hidden
+     ancestor clips just as scrolling does — with the panel absolute the first option measures
+     0.17 of itself, so the test fails on the old build for the reported reason.
+
 
 ## Open questions
 
