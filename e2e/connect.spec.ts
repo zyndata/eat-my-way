@@ -82,6 +82,45 @@ test('a folder that already holds data does not open the wizard', async ({ devic
   expect(device.url()).toContain('#/settings');
 });
 
+/**
+ * Reported from a phone: after clearing the site data, signing back in ran the wizard, and its
+ * step 2 announced that the account „nie ma jeszcze żadnych danych" — to the owner of an
+ * account that had just handed every recipe back. The wizard is opened here by the *local*
+ * trigger (a browser with an empty database), and it used to walk on to step 2 without ever
+ * asking what the sync had found (STATE.md decision 226).
+ */
+test('an account that already holds a profile ends the wizard instead of offering one', async ({
+  openDevice,
+  drive
+}) => {
+  seedAccount(drive, { recipes: [recipe({ name: 'Zupa z Dysku' })] });
+
+  const device = await openDevice({ keepSetup: true });
+  await expect(device.getByRole('heading', { name: 'Pierwsze uruchomienie' })).toBeVisible();
+
+  await device.getByRole('button', { name: CONNECT }).click();
+
+  await expect(device.getByRole('heading', { name: 'Dziś' })).toBeVisible();
+  expect(device.url()).not.toContain('#/setup');
+
+  // What the wizard would have asked the user to build is already here.
+  await device.goto('#/recipes');
+  await expect(device.getByText('Zupa z Dysku')).toBeVisible();
+});
+
+/** The other half: a genuinely new account still gets every step. */
+test('an empty account connected from the wizard still reaches the profile step', async ({
+  openDevice,
+  drive
+}) => {
+  expect(drive.names()).toEqual([]);
+
+  const device = await openDevice({ keepSetup: true });
+  await device.getByRole('button', { name: CONNECT }).click();
+
+  await expect(device.getByRole('heading', { name: '2. Twój profil' })).toBeVisible();
+});
+
 test('a dismissed consent popup says so and changes nothing', async ({ device, drive }) => {
   seedAccount(drive);
   await setGoogleSession(device, { dismissPopup: true });

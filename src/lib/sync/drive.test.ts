@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createDriveBackend } from './drive';
 import { NotAuthenticatedError, RemoteChangedError } from './backend';
 
@@ -156,5 +156,50 @@ describe('drive backend', () => {
     expect(await createDriveBackend({ fetchImpl: silent.fetchImpl, token }).authenticate()).toEqual({
       id: '1122'
     });
+  });
+});
+
+/**
+ * „Slow down" and „try again" are not failures of this device, and a sync that gave up on one
+ * left the two sides apart until the next timer (STATE.md decision 232).
+ */
+describe('a Drive that asks for a moment', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('retries a 429 and succeeds, honouring Retry-After', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    const { calls, fetchImpl } = scripted([
+      (url) => {
+        if (!url.includes('/drive/v3/files?')) return undefined;
+        attempts += 1;
+        return attempts === 1
+          ? new Response('{}', { status: 429, headers: { 'Retry-After': '1' } })
+          : json({ files: [] });
+      }
+    ]);
+
+    const backend = createDriveBackend({ fetchImpl, token });
+    const listing = backend.list();
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(listing).resolves.toEqual([]);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('gives up after two retries rather than hammering Google', async () => {
+    vi.useFakeTimers();
+    const { calls, fetchImpl } = scripted([
+      (url) => (url.includes('/drive/v3/files?') ? json({}, 503) : undefined)
+    ]);
+
+    const backend = createDriveBackend({ fetchImpl, token });
+    const listing = backend.list().catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await expect(listing).resolves.toBeInstanceOf(Error);
+    expect(calls).toHaveLength(3);
   });
 });

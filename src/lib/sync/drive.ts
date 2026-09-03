@@ -70,12 +70,39 @@ export function createDriveBackend(options: DriveBackendOptions = {}): StorageBa
   /** Names are cached because the flat folder holds a handful of files and ids never change. */
   const fileIds = new Map<string, string>();
 
+  /**
+   * How long to wait before each retry. 429 („slow down") and 5xx are Google asking for a
+   * moment, not a verdict on this device — and a sync that gives up on one leaves the two
+   * sides apart until the next timer (STATE.md decision 232). Two retries, both short: this
+   * runs while a user may be waiting on a button.
+   */
+  const RETRY_DELAYS_MS = [500, 1500];
+  /** Never wait longer than this on Google's own `Retry-After`, whatever it asks for. */
+  const RETRY_AFTER_CAP_MS = 10_000;
+
+  function retryAfterMs(response: Response): number | undefined {
+    const header = response.headers.get('Retry-After');
+    if (header === null) return undefined;
+    const seconds = Number(header);
+    // Only the delta-seconds form; an HTTP-date is rare here and the fixed delays cover it.
+    if (!Number.isFinite(seconds) || seconds < 0) return undefined;
+    return Math.min(seconds * 1000, RETRY_AFTER_CAP_MS);
+  }
+
   async function request(url: string, init: RequestInit = {}): Promise<Response> {
-    const accessToken = await token({ interactive: false });
-    const response = await doFetch(url, {
-      ...init,
-      headers: { ...(init.headers ?? {}), Authorization: `Bearer ${accessToken}` }
-    });
+    let response: Response;
+    for (let attempt = 0; ; attempt += 1) {
+      const accessToken = await token({ interactive: false });
+      response = await doFetch(url, {
+        ...init,
+        headers: { ...(init.headers ?? {}), Authorization: `Bearer ${accessToken}` }
+      });
+
+      const wait = RETRY_DELAYS_MS[attempt];
+      if (wait === undefined) break;
+      if (response.status !== 429 && response.status < 500) break;
+      await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response) ?? wait));
+    }
 
     if (response.status === 401 || response.status === 403) {
       const body = (await response.json().catch(() => ({}))) as DriveErrorBody;

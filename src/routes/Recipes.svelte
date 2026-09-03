@@ -6,7 +6,7 @@
   import { pluralPl } from '../lib/text';
   import { todayDate } from '../lib/dates';
   import { repository } from '../lib/repository';
-  import { scheduleSync } from '../lib/sync/state.svelte';
+  import { scheduleSync, syncState } from '../lib/sync/state.svelte';
 
   /**
    * Recipe library: search over the names, tag chips that narrow the list, and the default
@@ -102,7 +102,15 @@
     }
   }
 
-  void load();
+  /**
+   * Read once, and again whenever a sync writes something: a recipe made on the other device
+   * lands under this list while it is open, and the list is read only when it mounts
+   * (STATE.md decision 228).
+   */
+  $effect(() => {
+    syncState.dataVersion;
+    void load();
+  });
 </script>
 
 {#snippet card(entry: RecipeListEntry)}

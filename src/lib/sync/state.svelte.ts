@@ -50,6 +50,16 @@ export const syncState = $state<{
    * first-run wizard. Cleared once the user has been there.
    */
   setupNeeded: boolean;
+  /**
+   * Bumped every time a sync writes something into IndexedDB. Screens read their data once,
+   * when they mount, and a pull that lands under an open screen would otherwise be invisible
+   * until the user navigated away and back — for as long as they kept looking at it, while
+   * `startAutoSync` went on pulling every few minutes (STATE.md decision 228).
+   *
+   * A counter rather than a timestamp: only a sync that *changed* local data has any reason to
+   * make a screen re-read, and `lastSyncedAt` moves even when nothing arrived.
+   */
+  dataVersion: number;
 }>({
   configured: isDriveConfigured(),
   connected: false,
@@ -61,7 +71,8 @@ export const syncState = $state<{
   conflicts: null,
   foreignAccount: null,
   vaultAdopted: false,
-  setupNeeded: false
+  setupNeeded: false,
+  dataVersion: 0
 });
 
 const backend = createDriveBackend();
@@ -72,6 +83,8 @@ let answerConflicts: ((answers: ReadonlyMap<string, 'local' | 'remote'> | null) 
 
 /** One sync at a time: a second request joins the first rather than racing it. */
 let running: Promise<SyncOutcome> | null = null;
+/** Whether the sync in flight was started by a click. See `syncNow`. */
+let runningInteractive = false;
 
 /**
  * Whether this device may talk to Google without the user asking. False until they have
@@ -134,17 +147,28 @@ function describe(outcome: SyncOutcome, interactive: boolean): string {
 }
 
 export async function syncNow(options: { interactive?: boolean; acceptAccount?: boolean } = {}): Promise<SyncOutcome> {
+  const interactive = options.interactive === true;
+
+  // A background sync cannot answer for a click. It never had the user activation GIS needs to
+  // open a window, so „unauthenticated" from it means „not without asking" — and adopting that
+  // as the answer to a tap on „Połącz Dysk Google" reported a failure for a sign-in that was
+  // never attempted. A click waits for the background pass and then runs its own
+  // (STATE.md decision 230); everything else still joins whatever is in flight.
+  while (running !== null && interactive && !runningInteractive) {
+    await running.catch(() => undefined);
+  }
   if (running !== null) return running;
+
   if (!syncState.configured) {
     return { status: 'error', message: 'no client id' };
   }
-  if (options.interactive !== true && !silentAllowed) {
+  if (!interactive && !silentAllowed) {
     return { status: 'unauthenticated', message: 'Drive has never been connected on this device' };
   }
   // A background sync with no network cannot succeed and has nothing to tell the user. It is
   // skipped rather than attempted, so the indicator does not go red on a train; `online`
   // brings the next attempt along by itself.
-  if (options.interactive !== true && isOffline()) {
+  if (!interactive && isOffline()) {
     return { status: 'error', message: 'offline' };
   }
 
@@ -152,6 +176,7 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
   syncState.stage = 'authenticating';
   syncState.message = '';
 
+  runningInteractive = interactive;
   running = engine.sync({
     ...options,
     onstage: (stage) => (syncState.stage = stage),
@@ -177,6 +202,8 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
       syncState.account = outcome.account;
       syncState.phase = 'idle';
       syncState.vaultAdopted = outcome.vaultAdopted;
+      // Everything on screen was read before this sync ran.
+      if (outcome.pulled) syncState.dataVersion += 1;
       syncState.foreignAccount = null;
       syncState.lastSyncedAt = await repository.getMeta('lastSyncedAt');
       // PLAN.md: the wizard is for "Drive connected and appDataFolder has no data".
@@ -203,6 +230,7 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
     return outcome;
   } finally {
     running = null;
+    runningInteractive = false;
     syncState.stage = null;
     if (answerConflicts !== null) answerConflicts(null);
   }
@@ -236,11 +264,6 @@ export function disconnectDrive(): void {
   syncState.account = null;
   syncState.message = '';
   syncState.foreignAccount = null;
-}
-
-/** Whether the app's Drive folder is still empty — the first-run wizard's step 2. */
-export async function isRemoteEmpty(): Promise<boolean> {
-  return engine.isRemoteEmpty();
 }
 
 /**
@@ -278,7 +301,15 @@ let debounce: ReturnType<typeof setTimeout> | undefined;
 export function scheduleSync(): void {
   if (!syncState.configured || !syncState.connected) return;
   clearTimeout(debounce);
-  debounce = setTimeout(() => void syncNow(), DEBOUNCE_MS);
+  debounce = setTimeout(() => {
+    void (async () => {
+      // A sync already in flight was started before this edit existed, so joining it would
+      // send nothing and nothing would re-arm: the edit then waited for the five-minute timer
+      // or a tab switch, and a tab closed in between never sent it at all (decision 231).
+      if (running !== null) await running.catch(() => undefined);
+      await syncNow();
+    })();
+  }, DEBOUNCE_MS);
 }
 
 /**

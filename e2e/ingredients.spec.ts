@@ -99,6 +99,10 @@ test('the replacement picker has room for its suggestions', async ({ device }) =
   await device.getByRole('button', { name: 'Zapisz składnik' }).click();
   await device.getByLabel('Ilość').first().fill('200');
   await device.getByRole('button', { name: 'Zapisz przepis' }).click();
+  // Saving navigates to the library by itself. Without waiting for it, this spec's own
+  // `goto` races that push and loses often enough to matter — the sibling test above waits
+  // for the same reason.
+  await expect(device.getByRole('heading', { name: 'Przepisy' })).toBeVisible();
 
   await device.goto('#/ingredients');
   await device.getByRole('button', { name: 'Usuń' }).click();

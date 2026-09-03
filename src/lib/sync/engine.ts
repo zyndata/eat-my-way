@@ -119,6 +119,18 @@ const key = {
   day: (date: string) => `day:${date}`
 };
 
+/**
+ * Nothing the user has said. `locale` is a constant, `googleSub` is bookkeeping and
+ * `geminiUsage` is a counter merged on its own — what is left is exactly the settings screen.
+ */
+function isUntouchedProfile(profile: Profile): boolean {
+  return (
+    hashValue(profile.goals) === hashValue(DEFAULT_PROFILE.goals) &&
+    profile.geminiModel === DEFAULT_PROFILE.geminiModel &&
+    profile.encryptVault === DEFAULT_PROFILE.encryptVault
+  );
+}
+
 /** The subset of a baseline under one prefix, with the prefix removed. */
 function scoped(baseline: ReadonlyMap<string, string>, prefix: string): Map<string, string> {
   const scopedBaseline = new Map<string, string>();
@@ -141,13 +153,22 @@ function matchesBaseline<T>(
 }
 
 /**
- * `useCount` is derived from the recipes that carry a tag, so it is recomputed from the merged
- * recipes rather than merged itself. Two devices then always agree on it, which stops a
- * counter that drifted apart from making every sync look like a change.
+ * What actually gets merged about a tag: its label, keyed by the tag key. `useCount` is
+ * derived from the recipes carrying the tag, so merging it would only let a counter that
+ * drifted apart make every sync look like a change.
+ *
+ * Labels used to be resolved as „local wins, because one side has to", which meant a rename
+ * never reached the other device and the two disagreed for good (STATE.md decision 229).
+ * Merged as a keyed collection they behave like everything else: the side that moved away
+ * from the baseline wins, and a deletion is a key that left.
  */
-function mergeTags(
-  local: readonly Tag[],
-  remote: readonly Tag[],
+function labelsOf(tags: Iterable<Tag>): Map<string, string> {
+  return new Map([...tags].map((tag) => [tag.key, tag.label]));
+}
+
+/** The tag rows to store: one per merged label, with `useCount` recomputed from the recipes. */
+function tagsFrom(
+  labels: ReadonlyMap<string, string>,
   recipes: ReadonlyMap<string, Recipe>
 ): Map<string, Tag> {
   const counts = new Map<string, number>();
@@ -156,9 +177,8 @@ function mergeTags(
   }
 
   const merged = new Map<string, Tag>();
-  // Local labels win only because one side has to; both spellings mean the same tag.
-  for (const tag of [...remote, ...local]) {
-    if (counts.has(tag.key)) merged.set(tag.key, { ...tag, useCount: counts.get(tag.key) ?? 0 });
+  for (const [tagKey, label] of labels) {
+    merged.set(tagKey, { key: tagKey, label, useCount: counts.get(tagKey) ?? 0 });
   }
   // A tag used by a merged recipe but described by neither side still needs a row.
   for (const [tagKey, useCount] of counts) {
@@ -286,14 +306,25 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
     const storedProfileHash = baseline.get(key.profile);
     if (storedProfileHash !== undefined) profileBaseline.set(key.profile, storedProfileHash);
 
+    // A device that has never synced always *looks* like it edited the profile: the database
+    // seeds `DEFAULT_PROFILE` when it is created, so there is a document to hash before the
+    // user has typed anything. With no baseline to say otherwise that read as a two-sided edit
+    // and `localWins` handed the account's real goals to a profile nobody had written — which
+    // is how a browser whose data was cleared came back with everything except its goals, and
+    // then pushed the defaults over them on Drive (STATE.md decision 227).
+    const untouched = storedProfileHash === undefined && isUntouchedProfile(snapshot.profile);
+
     const profileMerge = mergeAgainst(
       remoteProfile,
       new Map([[key.profile, localProfile]]),
       profileBaseline,
       (content) => new Map([[key.profile, readProfileDocument(content, DEFAULT_PROFILE)]]),
       // Both sides edited the profile: keep this device's, which is the one in front of the
-      // user. It is four numbers and two settings, all of them re-enterable in one screen.
-      localWins<Profile>()
+      // user. It is four numbers and two settings, all of them re-enterable in one screen —
+      // unless this device has nothing of its own to keep, and then the account's wins.
+      untouched
+        ? (local, remote) => remote ?? local
+        : localWins<Profile>()
     );
     const winner = profileMerge.merged.get(key.profile) ?? localProfile;
 
@@ -317,7 +348,18 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
       // Recipes carry their own `updatedAt`, so the newer edit wins without a prompt.
       newerWins<Recipe>()
     );
-    const mergedTags = mergeTags(snapshot.tags, recipesDoc?.tags ?? snapshot.tags, recipeMerge.merged);
+    // Tags travel inside `recipes.json`, so they merge against the same remote state — which
+    // also means the file has to be uploaded when only a label moved, and it never was
+    // (decision 229).
+    const tagMerge = mergeAgainst(
+      remoteRecipes,
+      labelsOf(snapshot.tags),
+      scoped(baseline, 'tag:'),
+      () => labelsOf(recipesDoc?.tags ?? []),
+      // Both devices renamed the same tag: keep this one's, the way the profile does.
+      localWins<string>()
+    );
+    const mergedTags = tagsFrom(tagMerge.merged, recipeMerge.merged);
 
     const ingredientsDoc =
       remoteIngredients.content === undefined ? undefined : readIngredientsDocument(remoteIngredients.content);
@@ -436,7 +478,7 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
       await upload(PROFILE_FILE, JSON.stringify(mergedProfile), remoteProfile.version);
       pushed = true;
     }
-    if (recipeMerge.remoteOutdated || remoteRecipes.version === null) {
+    if (recipeMerge.remoteOutdated || tagMerge.remoteOutdated || remoteRecipes.version === null) {
       const document = { recipes: [...recipeMerge.merged.values()], tags: [...mergedTags.values()] };
       await upload(RECIPES_FILE, JSON.stringify(document), remoteRecipes.version);
       pushed = true;
@@ -491,7 +533,8 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
     const nextBaseline = new Map<string, string>();
     nextBaseline.set(key.profile, hashValue(mergedProfile));
     for (const [id, hash] of baselineOf(recipeMerge.merged)) nextBaseline.set(key.recipe(id), hash);
-    for (const [tagKey, hash] of baselineOf(mergedTags)) nextBaseline.set(key.tag(tagKey), hash);
+    // The label, not the whole row: `useCount` is derived and would otherwise read as a change.
+    for (const [tagKey, tag] of mergedTags) nextBaseline.set(key.tag(tagKey), hashValue(tag.label));
     for (const [id, hash] of baselineOf(ingredientMerge.merged)) nextBaseline.set(key.ingredient(id), hash);
     for (const [nameKey, hash] of baselineOf(correctionMerge.merged)) {
       nextBaseline.set(key.correction(nameKey), hash);
@@ -515,6 +558,7 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
     const pulled =
       profileMerge.localOutdated ||
       recipeMerge.localOutdated ||
+      tagMerge.localOutdated ||
       ingredientMerge.localOutdated ||
       correctionMerge.localOutdated ||
       vaultAdopted ||
@@ -545,11 +589,6 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
         }
       }
       return { status: 'error', message: 'Drive kept changing while the merge was running' };
-    },
-
-    /** True when the app's Drive folder holds nothing yet — what the wizard asks on step 2. */
-    async isRemoteEmpty(): Promise<boolean> {
-      return (await backend.list()).length === 0;
     }
   };
 }
