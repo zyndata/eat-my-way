@@ -2,6 +2,7 @@ import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
 import type { IngredientCorrection } from './sync/documents';
 import type { RecipeSort } from './recipes';
 import { isRecipeSort } from './recipes';
+import { isThemeChoice, type ThemeChoice } from './theme.svelte';
 import { DEFAULT_PROFILE } from './db';
 
 /**
@@ -57,6 +58,8 @@ export const BACKUP_KIND = 'eat-my-way-backup';
 export interface BackupSettings {
   recipeSort?: RecipeSort;
   recipeGrouped?: boolean;
+  /** „Jasny" / „Ciemny" / „Jak system" (Phase 11 task 4). Same argument as the two above. */
+  theme?: ThemeChoice;
 }
 
 export interface BackupDocument {
@@ -241,6 +244,7 @@ function readSettings(value: unknown): BackupSettings {
     ...(isRecipeSort(settings.recipeSort) ? { recipeSort: settings.recipeSort } : {}),
     ...(typeof settings.recipeGrouped === 'boolean'
       ? { recipeGrouped: settings.recipeGrouped }
-      : {})
+      : {}),
+    ...(isThemeChoice(settings.theme) ? { theme: settings.theme } : {})
   };
 }

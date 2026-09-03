@@ -83,6 +83,14 @@ export type SyncOutcome =
   | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
+/**
+ * Which of the two waits the user is in (Phase 11 task 3). Drive reports no totals, so there is
+ * no honest percentage — but „waiting on the Google window" and „reading and writing your
+ * files" feel different and fail differently, and naming which one is running is the only
+ * progress this app can report truthfully.
+ */
+export type SyncStage = 'authenticating' | 'transferring';
+
 export interface SyncOptions {
   /** May open the Google consent popup. Only ever true when the user clicked something. */
   interactive?: boolean;
@@ -93,6 +101,8 @@ export interface SyncOptions {
    * has nothing to do with the old one's history.
    */
   acceptAccount?: boolean;
+  /** Told which wait is running, so the button that started it can say so. */
+  onstage?: (stage: SyncStage) => void;
 }
 
 /** How many times a write racing another device is retried before giving up. */
@@ -222,7 +232,9 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
   }
 
   async function runOnce(options: SyncOptions): Promise<SyncOutcome> {
+    options.onstage?.('authenticating');
     const account = await backend.authenticate({ interactive: options.interactive === true });
+    options.onstage?.('transferring');
 
     const snapshot: SyncSnapshot = await repository.syncSnapshot();
     if (

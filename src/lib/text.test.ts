@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatPortions, normalizeKey, pluralPl, portionWord } from './text';
+import {
+  formatBytes,
+  formatPortions,
+  normalizeKey,
+  pluralPl,
+  portionWord,
+  sourceHost
+} from './text';
 
 const zapytanie = { one: 'zapytanie', few: 'zapytania', many: 'zapytań' };
 
@@ -75,5 +82,16 @@ describe('byte sizes', () => {
   it('says nothing rather than something wrong about a figure it does not have', () => {
     expect(formatBytes(Number.NaN)).toBe('\u2014');
     expect(formatBytes(-1)).toBe('\u2014');
+  });
+});
+
+describe('sourceHost', () => {
+  it('shows the host and drops a leading www', () => {
+    expect(sourceHost('https://www.kwestiasmaku.com/przepis/zurek?p=1')).toBe('kwestiasmaku.com');
+    expect(sourceHost('https://przepisy.pl/a/b#c')).toBe('przepisy.pl');
+  });
+
+  it('falls back to the value rather than rendering an empty row', () => {
+    expect(sourceHost('nie-adres')).toBe('nie-adres');
   });
 });

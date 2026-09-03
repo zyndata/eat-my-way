@@ -89,7 +89,7 @@
     >
       Kopiuj do…
     </button>
-    <button type="button" class="px-3 text-xs font-medium text-red-700" onclick={() => act(onremove)}>
+    <button type="button" class="px-3 text-xs font-medium text-(--color-danger)" onclick={() => act(onremove)}>
       Usuń
     </button>
   </div>

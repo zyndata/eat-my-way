@@ -86,6 +86,13 @@ describe('building a backup', () => {
     expect(backup.settings).toEqual({ recipeSort: 'name', recipeGrouped: true });
   });
 
+  it('carries the theme, which never travels to Drive', () => {
+    // Same fact, opposite conclusion (decision 187): sync equalises two devices that may
+    // reasonably disagree, a backup rebuilds one device that had one answer.
+    const backup = buildBackup({ ...input, settings: { theme: 'dark' } });
+    expect(backup.settings).toEqual({ theme: 'dark' });
+  });
+
   it('names the file by the day it was written', () => {
     expect(backupFileName(new Date('2026-09-01T22:30:00.000Z'))).toBe('eat-my-way-2026-09-01.json');
   });
@@ -130,12 +137,12 @@ describe('reading a backup', () => {
     const document = buildBackup({
       ...input,
       vaultFile: '{"v":1}',
-      settings: { recipeSort: 'kcal', recipeGrouped: true }
+      settings: { recipeSort: 'kcal', recipeGrouped: true, theme: 'dark' }
     });
     const backup = readBackup(JSON.stringify(document));
 
     expect(backup.vault).toBe('{"v":1}');
-    expect(backup.settings).toEqual({ recipeSort: 'kcal', recipeGrouped: true });
+    expect(backup.settings).toEqual({ recipeSort: 'kcal', recipeGrouped: true, theme: 'dark' });
   });
 
   it('reads a file written before either section existed', () => {
@@ -164,7 +171,10 @@ describe('reading a backup', () => {
   });
 
   it('drops a settings value it does not recognise instead of refusing the file', () => {
-    const document = { ...buildBackup(input), settings: { recipeSort: 'nonsense', recipeGrouped: 'tak' } };
+    const document = {
+      ...buildBackup(input),
+      settings: { recipeSort: 'nonsense', recipeGrouped: 'tak', theme: 'neonowy' }
+    };
     expect(readBackup(JSON.stringify(document)).settings).toEqual({});
   });
 

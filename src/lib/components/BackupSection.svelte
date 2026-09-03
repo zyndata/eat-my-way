@@ -141,7 +141,7 @@
     chcesz mieć własną kopię.
   </p>
   <p class="pt-2 text-sm {vaultState.status !== 'absent' && !vaultState.encrypted
-    ? 'text-red-700'
+    ? 'text-(--color-danger)'
     : 'text-(--color-ink-muted)'}">
     {vaultNote}
   </p>
@@ -166,7 +166,7 @@
     <p class="pt-2 text-sm text-(--color-ink-muted)" role="status">Zapisano plik {exportedName}.</p>
   {/if}
   {#if error !== ''}
-    <p class="pt-2 text-sm text-red-700" role="alert">{error}</p>
+    <p class="pt-2 text-sm text-(--color-danger)" role="alert">{error}</p>
   {/if}
 </section>
 

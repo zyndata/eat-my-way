@@ -255,7 +255,7 @@
       <p class="shrink-0 text-right">
         <span
           class="text-lg font-semibold tabular-nums {isOverGoal(totals.kcal, headerGoals.kcal)
-            ? 'text-amber-700'
+            ? 'text-(--color-warn)'
             : ''}"
         >
           {Math.round(totals.kcal)}
@@ -311,7 +311,7 @@
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm text-red-700 disabled:opacity-40"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm text-(--color-danger) disabled:opacity-40"
             disabled={day.meals.length === 0}
             onclick={() => {
               closeMenu();
@@ -443,7 +443,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg border border-red-600 px-3 py-2 text-sm font-medium text-red-700"
+        class="rounded-lg border border-(--color-danger-border) px-3 py-2 text-sm font-medium text-(--color-danger)"
         onclick={() => void resolveConflict('replace')}
       >
         Zastąp

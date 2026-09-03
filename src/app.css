@@ -1,6 +1,12 @@
 @import 'tailwindcss';
 
-/* Design tokens. Kept as CSS variables so Tailwind utilities and plain CSS agree. */
+/*
+ * Design tokens. Kept as CSS variables so Tailwind utilities and plain CSS agree — and so a
+ * theme is a block of variable definitions rather than a `dark:` variant on every element.
+ *
+ * The values here are the light theme. `:root[data-theme="dark"]` below redefines them and
+ * nothing else; `theme.svelte.ts` sets that attribute before the app mounts.
+ */
 @theme {
   --color-surface: oklch(99% 0.005 95);
   --color-surface-raised: oklch(100% 0 0);
@@ -9,12 +15,65 @@
   --color-ink-muted: oklch(52% 0.015 95);
   --color-accent: oklch(62% 0.16 145);
   --color-accent-ink: oklch(99% 0.01 145);
+
+  /*
+   * Warning and danger. Added in Phase 11 (STATE.md decision 206): these were literal Tailwind
+   * shades — amber-700 for a warning, red-600 for a delete button — scattered through the
+   * markup, and a fixed shade cannot follow a theme. The light values below are exactly what
+   * those literals were.
+   */
+  --color-warn: oklch(55.5% 0.12 76);
+  --color-warn-border: oklch(87.9% 0.11 82);
+  --color-warn-surface: oklch(98.7% 0.022 95);
+  --color-danger: oklch(50.5% 0.21 27);
+  --color-danger-border: oklch(57.7% 0.24 27);
+  --color-danger-surface: oklch(97.1% 0.013 17);
+  --color-danger-solid: oklch(57.7% 0.24 27);
+  --color-danger-solid-ink: oklch(99% 0.01 27);
 }
 
 @layer base {
+  /*
+   * The dark theme. Seven surfaces and inks plus the two semantic families, and nothing else:
+   * every colour in the app reads one of these, so this block is the whole theme.
+   *
+   * The muted ink is the one that needed real work. At 52% lightness it is readable on white
+   * and invisible on a dark surface, so it moves up rather than down — dark themes need *more*
+   * contrast from a muted colour, not less. The accent moves up for the same reason and its
+   * ink moves down, because a light-green button now carries dark text.
+   */
+  :root[data-theme='dark'] {
+    --color-surface: oklch(21% 0.008 95);
+    --color-surface-raised: oklch(25% 0.008 95);
+    --color-border: oklch(34% 0.008 95);
+    --color-ink: oklch(93% 0.008 95);
+    --color-ink-muted: oklch(74% 0.012 95);
+    --color-accent: oklch(72% 0.15 145);
+    --color-accent-ink: oklch(21% 0.04 145);
+
+    --color-warn: oklch(83% 0.13 82);
+    --color-warn-border: oklch(45% 0.09 76);
+    --color-warn-surface: oklch(28% 0.04 76);
+    --color-danger: oklch(78% 0.13 22);
+    --color-danger-border: oklch(50% 0.16 27);
+    --color-danger-surface: oklch(28% 0.06 22);
+    --color-danger-solid: oklch(52% 0.21 27);
+    --color-danger-solid-ink: oklch(97% 0.01 27);
+  }
+
   html {
     /* Avoid layout shift when a view is long enough to scroll and the next is not. */
     scrollbar-gutter: stable;
+    /*
+     * Drives the browser's own chrome inside the page: form controls, scrollbars, the default
+     * canvas. Set here as well as on the `<meta>` tag, because the tag is the pre-boot value
+     * and this follows the attribute for the rest of the session.
+     */
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    color-scheme: dark;
   }
 
   body {
@@ -22,5 +81,38 @@
     color: var(--color-ink);
     font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  /*
+   * The busy spinner (Phase 11 task 3). It animates from this class and never from an inline
+   * `style`: the production CSP has no `'unsafe-inline'` for styles (STATE.md decision 71).
+   *
+   * Under `prefers-reduced-motion` it stands still and becomes a plain ring — the words beside
+   * it carry the whole message anyway, and a frozen half-circle would read as a broken glyph.
+   */
+  .emw-spinner {
+    display: inline-block;
+    border-radius: 9999px;
+    border-width: 2px;
+    border-style: solid;
+    border-color: currentColor;
+    border-top-color: transparent;
+    animation: emw-spin 0.7s linear infinite;
+  }
+
+  @keyframes emw-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .emw-spinner {
+      animation: none;
+      border-top-color: currentColor;
+      opacity: 0.45;
+    }
   }
 }

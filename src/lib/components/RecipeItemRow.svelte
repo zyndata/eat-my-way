@@ -183,7 +183,7 @@
     </div>
 
     {#if !complete}
-      <p class="pt-2 text-xs text-red-700">
+      <p class="pt-2 text-xs text-(--color-danger)">
         Podaj wagę 1 szt. — bez niej składnik waży 0 g i nie wnosi makroskładników.
       </p>
     {/if}

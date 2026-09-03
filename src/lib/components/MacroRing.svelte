@@ -33,7 +33,7 @@
 
 <span class="relative grid size-10 place-items-center">
   <svg
-    class="absolute inset-0 size-10 {over ? 'text-amber-600' : 'text-(--color-accent)'}"
+    class="absolute inset-0 size-10 {over ? 'text-(--color-warn)' : 'text-(--color-accent)'}"
     viewBox="0 0 36 36"
     role={label ? 'img' : 'presentation'}
     aria-label={label}

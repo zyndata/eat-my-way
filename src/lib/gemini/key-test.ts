@@ -13,6 +13,14 @@ import { isOffline } from '../net';
 
 const MODELS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
+/**
+ * Where a key is actually created. Deliberately the `/apikey` page and not the studio's front
+ * door, where finding it is a further hunt (STATE.md decision 199). Every link to it opens in a
+ * new tab with `rel="noopener noreferrer"`: the app is a place someone is in the middle of
+ * setting up, and it should still be there when they come back with a key.
+ */
+export const AI_STUDIO_KEY_URL = 'https://aistudio.google.com/apikey';
+
 export type KeyTestStatus = 'ok' | 'rejected' | 'legacy-key' | 'network' | 'unknown';
 
 export interface KeyTestResult {

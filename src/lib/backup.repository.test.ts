@@ -133,6 +133,7 @@ describe('export and restore', () => {
     await from.setMeta('vaultFile', '{"v":1,"cipher":"sealed"}');
     await from.setMeta('recipeSort', 'kcal');
     await from.setMeta('recipeGrouped', true);
+    await from.setMeta('theme', 'dark');
     await into.putIngredients(ingredients);
 
     await into.restoreBackup(readBackup(JSON.stringify(buildBackup(await from.backupInput()))));
@@ -140,6 +141,7 @@ describe('export and restore', () => {
     expect(await into.getMeta('vaultFile')).toBe('{"v":1,"cipher":"sealed"}');
     expect(await into.getMeta('recipeSort')).toBe('kcal');
     expect(await into.getMeta('recipeGrouped')).toBe(true);
+    expect(await into.getMeta('theme')).toBe('dark');
   });
 
   it('swaps a vault rather than overwriting it, so the exchange can be undone', async () => {

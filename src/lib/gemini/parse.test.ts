@@ -3,6 +3,7 @@ import { at } from '../../test/fixtures';
 import {
   PARSE_SYSTEM,
   RECIPE_SCHEMA,
+  cleanSourceUrl,
   looksLikeUrl,
   normalizeUrl,
   readParsedRecipe,
@@ -184,5 +185,62 @@ describe('looksLikeUrl', () => {
   it('adds the scheme a user leaves out', () => {
     expect(normalizeUrl('kwestiasmaku.com/a')).toBe('https://kwestiasmaku.com/a');
     expect(normalizeUrl('http://kwestiasmaku.com/a')).toBe('http://kwestiasmaku.com/a');
+  });
+});
+
+describe('cleanSourceUrl', () => {
+  it('strips utm_* and the known click ids', () => {
+    expect(
+      cleanSourceUrl(
+        'https://kwestiasmaku.com/przepis/zurek?utm_source=fb&utm_medium=social&fbclid=abc&gclid=d'
+      )
+    ).toBe('https://kwestiasmaku.com/przepis/zurek');
+
+    for (const id of ['dclid', 'msclkid', 'twclid', 'yclid', 'igshid', 'mc_cid', 'mc_eid', '_ga', 'ref_src', 'si']) {
+      expect(cleanSourceUrl(`https://example.com/a?${id}=x`)).toBe('https://example.com/a');
+    }
+  });
+
+  it('leaves every other parameter, the path and the fragment alone', () => {
+    // The whole reason this is a deny-list: `?p=1234` is very often the recipe's identity.
+    expect(cleanSourceUrl('https://example.com/?p=1234&utm_source=fb')).toBe(
+      'https://example.com/?p=1234'
+    );
+    expect(cleanSourceUrl('https://example.com/Przepisy/Żurek/#skladniki')).toBe(
+      'https://example.com/Przepisy/%C5%BBurek/#skladniki'
+    );
+    expect(cleanSourceUrl('https://example.com/a/b/c?q=1&sort=desc')).toBe(
+      'https://example.com/a/b/c?q=1&sort=desc'
+    );
+  });
+
+  it('matches the tracking names case-insensitively and leaves lookalikes', () => {
+    expect(cleanSourceUrl('https://example.com/a?UTM_Source=x&FBCLID=y')).toBe(
+      'https://example.com/a'
+    );
+    // `sid` is not `si`, and `mc_id` is not `mc_cid`.
+    expect(cleanSourceUrl('https://example.com/a?sid=1&mc_id=2')).toBe(
+      'https://example.com/a?sid=1&mc_id=2'
+    );
+  });
+
+  it('adds the missing scheme, like the import path does', () => {
+    expect(cleanSourceUrl('kwestiasmaku.com/przepis/zurek')).toBe(
+      'https://kwestiasmaku.com/przepis/zurek'
+    );
+  });
+
+  it('refuses anything that is not http or https', () => {
+    // The value arrives as something the user pasted and leaves as an `href`.
+    expect(cleanSourceUrl('javascript:alert(1)')).toBeUndefined();
+    expect(cleanSourceUrl('data:text/html,<script>x</script>')).toBeUndefined();
+    expect(cleanSourceUrl('file:///etc/passwd')).toBeUndefined();
+    expect(cleanSourceUrl('mailto:a@b.pl')).toBeUndefined();
+  });
+
+  it('refuses an empty or unparseable value', () => {
+    expect(cleanSourceUrl('')).toBeUndefined();
+    expect(cleanSourceUrl('   ')).toBeUndefined();
+    expect(cleanSourceUrl('https://')).toBeUndefined();
   });
 });

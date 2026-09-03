@@ -17,15 +17,21 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 8     | PWA & polish                | done    | 2026-09-01 |
 | 9     | Daily-use comfort           | done    | 2026-09-02 |
 | 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
-| 11    | Zgłoszenia z użytkowania    | pending | —          |
+| 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
 Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
 after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
 ingredient library, and an export that finally holds everything); Phase 11 is the pile of
-things daily use reported about what the app says. Phase 10 is done; Phase 11 is planned,
-not started, and does not ship until it is released under a tag of its own.
+things daily use reported about what the app says. Both are built. Neither has shipped: they
+reach the live app when a tag is pushed, and the one exception is Phase 11's last task —
+the repository's About box, which is not in the build and took effect the moment it was set
+(decision 217).
+
+**Phase 11 left one thing unfinished, deliberately and on the record**: why Chrome on Android
+offered no install button. That needs the phone the report came from, so the copy was fixed
+here and the diagnosis moved to open question 26 (decisions 207, 216).
 
 Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
 which is where a release belongs — not inside a phase (decision 141). Live at
@@ -2327,6 +2333,126 @@ one of which broke the feature outright.
      clear, said in red at the moment of export). Decision 184 required the sentence; this is
      where it comes from.
 
+### 2026-09-03 — Phase 11, deviations recorded before building
+
+206. **The dark theme needs more than seven tokens, and the extra ones are semantic rather than
+     new colours.** Decision 195 said the palette is the seven `@theme` variables redefined, and
+     that half is true. What it also flagged — „everything that bypassed them" — turns out to be
+     53 literal Tailwind colours across 14 files: `text-red-700`, `text-amber-700`,
+     `border-amber-300`, `bg-amber-50`, `bg-red-600` and their neighbours. Each one is a fixed
+     light-mode shade that cannot follow a theme, and rewriting each call site with a
+     `dark:` variant would put the palette back into the markup, which is the thing `@theme`
+     exists to prevent.
+
+     So seven more tokens are added — `--color-warn`, `--color-warn-border`,
+     `--color-warn-surface`, `--color-danger`, `--color-danger-border`, `--color-danger-surface`,
+     `--color-danger-solid` — carrying today's light values exactly, and the literals are
+     replaced by them. This is a deviation from PLAN.md's „seven tokens redefined" only in
+     count: the mechanism is unchanged, no colour moves in the light theme, and the dark theme
+     stays one block of variable definitions rather than a sweep of conditional classes.
+
+     `backdrop:bg-black/40` is deliberately **not** tokenised. It is a scrim over whatever is
+     behind the dialog, and black at 40% is right in both themes.
+
+207. **The device half of task 1 cannot be run from here, and is recorded as unfinished rather
+     than guessed at.** PLAN.md asks for Lighthouse's installability audit against
+     https://eatmyway.gorny.dev and the real tab's console through `chrome://inspect`. This
+     environment has neither a browser nor the Android phone the report came from, so the
+     verdict Chrome would give is not available and no amount of re-reading the manifest
+     produces it — decision 190 already established that the static configuration is not the
+     cause.
+
+     What ships is therefore the half that does not need the device: the section no longer
+     shows install advice it cannot act on, and the „already installed, opened in a tab" state
+     gets its own copy. The diagnosis moves to open question 26, which is already the „first
+     install on a real phone" item, with the procedure named there. Acceptance criterion 1 is
+     verified for the copy and **not** verified for the cause.
+
+208. **`getInstalledRelatedApps()` needs the manifest to point back at itself, so the manifest
+     gains `related_applications`.** The API answers only for applications the manifest
+     declares as related, so calling it against today's manifest would return an empty list on
+     every browser and the „already installed" copy would never appear. One entry is added —
+     platform `webapp`, url `/manifest.webmanifest`, relative so it resolves per origin and the
+     container run is not a special case — and `prefer_related_applications` is left absent, so
+     installability is untouched.
+
+     Best-effort remains best-effort: the call is wrapped, a browser without the API says
+     nothing, and this is one more thing open question 26 has to confirm on a real device.
+
+209. **The wizard's Drive step keeps the skip label it already has.** PLAN.md task 2 names the
+     button „Pominę na razie"; the step already carries „Pomiń — tylko to urządzenie", which
+     says the same thing and says what skipping costs. The button is not renamed. What task 2
+     actually adds is the reason it was unreachable — the local trigger and the `meta` key that
+     makes skipping stick.
+
+### 2026-09-03 — Phase 11 built
+
+210. **Phase 11 shipped with the deviations recorded above and no others.** Decisions 189–200
+     described the seven tasks and 206–209 recorded what changed while building them, so this
+     entry records only what those did not say.
+
+     Six of the seven acceptance criteria are verified; the seventh — *why* Chrome on Android
+     withheld the install prompt — is not, and cannot be from here. It is open question 26.
+
+211. **The theme is applied from `main.ts`, before `startPwa()` and before the mount.** That is
+     the earliest point anything of ours runs under a CSP with no inline script, and only the
+     `localStorage` mirror is fast enough to be read there — IndexedDB lands after the first
+     paint. `startTheme()` reads the mirror synchronously, then catches up with `meta` and
+     re-mirrors, so IndexedDB stays the source of truth and a backup restore takes effect on
+     the reload that follows it.
+
+     `data-theme` is set to the *resolved* theme rather than the choice, so the stylesheet
+     needs one selector and no `prefers-color-scheme` block of its own. „Jak system" keeps a
+     `matchMedia` listener, which is what makes it follow the OS while the app is open.
+
+212. **`color-scheme` is set in two places on purpose.** The `<meta>` tag is the pre-boot value
+     and `theme.svelte.ts` rewrites it; `html { color-scheme }` in the stylesheet is what
+     actually holds for the rest of the session and follows `data-theme`. Without both, the
+     form controls and the scrollbars stay light around a dark app, and the installed app's
+     status bar keeps the light accent.
+
+213. **The literal Tailwind colours are gone from `src/`.** 53 occurrences across 14 files
+     became the seven semantic tokens of decision 206, plus `--color-danger-solid-ink` for the
+     one place a red button carries text — it used `--color-accent-ink`, which is a *green*
+     ink and would have been near-black on red in the dark theme. `backdrop:bg-black/40` is
+     the only literal left and is deliberate: a scrim is black in both themes.
+
+     Verified by looking, not only by reasoning: every screen was walked in the dark theme in
+     the Caddy container, including the amber „sejf bez szyfrowania" panel, the red delete
+     dialog, the macro bars and the ring, and the same walk in the light theme confirms nothing
+     moved there.
+
+214. **`cleanSourceUrl` parses the pasted value before it normalises it.** Found by its own
+     test: routing everything through `normalizeUrl` first turns `file:///etc/passwd` into
+     `https://file///etc/passwd`, so a scheme that must be refused would have been quietly
+     rewritten into an accepted one. It now parses as pasted, judges the protocol, and only
+     falls back to prepending `https://` when the value did not parse at all — which is the
+     scheme-less `example.com/przepis` case and nothing else.
+
+215. **The e2e fixture skips the wizard, and that is the proof the wizard opens.** Every device
+     the suite opens is a browser that has genuinely never been used, which is exactly what
+     task 2 made the wizard trigger on — so all 51 existing specs would have landed on it. The
+     fixture now clicks „Pomiń kreator" on the way in, and `keepSetup` leaves it for the specs
+     that are about it.
+
+     The spec that proves the ordering deletes the `setupDone` key from IndexedDB before
+     reloading, because otherwise that key alone would explain the absence of the wizard. What
+     is left is the claim decision 193 makes: a device that pulled an account is not „never
+     used" by the time `offerSetup()` asks.
+
+216. **A locally opened wizard keeps the user in it until they leave it deliberately**, exactly
+     as a Drive-opened one always has: `syncState.setupNeeded` is cleared by the wizard's own
+     „Pomiń kreator" and by finishing, and the `$effect` in `App.svelte` pushes back to
+     `/setup` from anywhere else meanwhile. Noticed while writing the spec above, and left
+     alone: it is pre-existing behaviour of the same effect, it is not what was reported, and
+     the two ways out are both on screen.
+
+217. **The GitHub About box is filled in, and it is the one thing here that is already live.**
+     `zyndata/eat-my-way` now carries the README's own opening sentence as its description, a
+     homepage of `https://eatmyway.gorny.dev` and the six topics decision 200 named. Repository
+     metadata is not in the build, so this took effect the moment it was set and no tag carries
+     it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -2579,13 +2705,33 @@ one of which broke the feature outright.
     what the remaining two pages settle is no longer „which default" but „how much parse quality
     the quota is costing" — worth knowing, and no longer blocking anything.
 
-26. **Nothing has been installed on a real phone yet.** The installability criteria are
-    asserted programmatically (decision 142) and the manifest, the icons and the service worker
-    are all in place, but „it installs on Android and launches standalone" has been verified by
-    proxy, not by installing it. Do this on the first real visit to `eatmyway.gorny.dev` after
-    the `v1.0.0` release, along with open question 15's live Drive round trip — the same visit
-    can settle both, and that visit now has a written checklist (decision 149,
+26. **Nothing has been installed on a real phone yet — and the Android install button is now
+    part of this question.** The installability criteria are asserted programmatically
+    (decision 142) and the manifest, the icons and the service worker are all in place, but
+    „it installs on Android and launches standalone" has been verified by proxy, not by
+    installing it. Do this on the first real visit to `eatmyway.gorny.dev` after the `v1.0.0`
+    release, along with open question 15's live Drive round trip — the same visit can settle
+    both, and that visit now has a written checklist (decision 149,
     [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
+
+    Phase 11 added the second half and could not run it from a development machine (decision
+    207). In this order, on a normal tab of a device with no Eat My Way icon:
+
+    - **Rule out Chrome's two deliberate refusals first.** It fires `beforeinstallprompt` in
+      neither an incognito tab nor for an app that is already installed.
+    - **Read the browser's own verdict** rather than guessing: Lighthouse's installability
+      audit against the live URL, and `chrome://inspect` from a desktop for the console of the
+      real tab. Chrome names the failing criterion if there is one.
+    - **Then fix what it names.** A failing criterion is a bug in the manifest, the icons or
+      the service worker; Chrome's engagement heuristic — the event can wait for a real visit
+      rather than the first paint — is not a bug and is the answer if that is what it turns
+      out to be.
+
+    Two things Phase 11 shipped are waiting on the same visit: the „already installed, opened
+    in a tab" copy, which needs `navigator.getInstalledRelatedApps()` to actually answer
+    (decision 208), and the fact that the install section now shows nothing at all where it
+    has nothing to offer — which is right regardless, and also means a missing button no
+    longer announces itself.
 
 27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
     argument for leaving it (a two-step red-button action, the export one click away) was

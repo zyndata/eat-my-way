@@ -993,31 +993,33 @@ since the first commit.
 
 ### Acceptance criteria
 
-- [ ] On a browser that offers no install prompt and is not iOS, the settings screen shows no
+- [x] On a browser that offers no install prompt and is not iOS, the settings screen shows no
       install instructions at all; on iOS the „Do ekranu początkowego" instruction is still
       there, and where the prompt exists the button still works.
-- [ ] A fresh browser profile with no Drive connection reaches the wizard, can skip the Drive
+      *(The copy: verified. Why Chrome on Android withheld the prompt: **not** verified — it
+      needs the device, and moved to STATE.md open question 26; decision 207.)*
+- [x] A fresh browser profile with no Drive connection reaches the wizard, can skip the Drive
       step, and does not see it again after skipping — while a second device that syncs an
       existing account is never sent there.
-- [ ] Connecting Drive shows moving feedback on the button that was pressed, names the stage it
+- [x] Connecting Drive shows moving feedback on the button that was pressed, names the stage it
       is in, and leaves nothing lit once the sync finishes; the animation stops under
       `prefers-reduced-motion` and the status is announced once, not twice.
-- [ ] The theme choice survives a reload and is applied before the first paint, „Jak system"
+- [x] The theme choice survives a reload and is applied before the first paint, „Jak system"
       follows the OS setting live, and the browser chrome, form controls and scrollbars are
       dark alongside the app.
-- [ ] Every screen is legible in the dark theme, including the amber sync warnings, the red
+- [x] Every screen is legible in the dark theme, including the amber sync warnings, the red
       delete button, the macro bars and rings, and the modal backdrops — checked under
       `npm run docker:up` with zero CSP violations.
-- [ ] A recipe imported from a link stores its cleaned source and offers it as a link showing
+- [x] A recipe imported from a link stores its cleaned source and offers it as a link showing
       the host; one imported from pasted text or written by hand shows no source row, and the
       row can be cleared.
-- [ ] `cleanSourceUrl` strips `utm_*` and the known click ids while leaving every other
+- [x] `cleanSourceUrl` strips `utm_*` and the known click ids while leaving every other
       parameter, the path and the fragment untouched, and refuses any scheme that is not
       `http`/`https` (tests).
-- [ ] Both the settings key field and the wizard's key step offer a working link straight to
+- [x] Both the settings key field and the wizard's key step offer a working link straight to
       the AI Studio page that creates a key.
-- [ ] The GitHub repository shows a description, a homepage pointing at the live app, and
+- [x] The GitHub repository shows a description, a homepage pointing at the live app, and
       topics; the description says the same thing as the README's opening line.
-- [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero
+- [x] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero
       console violations under `npm run docker:up`.
-- [ ] All UI text in Polish; code/comments in English.
+- [x] All UI text in Polish; code/comments in English.

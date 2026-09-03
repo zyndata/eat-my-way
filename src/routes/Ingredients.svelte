@@ -328,7 +328,7 @@
                 </button>
                 <button
                   type="button"
-                  class="text-xs font-medium text-red-700 disabled:opacity-50"
+                  class="text-xs font-medium text-(--color-danger) disabled:opacity-50"
                   disabled={busy}
                   onclick={() => void startRemove(ingredient)}
                 >
@@ -462,7 +462,7 @@
     </div>
 
     {#if replaceError !== ''}
-      <p class="pt-2 text-sm text-red-700" role="alert">{replaceError}</p>
+      <p class="pt-2 text-sm text-(--color-danger)" role="alert">{replaceError}</p>
     {/if}
 
     {#if replacement !== null}

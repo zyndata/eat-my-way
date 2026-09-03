@@ -77,6 +77,19 @@ describe('first sync', () => {
     });
   });
 
+  it('names the two waits in order, so a button can say which one it is in', async () => {
+    // Drive reports no totals, so the stage names are the only progress there is to report
+    // (STATE.md decision 194) — and „waiting on Google" must come before „reading your files",
+    // or the label would be wrong for the whole of the longest wait the app ever has.
+    const drive = new FakeDrive();
+    const a = device(drive);
+    const stages: string[] = [];
+
+    await a.engine.sync({ onstage: (stage) => stages.push(stage) });
+
+    expect(stages).toEqual(['authenticating', 'transferring']);
+  });
+
   it('pulls the whole dataset onto a fresh device', async () => {
     const drive = new FakeDrive();
     const a = device(drive);

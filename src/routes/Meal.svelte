@@ -9,7 +9,7 @@
     scaleMacros
   } from '../lib/macros';
   import { findMeal } from '../lib/day';
-  import { portionWord } from '../lib/text';
+  import { portionWord, sourceHost } from '../lib/text';
   import {
     addDays,
     formatDayLong,
@@ -250,6 +250,19 @@
             <p class="pt-1 text-sm whitespace-pre-line">{recipe.instructions}</p>
           </div>
         {/if}
+
+        {#if recipe.sourceUrl !== undefined}
+          <div class="pt-4">
+            <h3 class="text-sm font-semibold">Źródło</h3>
+            <p class="pt-1 text-sm">
+              <a
+                class="font-medium text-(--color-accent) underline"
+                href={recipe.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer">{sourceHost(recipe.sourceUrl)}</a>
+            </p>
+          </div>
+        {/if}
       </section>
     {/if}
 
@@ -389,7 +402,7 @@
       </p>
 
       {#if drifted && currentPortion !== undefined}
-        <p class="pt-2 text-xs text-amber-700">
+        <p class="pt-2 text-xs text-(--color-warn)">
           Przepis zmienił się od zaplanowania — dziś wyszłoby {Math.round(currentPortion.kcal)} kcal
           na porcję. Ten posiłek zachowuje wartości z dnia zaplanowania.
         </p>

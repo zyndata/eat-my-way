@@ -99,3 +99,19 @@ export function formatBytes(value: number): string {
   const digits = unit === 0 ? 0 : size < 10 ? 2 : size < 100 ? 1 : 0;
   return `${size.toLocaleString('pl-PL', { maximumFractionDigits: digits })} ${BYTE_UNITS[unit] ?? 'B'}`;
 }
+
+/**
+ * The host of a stored source URL, as the „Źródło" row shows it: `www.` dropped, nothing else
+ * touched. A 200-character link is unreadable on a phone, and the host is the part that tells
+ * the user whether the page is worth opening (STATE.md decision 196).
+ *
+ * Falls back to the value itself for anything unparseable, so the row never renders empty for a
+ * recipe that plainly has a source.
+ */
+export function sourceHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, '');
+  } catch {
+    return url;
+  }
+}

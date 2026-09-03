@@ -11,6 +11,7 @@ import type { IngredientCorrection } from './sync/documents';
 import { monthOf } from './sync/documents';
 import type { BackupDocument, BackupInput } from './backup';
 import {
+  DEFAULT_GOALS,
   DEFAULT_PROFILE,
   PROFILE_KEY,
   SCHEMA_VERSION,
@@ -252,6 +253,47 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
     async deleteMeta(key: MetaKey): Promise<void> {
       await database.meta.delete(key);
+    },
+
+    /**
+     * Whether this browser has genuinely never been used — the local trigger for the first-run
+     * wizard (PLAN.md Phase 11 task 2, STATE.md decision 193).
+     *
+     * Narrow on purpose. „No recipes and no days" alone would also describe someone who deleted
+     * everything, so the profile must still be *identical* to `DEFAULT_PROFILE` and there must
+     * be no vault: together those say nothing has ever been set, not merely that the calendar is
+     * empty. `googleSub` counts as a difference, so a device that has ever connected Drive is
+     * never „never used".
+     *
+     * The bundled USDA ingredients are ignored — they arrive on first run without anyone doing
+     * anything, so counting them would make every database look used.
+     */
+    async isNeverUsed(): Promise<boolean> {
+      const [recipes, days, vaultFile, setupDone, profile] = await Promise.all([
+        database.recipes.count(),
+        database.days.count(),
+        database.meta.get('vaultFile' satisfies MetaKey) as Promise<string | undefined>,
+        database.meta.get('setupDone' satisfies MetaKey) as Promise<boolean | undefined>,
+        database.profile.get(PROFILE_KEY)
+      ]);
+
+      if (recipes > 0 || days > 0) return false;
+      if (vaultFile !== undefined || setupDone === true) return false;
+      if (profile === undefined) return true;
+
+      // Compared field by field rather than by serialising both: key order would decide the
+      // answer, and nothing guarantees it.
+      return (
+        profile.googleSub === undefined &&
+        profile.geminiUsage === undefined &&
+        profile.geminiModel === DEFAULT_PROFILE.geminiModel &&
+        profile.encryptVault === DEFAULT_PROFILE.encryptVault &&
+        profile.locale === DEFAULT_PROFILE.locale &&
+        profile.goals.kcal === DEFAULT_GOALS.kcal &&
+        profile.goals.protein === DEFAULT_GOALS.protein &&
+        profile.goals.carbs === DEFAULT_GOALS.carbs &&
+        profile.goals.fat === DEFAULT_GOALS.fat
+      );
     },
 
     // ---- ingredients ---------------------------------------------------------------
@@ -995,7 +1037,8 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         schemaVersion,
         vaultFile,
         recipeSort,
-        recipeGrouped
+        recipeGrouped,
+        theme
       ] = await Promise.all([
         database.profile.get(PROFILE_KEY),
         database.recipes.toArray(),
@@ -1008,7 +1051,8 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         database.meta.get('recipeSort' satisfies MetaKey) as Promise<
           MetaValues['recipeSort'] | undefined
         >,
-        database.meta.get('recipeGrouped' satisfies MetaKey) as Promise<boolean | undefined>
+        database.meta.get('recipeGrouped' satisfies MetaKey) as Promise<boolean | undefined>,
+        database.meta.get('theme' satisfies MetaKey) as Promise<MetaValues['theme'] | undefined>
       ]);
 
       return {
@@ -1022,7 +1066,8 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         ...(vaultFile === undefined ? {} : { vaultFile }),
         settings: {
           ...(recipeSort === undefined ? {} : { recipeSort }),
-          ...(recipeGrouped === undefined ? {} : { recipeGrouped })
+          ...(recipeGrouped === undefined ? {} : { recipeGrouped }),
+          ...(theme === undefined ? {} : { theme })
         }
       };
     },
@@ -1108,13 +1153,16 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
             await database.meta.put(vault, 'vaultFile' satisfies MetaKey);
           }
 
-          const { recipeSort, recipeGrouped } = backup.settings;
+          const { recipeSort, recipeGrouped, theme } = backup.settings;
           if (recipeSort !== undefined) {
             await database.meta.put(recipeSort, 'recipeSort' satisfies MetaKey);
           }
           if (recipeGrouped !== undefined) {
             await database.meta.put(recipeGrouped, 'recipeGrouped' satisfies MetaKey);
           }
+          // The screen reloads after a restore, and `startTheme` re-reads this and re-mirrors
+          // it into `localStorage`, so the restored choice is what the next paint uses.
+          if (theme !== undefined) await database.meta.put(theme, 'theme' satisfies MetaKey);
 
           await database.syncBaseline.clear();
           await database.driveFiles.clear();

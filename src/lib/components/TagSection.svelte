@@ -151,7 +151,7 @@
               />
             </label>
             {#if error !== ''}
-              <p class="pt-1 text-xs text-red-700">{error}</p>
+              <p class="pt-1 text-xs text-(--color-danger)">{error}</p>
             {/if}
             <div class="flex flex-wrap gap-2 pt-2">
               <button
@@ -187,7 +187,7 @@
                 </button>
                 <button
                   type="button"
-                  class="rounded-lg border border-red-600 px-3 py-1.5 text-sm font-medium text-red-700 disabled:opacity-50"
+                  class="rounded-lg border border-(--color-danger-border) px-3 py-1.5 text-sm font-medium text-(--color-danger) disabled:opacity-50"
                   disabled={busy}
                   onclick={() => (deleting = tag)}
                 >

@@ -11,6 +11,7 @@ import {
   NO_RECIPE,
   PARSE_SYSTEM,
   RECIPE_SCHEMA,
+  cleanSourceUrl,
   fetchPrompt,
   looksLikeUrl,
   normalizeUrl,
@@ -80,6 +81,11 @@ export interface ImportedRecipe {
   unmatched: number;
   /** How many portions the source described, before the amounts were divided down to one. */
   sourcePortions: number;
+  /**
+   * The page the import read, cleaned for storage. Absent when the import began with pasted
+   * text, which has no source (PLAN.md Phase 11 task 5).
+   */
+  sourceUrl?: string;
 }
 
 /** Counts what the three calls actually spent, so a partial run still reports honestly. */
@@ -228,6 +234,9 @@ async function importWithTally(
   deps: ImportDeps,
   tally: Tally
 ): Promise<ImportedRecipe> {
+  // Kept rather than dropped this time: the link the fetch step reads is the one the recipe
+  // came from, and until Phase 11 there was nowhere to put it (STATE.md decision 196).
+  const sourceUrl = looksLikeUrl(trimmed) ? cleanSourceUrl(trimmed) : undefined;
   const text = looksLikeUrl(trimmed)
     ? await fetchRecipeText(normalizeUrl(trimmed), deps, tally)
     : trimmed;
@@ -260,7 +269,8 @@ async function importWithTally(
     ingredientsById,
     // An id that no longer resolves counts as unmatched: the row shows the autocomplete.
     unmatched: items.filter((item) => ingredientsById[item.ingredientId] === undefined).length,
-    sourcePortions: source.portions
+    sourcePortions: source.portions,
+    ...(sourceUrl === undefined ? {} : { sourceUrl })
   };
 }
 

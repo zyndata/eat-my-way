@@ -2,7 +2,7 @@ import { isOffline } from '../net';
 import { repository } from '../repository';
 import type { AccountInfo } from './backend';
 import { createDriveBackend } from './drive';
-import { createSyncEngine, type DayConflict, type SyncOutcome } from './engine';
+import { createSyncEngine, type DayConflict, type SyncOutcome, type SyncStage } from './engine';
 import { isDriveConfigured } from './google-auth';
 import { loadVault } from '../vault/session.svelte';
 
@@ -15,6 +15,14 @@ import { loadVault } from '../vault/session.svelte';
 
 export type SyncPhase = 'idle' | 'syncing' | 'error';
 
+export type { SyncStage };
+
+/** What each stage is called on screen. One sentence fragment, not a status line. */
+export const STAGE_LABELS: Record<SyncStage, string> = {
+  authenticating: 'Łączenie z kontem Google…',
+  transferring: 'Odczyt i zapis plików na Dysku…'
+};
+
 export const syncState = $state<{
   /** Whether the build carries an OAuth client id at all. */
   configured: boolean;
@@ -22,6 +30,11 @@ export const syncState = $state<{
   connected: boolean;
   account: AccountInfo | null;
   phase: SyncPhase;
+  /**
+   * Which wait is running while `phase` is `syncing`; `null` otherwise. Drive reports no
+   * totals, so this is the only honest progress the app has (STATE.md decision 194).
+   */
+  stage: SyncStage | null;
   /** ISO timestamp of the last successful sync, or `undefined`. */
   lastSyncedAt: string | undefined;
   /** Polish message for the user, or `''`. */
@@ -42,6 +55,7 @@ export const syncState = $state<{
   connected: false,
   account: null,
   phase: 'idle',
+  stage: null,
   lastSyncedAt: undefined,
   message: '',
   conflicts: null,
@@ -135,10 +149,12 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
   }
 
   syncState.phase = 'syncing';
+  syncState.stage = 'authenticating';
   syncState.message = '';
 
   running = engine.sync({
     ...options,
+    onstage: (stage) => (syncState.stage = stage),
     resolveConflicts: (conflicts) =>
       new Promise((resolve) => {
         syncState.conflicts = conflicts;
@@ -187,6 +203,7 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
     return outcome;
   } finally {
     running = null;
+    syncState.stage = null;
     if (answerConflicts !== null) answerConflicts(null);
   }
 }

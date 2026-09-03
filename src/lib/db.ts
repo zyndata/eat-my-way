@@ -2,6 +2,7 @@ import Dexie, { type Table, type Transaction } from 'dexie';
 import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
 import type { IngredientCorrection } from './sync/documents';
 import type { RecipeSort } from './recipes';
+import type { ThemeChoice } from './theme.svelte';
 import { normalizeKey } from './text';
 
 /**
@@ -104,6 +105,20 @@ export interface MetaValues {
    */
   recipeSort: RecipeSort;
   recipeGrouped: boolean;
+  /**
+   * „Jasny" / „Ciemny" / „Jak system" (Phase 11 task 4). In `meta` for the same reason
+   * `recipeSort` is: it describes the screen in front of you, not the account, so it never
+   * travels to Drive — and it does travel in the backup, which rebuilds one device.
+   */
+  theme: ThemeChoice;
+  /**
+   * This browser has been through the first-run wizard (Phase 11 task 2). The Drive-driven
+   * `syncState.setupNeeded` can live in memory because a sync re-sets it on every load; the
+   * local trigger has nothing to re-set it, so without this key every reload would reopen the
+   * wizard for a user who skipped it. It never travels to Drive, which is right: it records
+   * what happened on this device (STATE.md decision 193).
+   */
+  setupDone: boolean;
 }
 
 export type MetaKey = keyof MetaValues;
