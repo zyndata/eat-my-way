@@ -29,9 +29,9 @@ reach the live app when a tag is pushed, and the one exception is Phase 11's las
 the repository's About box, which is not in the build and took effect the moment it was set
 (decision 217).
 
-**Phase 11 left one thing unfinished, deliberately and on the record**: why Chrome on Android
-offered no install button. That needs the phone the report came from, so the copy was fixed
-here and the diagnosis moved to open question 26 (decisions 207, 216).
+Phase 11 left one thing unfinished — why Chrome on Android offered no install button — and
+**it is now settled**: against v1.1.0 the „Zainstaluj aplikację" button appears and installs
+the app on Chrome on Android. Nothing was broken; see decision 219 and open question 26.
 
 Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
 which is where a release belongs — not inside a phase (decision 141). Live at
@@ -2368,6 +2368,9 @@ one of which broke the feature outright.
      install on a real phone" item, with the procedure named there. Acceptance criterion 1 is
      verified for the copy and **not** verified for the cause.
 
+     **Superseded the same day by decision 219**: the device answered, and the answer is that
+     there was nothing to fix.
+
 208. **`getInstalledRelatedApps()` needs the manifest to point back at itself, so the manifest
      gains `related_applications`.** The API answers only for applications the manifest
      declares as related, so calling it against today's manifest would return an empty list on
@@ -2472,14 +2475,52 @@ one of which broke the feature outright.
      spend the same twenty minutes deciding it is not a regression.
 
 
+### 2026-09-03 — the Android install button, answered on the device
+
+219. **The install button works on Chrome on Android, and no criterion was ever failing.**
+     Confirmed by the user against the live v1.1.0: the „Zainstaluj aplikację" button appears
+     in „Aplikacja na urządzeniu" and installs the app. That is the device verdict PLAN.md
+     asked for and decision 207 could not produce from a development machine.
+
+     What it settles, and what it does not:
+
+     - **`beforeinstallprompt` does fire.** Chromium only fires it for a page that passes every
+       installability check, so the manifest, the icons and the service worker are all correct
+       on the live origin. Decision 190 ruled out the static configuration by reading; the
+       device has now confirmed it by installing.
+     - **The original report was a transient state, not a bug.** The three candidates named in
+       decision 190 and open question 26 were an incognito tab, an app already installed, and
+       Chrome's engagement heuristic. The last is the one that fits a button that is missing
+       once and present later: Chrome may withhold the event until a visit it counts as real,
+       so „the button was not there" and „the button is there" are both correct behaviour on
+       the same build. Nothing in this repository was changed to make it appear.
+     - **Phase 11 task 1 was worth doing anyway, for the other half.** The section used to
+       print „look in your browser's menu" whenever the prompt was absent, which is what turned
+       a temporary absence into a screen that read as broken. It now shows the button when
+       there is one and says nothing when there is not, so the same transient state is
+       invisible rather than alarming.
+
+     Acceptance criterion 1 of Phase 11 is therefore verified in full: the copy by test, the
+     button by installation on the reporting device.
+
+     One thing this visit did **not** establish: the „already installed, opened in a tab" copy,
+     which needs `navigator.getInstalledRelatedApps()` to answer (decision 208). It is now
+     cheap to check — the app is installed on that phone, so opening
+     https://eatmyway.gorny.dev in a normal Chrome tab either shows that paragraph or shows
+     nothing. Left as the only unconfirmed line in the section.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
 > 2026-09-02). Settled so far: 6, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 20, 21, 27, 28 — see
-> decisions 143–156. **The pass is finished.** What is left — 15, 20, 24, 25 and 26 — is not
+> decisions 143–156. **The pass is finished.** What is left — 15, 20, 24 and 25 — is not
 > undecided but unobserved: each one now names a procedure and waits on a real device. 15 and 20
-> and 26 are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model
-> A/B in DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
+> are the live checklist in DEPLOYMENT.md (decisions 149, 152); 24 and 25 are the model A/B in
+> DEVELOPMENT.md (decision 156). Nothing here is waiting on a design call.
+>
+> **26 is now answered** (2026-09-03, decision 219): the app installs on Chrome on Android from
+> its own button, which also closed Phase 11's one unfinished task.
 
 1. **Google OAuth client ID — done.** Created in project `eat-my-way-507216`, written to the
    local `.env.local` and set as the `VITE_GOOGLE_CLIENT_ID` repository *variable* (not a
@@ -2724,33 +2765,22 @@ one of which broke the feature outright.
     what the remaining two pages settle is no longer „which default" but „how much parse quality
     the quota is costing" — worth knowing, and no longer blocking anything.
 
-26. **Nothing has been installed on a real phone yet — and the Android install button is now
-    part of this question.** The installability criteria are asserted programmatically
-    (decision 142) and the manifest, the icons and the service worker are all in place, but
-    „it installs on Android and launches standalone" has been verified by proxy, not by
-    installing it. Do this on the first real visit to `eatmyway.gorny.dev` after the `v1.0.0`
-    release, along with open question 15's live Drive round trip — the same visit can settle
-    both, and that visit now has a written checklist (decision 149,
-    [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
+26. **The app installs on a real phone — answered 2026-09-03.** Confirmed on Chrome on
+    Android against the live v1.1.0: the „Zainstaluj aplikację" button appears in Settings and
+    installs the app. That settles both halves of this question at once — „it installs on
+    Android" was verified by proxy until now (decision 142), and „why did Chrome show no
+    install button" was Phase 11's one unfinished task. Neither needed a fix: `beforeinstallprompt`
+    fires, so every installability criterion passes on the live origin, and the original report
+    was a transient state Chrome's engagement heuristic explains. Full reasoning in decision 219.
 
-    Phase 11 added the second half and could not run it from a development machine (decision
-    207). In this order, on a normal tab of a device with no Eat My Way icon:
+    Two threads that were tied to this question are **not** closed by it:
 
-    - **Rule out Chrome's two deliberate refusals first.** It fires `beforeinstallprompt` in
-      neither an incognito tab nor for an app that is already installed.
-    - **Read the browser's own verdict** rather than guessing: Lighthouse's installability
-      audit against the live URL, and `chrome://inspect` from a desktop for the console of the
-      real tab. Chrome names the failing criterion if there is one.
-    - **Then fix what it names.** A failing criterion is a bug in the manifest, the icons or
-      the service worker; Chrome's engagement heuristic — the event can wait for a real visit
-      rather than the first paint — is not a bug and is the answer if that is what it turns
-      out to be.
-
-    Two things Phase 11 shipped are waiting on the same visit: the „already installed, opened
-    in a tab" copy, which needs `navigator.getInstalledRelatedApps()` to actually answer
-    (decision 208), and the fact that the install section now shows nothing at all where it
-    has nothing to offer — which is right regardless, and also means a missing button no
-    longer announces itself.
+    - **Open question 15's live Drive round trip** still wants the same visit; the checklist is
+      in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it).
+    - **The „already installed, opened in a tab" copy** (decision 208) has still never been
+      seen. It needs `navigator.getInstalledRelatedApps()` to answer on a browser that has the
+      app installed — which that phone now is, so opening the site in a normal tab settles it in
+      one look.
 
 27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
     argument for leaving it (a two-step red-button action, the export one click away) was
