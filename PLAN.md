@@ -130,6 +130,7 @@ interface Ingredient {
   state: 'raw' | 'cooked';
   per100g: Macros;
   source: 'usda' | 'off' | 'custom';
+  updatedAt?: string;      // custom rows only; absent means "written before Phase 10"
 }
 
 interface Recipe {
@@ -139,6 +140,7 @@ interface Recipe {
   instructions: string;
   items: RecipeItem[];     // ALWAYS per 1 portion
   tags: string[];          // normalized keys
+  sourceUrl?: string;      // the page it was imported from, cleaned of tracking parameters
   createdAt: string;
   updatedAt: string;
 }
@@ -210,11 +212,12 @@ Routes (hash-based):
 /day/:date/:mealId      meal view
 /recipes                library
 /recipes/:id/edit       editor
+/ingredients            the user's own ingredients
 /settings               settings
 /setup                  first-run wizard
 ```
 
-- **Mobile:** bottom nav (Kalendarz / Przepisy / Ustawienia); everything else is bottom sheets
+- **Mobile:** bottom nav (Kalendarz / Przepisy / Składniki / Ustawienia); everything else is bottom sheets
   and pushed views. **Desktop:** narrow sidebar; day view + meal detail side by side. Same
   components, different container layout.
 - **Calendar:** horizontally scrollable week strip on top (each day: kcal progress ring),
@@ -231,6 +234,10 @@ Routes (hash-based):
 - **Recipe editor:** name; tags with autocomplete from existing; ingredient rows (autocomplete
   field → pick → amount+unit; macros auto-filled, pencil icon to override); live per-portion
   macro sum; instructions textarea; "Wklej przepis z internetu" → Gemini parse.
+- **Ingredients screen:** the user's own (`custom:*`) ingredients, with the number of recipes
+  using each; search over the same index the autocomplete uses; a toggle reveals the bundled
+  base read-only, where the only action is „Kopiuj i edytuj". Editing and creating happen in a
+  bottom sheet over the list, not in a route of their own.
 - **Autocomplete:** local over IndexedDB (no API). Diacritic-normalized index (ł→l, ą→a…),
   prefix matches ranked above infix, previously-used ingredients first.
 - **Settings:** goals (with Mifflin-St Jeor calculator, overridable), Gemini key, model, vault
@@ -640,4 +647,361 @@ Post-`v1.0.0`. Everything here came out of the end-user review recorded in STATE
       regenerated bundle and `DATA_VERSION` is bumped.
 - [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero console
       violations under `npm run docker:up`.
+- [ ] All UI text in Polish; code/comments in English.
+
+## Phase 10 — Składniki i pełna kopia danych
+
+Custom ingredients already exist and already sync — `source: 'custom'`, decision 53 — but they
+can only ever be *created*, from an empty autocomplete inside the recipe editor, and are never
+seen again except as a suggestion. A name typed wrong is permanent and pollutes every future
+search; a value typed wrong can only be worked around with a `macroOverride` repeated in every
+recipe that uses it; `aliases`, indexed since schema v2, has no way of ever being filled. This
+phase gives those rows a screen of their own.
+
+Two rules shape every task below.
+
+**Editing is for `custom:*` rows only.** A bundled `usda:*` row must not be edited in place, for
+two independent reasons: `importBundledNutrition` writes the whole bundle with `bulkPut`
+whenever `NUTRITION_DATA_VERSION` rises, so the edit would be silently overwritten at the next
+data refresh; and `syncSnapshot` deliberately uploads nothing but `custom` rows, so the edit
+would live on one device while every other one kept the old number. A wrong bundled entry is
+fixed in `data/pl-ingredients.tsv` and rebuilt (Phase 9 task 8), not patched locally.
+
+**No operation may change a number without saying so.** Recipe macros are computed live from
+the ingredient table, but a planned meal holds a frozen `macroSnapshot`, and the only path that
+rewrites one is `refreshFutureSnapshots`. Anything here that moves a recipe's per-portion macros
+must therefore raise the same „zaktualizować przyszłe dni?" question a recipe edit raises, or
+the recipe screen and the calendar will quietly disagree.
+
+The backup rides along (task 9) because it is the same subject seen from the other end: this
+phase is about the user's own data being editable, correctable and recoverable, and an export
+that leaves out the one thing nobody can retype from memory is none of those. The comfort
+items reported alongside it are Phase 11.
+
+### Tasks
+
+1. **`/ingredients` screen, a fourth item in the navigation** (bottom nav on mobile, sidebar on
+   desktop). It lists the user's own ingredients with name, `state`, per-100 g kcal and the
+   number of recipes using each — all four already available from `ingredientSearchIndex()`,
+   which returns the wire-shape ingredient alongside its `useCount`, so the list needs no new
+   query. A search field reuses `rankCandidates`, so the screen ranks exactly like the
+   autocomplete does. „Nowy składnik" creates one from here, which is what makes the existing
+   form reachable outside the recipe editor.
+
+2. **Editing a custom ingredient**, in a bottom sheet over the list: name, `state`, the four
+   per-100 g values, and — new — `aliases`, which improves both the autocomplete and Gemini's
+   ingredient matching and until now could not be filled at all. `CustomIngredientForm` is
+   extended rather than duplicated: the recipe editor keeps calling it for creation, the new
+   screen calls it for both.
+
+3. **The bundled base is visible but read-only, behind a toggle** („Pokaż składniki z bazy"),
+   with exactly one action on such a row: **„Kopiuj i edytuj"**, which opens the form seeded
+   with the source's values and `state`, a name of „<nazwa> (kopia)" and **no aliases**, and
+   saves a fresh `custom:<uuid>`. Copying the aliases would put two rows with the same alias
+   into one autocomplete and into Gemini's candidate list, which is the failure this phase is
+   supposed to reduce, not create. The copy carries no link back to its source: `Ingredient`
+   stays the shape it is.
+
+4. **Every macro field must be filled before an ingredient can be saved; `0` counts as filled.**
+   Today `CustomIngredientForm` maps an untouched field to `0`, so an ingredient saved „to
+   finish later" reads as 0 kcal in every recipe that uses it and nothing ever says so. The
+   draft therefore holds `number | null` (the decision-54 pattern) and saving stays disabled,
+   with a stated reason, until the name and all four numbers are present. This changes the
+   existing creation path in the recipe editor too, on purpose.
+
+5. **A macro change asks the same question a recipe edit asks.** After the four values change,
+   find the recipes using the ingredient, count the planned meals from today onwards, and offer
+   „zaktualizuj przyszłe dni" — running `refreshFutureSnapshots` for each affected recipe.
+   Declining leaves every snapshot alone. Days before today are never touched, by the same rule
+   that governs a recipe edit. A change to name, `state` or aliases alone moves no number and
+   raises no question.
+
+6. **Deleting is either free or a replacement — never a silent zero.** `deleteIngredient` is new
+   and refuses, in the repository and not only in the UI, to remove an ingredient a recipe still
+   refers to: an item pointing at a missing id falls back to `ZERO_MACROS`, which would drop a
+   recipe's numbers without a word.
+
+   - **Nothing uses it** → a plain confirmation, and it is gone.
+   - **Something uses it** → the dialog names **every** recipe that does, each a link into its
+     editor, and offers „Zastąp innym składnikiem" as the primary action: an autocomplete picks
+     the replacement, one transaction rewrites `ingredientId` in every matching item across
+     every recipe, and the old row is then deleted. The rest of each item — `amount`, `unit`,
+     `gramsPerUnit`, any `macroOverride` — is left exactly as it was; only the identity changes.
+     Affected recipes get a new `updatedAt`, and the whole operation ends in the task-5
+     question, because a replacement is a macro change.
+   - **Deleting an in-use ingredient without replacing it is not offered at all.** The recipe
+     list is the manual way out; when the last use is gone, the cheap path appears by itself.
+
+7. **Corrections must not outlive what they point at.** `corrections` maps a normalized Polish
+   name to an ingredient id and `resolveName` trusts it without checking that the id still
+   resolves, so a deleted ingredient would leave the next Gemini import matching a name to
+   nothing. A replacement repoints every correction to the new id; a plain delete removes the
+   corrections that named the deleted row.
+
+8. **`Ingredient` gains an optional `updatedAt`, and the ingredient merge stops preferring the
+   local copy.** Custom ingredients are resolved with `localWins`, whose comment states the
+   premise this phase removes: „entities that are only ever added to". Once they are editable,
+   two devices that both edited one row would silently keep whichever synced last, with no
+   conflict and no prompt. Every write from this phase stamps `updatedAt`, the resolver becomes
+   the timestamped one recipes already use, and a row with no timestamp counts as the older
+   side. The field is not indexed, so Dexie needs no new schema version and no migration; rows
+   written before this phase stay valid and simply lose to any edited copy.
+
+9. **The backup carries everything, including the vault.** „Kopia danych" is the way out for a
+   user who does not sync, and it currently leaves out the one thing that cannot be recreated
+   from memory: the Gemini API key. Decision 137 kept the vault out of the file; that is
+   reversed here, because a copy the user has to complete by hand afterwards is not a copy, and
+   because `syncSnapshot` already carries `vaultFile` verbatim to Drive — the exclusion only
+   ever weakened the offline path.
+
+   The file gains `vault` (the raw `vaultFile` text, exactly as the device holds it) and
+   `settings` (`recipeSort`, `recipeGrouped`). Everything else it needs is already there:
+   goals, the model, the encryption flag and the locale all live in `profile`.
+
+   What it still must not carry, each for its own reason: the bundled USDA rows (they belong to
+   the build and are re-imported on first run), `deviceId` (it keys the per-device Gemini tally,
+   and two devices sharing one id would corrupt a counter that merges by taking the larger
+   value), `driveAccountLabel` (it describes a connection the restoring device may not have),
+   and the sync bookkeeping — `syncBaseline` and `driveFiles` — which `restoreBackup` already
+   clears, and which would otherwise let the next merge read a restored row as a deletion.
+
+   Restoring a vault reuses the swap that already exists: the previous `vaultFile` is kept in
+   `vaultFileReplaced` (decisions 93 and 150) so the exchange can be undone, which matters
+   precisely because the restored vault may carry a different master password and cannot then
+   be opened on this device at all. `googleSub` from the file is **not** adopted over a
+   `googleSub` this device already has, so restoring a copy onto a machine connected to another
+   account does not fake the wrong-account check.
+
+   `BACKUP_VERSION` stays at 1, by the rule the file itself states: an older build reading a
+   newer file drops sections it does not know, which is incomplete, not wrong — and refusing
+   the whole file would take a user's recipes away to protect them from missing a key.
+
+   The export must say, at the moment of export and not in small print, what the file now
+   holds: with vault encryption on, the key travels encrypted and the restore asks for nothing
+   extra; with encryption **off**, the key is in the file in the clear and the file must be
+   treated like a password.
+
+10. **Sync and merge coverage for what this phase introduces**: an edited ingredient converging
+    on the newer copy rather than the local one; a deletion propagating to the other device
+    instead of being resurrected by it — `applyMergedData` already treats the merged custom map
+    as the complete picture and deletes anything missing from it, which is the behaviour to pin
+    down with a test; and a replacement arriving as a recipe change and an ingredient deletion
+    in the same sync.
+
+### Acceptance criteria
+
+- [ ] The screen lists every `custom:*` ingredient with a correct count of the recipes using it,
+      and the count matches what the recipe editor's autocomplete reports.
+- [ ] A `usda:*` row offers no way to change its values; „Kopiuj i edytuj" produces a `custom:*`
+      row that survives a forced re-import of the bundle, and the original is untouched.
+- [ ] An ingredient cannot be saved with any macro field left blank, and an explicitly entered
+      `0` saves — including from the recipe editor's creation path.
+- [ ] Changing an ingredient's macros offers „zaktualizuj przyszłe dni"; accepting rewrites the
+      snapshots of every affected recipe from today onwards, declining rewrites none, and days
+      before today are provably unchanged either way (test).
+- [ ] Deleting an unused ingredient needs one confirmation; deleting a used one lists every
+      recipe that uses it and cannot proceed without a replacement, including when attempted
+      through the repository directly.
+- [ ] After a replacement, no recipe item refers to the old id, every `amount`, `unit`,
+      `gramsPerUnit` and `macroOverride` is unchanged, and no correction points at the deleted
+      ingredient (test).
+- [ ] Two devices editing the same custom ingredient converge on the newer edit, and a deletion
+      on one device is not resurrected by the other (merge tests).
+- [ ] A backup taken on one device and restored on an empty one reproduces the recipes, the
+      custom ingredients, the days, the goals, the model, the list settings and the Gemini key,
+      with no step left for the user beyond entering the master password when the key is first
+      needed.
+- [ ] Restoring a backup whose vault has a different master password can be undone, and the
+      device's own `googleSub`, `deviceId` and Drive account label survive the restore.
+- [ ] Exporting with vault encryption off states plainly that the file contains the API key in
+      the clear; exporting with it on states that the key travels encrypted.
+- [ ] A file exported by this version still restores in a build that predates it, minus the
+      sections that build does not know.
+- [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero
+      console violations under `npm run docker:up`.
+- [ ] All UI text in Polish; code/comments in English.
+
+## Phase 11 — What daily use reported
+
+Six things reported from real use after 1.0. They are grouped into one phase because they
+share a shape rather than a subject: each is a place where the app is doing the right thing and
+saying the wrong one, or saying nothing at all. None of them touches a stored number, which is
+what separates them from Phase 10 and lets them be built in any order.
+
+Three of them — the install box, the missing wizard and the API-key address that is not a link
+— name something the user cannot reach from where they are standing. One is the app doing long
+work in silence. The last two are comfort it never offered: a dark theme, and the way back to
+the page a recipe came from.
+
+### Tasks
+
+1. **The install box says nothing when it has nothing to offer.** Reported from real use: on
+   Android the section explains how to install the app while no „Zainstaluj aplikację" button
+   appears, so the screen is a dead end that reads like a broken feature. The section renders
+   only when it can actually offer something — the captured prompt, or the iOS instruction
+   („Udostępnij → Do ekranu początkowego"), which is genuinely actionable — and renders
+   nothing otherwise. iOS is recognised without a UA string by `'standalone' in navigator`,
+   the same signal `isStandalone()` already uses. The offline note is not install advice and
+   stays when it is true.
+
+   **And fix the reason the button was missing, once it is known.** Reported against Chrome on
+   Android at https://eatmyway.gorny.dev, which is the case that cannot be explained away:
+   `beforeinstallprompt` is Chromium's own event, so a missing button there is either a
+   condition Chrome deliberately imposes or a real installability failure. The static
+   configuration has already been checked and is **not** the cause (STATE.md decision 190), so
+   the phase starts from the device, in this order:
+
+   - **Rule out the two conditions Chrome imposes by design.** It fires the event in neither an
+     incognito tab nor for an app that is already installed — and in the second case the tab
+     also fails `display-mode: standalone`, so today's copy tells a user who *has* installed
+     the app that their browser cannot install it. A normal tab and a device with no Eat My
+     Way icon are the baseline for every check below.
+   - **Read the browser's own verdict** rather than guessing: Lighthouse's installability
+     audit against the live URL, and `chrome://inspect` from a desktop for the console of the
+     real tab. Chrome states which criterion fails, if one does.
+   - **Then fix what it names.** A failing criterion is a bug in the manifest, the icons or the
+     service worker and is fixed here; Chrome's engagement heuristic (the event can wait for a
+     real visit rather than the first paint) is not a bug and is recorded as the answer.
+
+   Whatever the verdict, the „already installed, opened in a tab" state gets its own copy
+   instead of the dead-end sentence — best-effort, via `navigator.getInstalledRelatedApps()`
+   where the browser has it, and by saying nothing where it does not.
+
+2. **The first-run wizard also opens on a database that has never been used.** Today it is
+   gated on one thing only — a sync that found an empty `appDataFolder` — so a user who never
+   connects Drive never sees it, and lands on the calendar with default goals of
+   2000/100/250/70, no Gemini key, and nothing having asked. That is PLAN.md's own condition
+   working as written, and it is a gap that grew with task 9: the user without Drive is
+   exactly the user the export exists for.
+
+   The wizard therefore also opens when the local database has never been used — no recipes,
+   no days, no vault, and a profile still identical to `DEFAULT_PROFILE` — and the Drive step
+   becomes skippable („Pominę na razie"), leaving goals and the optional Gemini key.
+
+   Two details decide whether this is an improvement or an irritation:
+
+   - **It must not greet a device that is about to pull an account.** A second device is also
+     „never used" for the few seconds before its first sync lands, so the local trigger waits
+     until `resumeSync()` has had its say; a sync that pulls data cancels the wizard.
+   - **Skipping must stick.** The Drive-driven flag lives in memory and is cleared by the
+     wizard, which is enough when a sync sets it every time. A locally triggered wizard needs
+     a `meta` key instead, or every reload reopens it. `meta` never travels to Drive, which is
+     right here: it records that *this browser* has been through the wizard.
+
+3. **Connecting to Drive must look like work in progress, not like a dead button.** Reported
+   from real use: signing in and syncing announce themselves with one grey line
+   („Synchronizacja z Dyskiem…"), while the buttons that started it merely go to
+   `opacity-50`. A dimmed button with static text is indistinguishable from a broken one, and
+   the first sync after connecting is the longest one the app ever runs.
+
+   - **A shared spinner component**, used in the sync indicator, in the Drive status row and
+     inside the buttons that are working. It animates from a class in the bundled stylesheet,
+     never an inline `style` — the production CSP has no `'unsafe-inline'` for styles
+     (decision 71) — carries `aria-hidden="true"` so the live region is not read twice, and
+     stands still under `prefers-reduced-motion`.
+   - **Feedback where the user is looking.** „Połącz Dysk Google" and „Synchronizuj teraz"
+     keep their place and show the spinner with a label of their own („Łączenie…",
+     „Synchronizacja…") instead of only dimming.
+   - **Name the step, since there is no percentage to show.** Drive reports no totals, but the
+     two stages are distinguishable and feel different: waiting on the Google window, and
+     then reading and writing the account's files. `SyncPhase` (or a label beside it) gains
+     that distinction, and the connect path sets it around the backend's `authenticate` call.
+   - **A finished sync stays silent.** The indicator's existing rule holds — a badge that is
+     always lit is one nobody reads. What changes is how loud „in progress" is, not how long
+     it lasts.
+
+4. **A dark theme, chosen in Settings.** The groundwork is already done and that is what keeps
+   this small: every colour in the app comes from seven tokens in `@theme` (`src/app.css`), so
+   a dark theme is those seven redefined under `:root[data-theme="dark"]` in `@layer base` —
+   plain CSS in the bundled stylesheet, which the production CSP allows and an inline `style`
+   would not.
+
+   - **Three choices**: „Jasny", „Ciemny", „Jak system", with the system setting as the
+     default and `prefers-color-scheme` deciding it.
+   - **Stored in `meta`, not in `Profile`**, by the same argument that put `recipeSort` there:
+     how a screen is drawn belongs to the device in front of you, not to the account. It
+     therefore travels in the backup's `settings` section (Phase 10 task 9) and never to Drive.
+   - **Applied before the first paint.** This CSP allows no inline bootstrap script, so
+     `main.ts` is the earliest possible point; the choice is mirrored into `localStorage` —
+     every access wrapped, as decision 173 requires — so that read is synchronous, while
+     IndexedDB stays the source of truth.
+   - **`index.html` hardcodes `<meta name="color-scheme" content="light">` and a light
+     `theme-color`.** Both have to follow the theme, or the browser's own chrome, its form
+     controls and its scrollbars stay light around a dark app.
+   - **Re-check, do not assume, every colour that is not a token**: `--color-ink-muted` at 52%
+     lightness fails on a dark surface, and the literal Tailwind colours in the app — the
+     amber warnings, the red delete button, the dialogs' `backdrop:bg-black/40` — plus the
+     SVG bars and rings that carry their own fills, all need looking at.
+   - Verified in the container under the production CSP, not with `npm run dev`, because a
+     stylesheet is exactly what `dev` does not test faithfully.
+
+5. **An imported recipe remembers where it came from.** `importRecipe` is handed the link, uses
+   it, and drops it: `ImportedRecipe` has no field for it, so a recipe that came from a page
+   can never be traced back to that page. `Recipe` gains an optional `sourceUrl`, which the
+   editor fills when the import began with a link and leaves empty when it began with pasted
+   text or with a hand-written recipe. Being optional, it costs no schema version, no
+   migration, and nothing in the Drive format: `readRecipesDocument` keeps the fields it does
+   not know, and the backup carries recipes verbatim.
+
+   Shown as a „Źródło" row in the recipe editor and in the meal view's recipe section, as a
+   link the user can follow back to the original — and can also clear, because a recipe edited
+   beyond recognition no longer comes from anywhere. It shows the **host**, not the whole URL:
+   a 200-character link is unreadable on a phone. `target="_blank"` with
+   `rel="noopener noreferrer"`.
+
+   **The URL is cleaned before it is stored**, by a `cleanSourceUrl` beside `normalizeUrl` in
+   `gemini/parse.ts`, with unit tests:
+
+   - A **deny-list**, never an allow-list: `utm_*` and the known click ids — `fbclid`,
+     `gclid`, `dclid`, `msclkid`, `twclid`, `yclid`, `igshid`, `mc_cid`, `mc_eid`, `_ga`,
+     `ref_src`, `si`. Anything else stays. A query parameter is often the recipe's identity
+     (`?p=1234`), so dropping what we do not recognise would break the link the row exists to
+     offer.
+   - The path is never rewritten and the fragment is kept — `#skladniki` is part of where the
+     recipe is on the page.
+   - **Only `http` and `https` are ever stored.** The value comes from something the user
+     pasted and ends up in an `href`, so any other scheme is refused outright rather than
+     rendered.
+
+6. **The Gemini key field links to where a key is made.** Both screens that ask for the key name
+   the address and neither makes it clickable: Settings says „Klucz utworzysz w Google AI Studio
+   (aistudio.google.com)" as plain text, and the wizard's step 4 puts
+   `aistudio.google.com/apikey` in a `<span>`. PLAN.md's own wizard spec asks for „link to AI
+   Studio" (Screens & navigation, first-run wizard step 4), so this is an unrecorded deviation
+   being closed rather than a new feature.
+
+   Both become real links to **`https://aistudio.google.com/apikey`** — the page that creates a
+   key, not the studio's front door, where finding it is a further hunt. Same treatment as the
+   recipe source row in task 5: `target="_blank"` with `rel="noopener noreferrer"`, placed
+   directly under the input, which is where someone is standing when they discover they have no
+   key. This widens nothing in the CSP: the policy governs what the page loads and connects to,
+   not where a link may take the browser.
+
+### Acceptance criteria
+
+- [ ] On a browser that offers no install prompt and is not iOS, the settings screen shows no
+      install instructions at all; on iOS the „Do ekranu początkowego" instruction is still
+      there, and where the prompt exists the button still works.
+- [ ] A fresh browser profile with no Drive connection reaches the wizard, can skip the Drive
+      step, and does not see it again after skipping — while a second device that syncs an
+      existing account is never sent there.
+- [ ] Connecting Drive shows moving feedback on the button that was pressed, names the stage it
+      is in, and leaves nothing lit once the sync finishes; the animation stops under
+      `prefers-reduced-motion` and the status is announced once, not twice.
+- [ ] The theme choice survives a reload and is applied before the first paint, „Jak system"
+      follows the OS setting live, and the browser chrome, form controls and scrollbars are
+      dark alongside the app.
+- [ ] Every screen is legible in the dark theme, including the amber sync warnings, the red
+      delete button, the macro bars and rings, and the modal backdrops — checked under
+      `npm run docker:up` with zero CSP violations.
+- [ ] A recipe imported from a link stores its cleaned source and offers it as a link showing
+      the host; one imported from pasted text or written by hand shows no source row, and the
+      row can be cleared.
+- [ ] `cleanSourceUrl` strips `utm_*` and the known click ids while leaving every other
+      parameter, the path and the fragment untouched, and refuses any scheme that is not
+      `http`/`https` (tests).
+- [ ] Both the settings key field and the wizard's key step offer a working link straight to
+      the AI Studio page that creates a key.
+- [ ] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero
+      console violations under `npm run docker:up`.
 - [ ] All UI text in Polish; code/comments in English.
