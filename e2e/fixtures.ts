@@ -18,6 +18,13 @@ export interface DeviceOptions {
    * context that claims touch.
    */
   touch?: boolean;
+  /**
+   * Leave the first-run wizard where it is. Every device this fixture opens is a browser that
+   * has genuinely never been used, which is exactly what Phase 11 made the wizard open on — so
+   * by default it is skipped here, the way a returning user's browser has already skipped it.
+   * The specs that are *about* the wizard set this and drive it themselves.
+   */
+  keepSetup?: boolean;
 }
 
 interface Fixtures {
@@ -61,9 +68,21 @@ export const test = base.extend<Fixtures>({
       // else; an uncaught one is a failure even when every assertion passes.
       page.on('pageerror', (error) => pageErrors.push(error.message));
 
-      await page.goto(`${baseURL ?? ''}/#${options.route ?? '/settings'}`);
-      // The settings screen is the default landing spot; anywhere else, the caller asserts.
-      if (options.route === undefined) {
+      const route = options.route ?? '/settings';
+      await page.goto(`${baseURL ?? ''}/#${route}`);
+
+      // A fresh browser meets the first-run wizard (Phase 11 task 2). Skipping it writes the
+      // `setupDone` meta key, so it stays skipped for the rest of the test.
+      if (options.keepSetup !== true) {
+        const skip = page.getByRole('button', { name: 'Pomiń kreator' });
+        await skip.waitFor({ state: 'visible' });
+        await skip.click();
+        await page.goto(`${baseURL ?? ''}/#${route}`);
+      }
+
+      // The settings screen is the default landing spot; anywhere else, the caller asserts —
+      // as does a device that kept the wizard, which is about to be redirected off it.
+      if (options.route === undefined && options.keepSetup !== true) {
         await expect(page.getByRole('heading', { name: 'Dysk Google' })).toBeVisible();
       }
       return page;

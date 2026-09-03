@@ -131,7 +131,7 @@
     </p>
 
     {#if error !== ''}
-      <p class="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+      <p class="rounded-lg border border-(--color-danger-border) bg-(--color-danger-surface) px-3 py-2 text-sm text-(--color-danger)">
         {error}
       </p>
     {/if}

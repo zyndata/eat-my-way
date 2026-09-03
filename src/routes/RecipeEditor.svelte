@@ -23,7 +23,7 @@
   import { ingredientIndex } from '../lib/ingredients';
   import { newId } from '../lib/ids';
   import { todayDate } from '../lib/dates';
-  import { pluralPl } from '../lib/text';
+  import { pluralPl, sourceHost } from '../lib/text';
   import { nutritionStatus } from '../lib/nutrition/status.svelte';
   import { rememberCorrection, type ImportedRecipe } from '../lib/gemini/import';
 
@@ -195,13 +195,18 @@
     draft.items = [...draft.items, ...result.items];
     if (draft.name.trim() === '' && result.name !== '') draft.name = result.name;
     if (draft.instructions.trim() === '') draft.instructions = result.instructions;
+    if (draft.sourceUrl === '' && result.sourceUrl !== undefined) {
+      draft.sourceUrl = result.sourceUrl;
+    }
     importedUnmatched = result.unmatched;
     importedPortions = result.sourcePortions;
     imported = true;
   }
 
   async function saveCustomIngredient(rowId: string, ingredient: Ingredient): Promise<void> {
-    await repository.putIngredient(ingredient);
+    // `saveCustomIngredient` rather than `putIngredient`: it stamps the `updatedAt` the
+    // ingredient merge needs now that these rows can be edited (STATE.md decision 182).
+    await repository.saveCustomIngredient(ingredient);
     scheduleSync();
     // The autocomplete keeps an in-memory snapshot — see STATE.md decision 39.
     ingredientIndex.invalidate();
@@ -402,7 +407,7 @@
           <dd class="font-medium">{sum.fat.toFixed(1)} g</dd>
         </dl>
         {#if incomplete.length > 0}
-          <p class="pt-2 text-xs text-red-700">
+          <p class="pt-2 text-xs text-(--color-danger)">
             {incomplete.length}
             {pluralPl(incomplete.length, {
               one: 'składnik nie ma',
@@ -413,6 +418,28 @@
           </p>
         {/if}
       </section>
+
+      {#if draft.sourceUrl !== ''}
+        <!-- The host, not the URL: a 200-character link is unreadable on a phone, and the host
+             is what says whether the page is worth opening (STATE.md decision 196). -->
+        <section class="rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
+          <h2 class="text-sm font-semibold">Źródło</h2>
+          <p class="flex flex-wrap items-baseline gap-2 pt-1 text-sm">
+            <a
+              class="font-medium text-(--color-accent) underline"
+              href={draft.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer">{sourceHost(draft.sourceUrl)}</a>
+            <button
+              type="button"
+              class="text-xs text-(--color-ink-muted) underline"
+              onclick={() => (draft.sourceUrl = '')}
+            >
+              Usuń źródło
+            </button>
+          </p>
+        </section>
+      {/if}
 
       <label class="block text-sm font-medium">
         Instrukcje
@@ -458,7 +485,7 @@
         {#if existing !== undefined}
           <button
             type="button"
-            class="ml-auto rounded-lg border border-red-600 px-3 py-2 text-sm font-medium text-red-700"
+            class="ml-auto rounded-lg border border-(--color-danger-border) px-3 py-2 text-sm font-medium text-(--color-danger)"
             onclick={() => (deleteOpen = true)}
           >
             Usuń przepis

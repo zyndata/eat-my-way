@@ -2,6 +2,7 @@ import Dexie, { type Table, type Transaction } from 'dexie';
 import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
 import type { IngredientCorrection } from './sync/documents';
 import type { RecipeSort } from './recipes';
+import type { ThemeChoice } from './theme.svelte';
 import { normalizeKey } from './text';
 
 /**
@@ -104,6 +105,20 @@ export interface MetaValues {
    */
   recipeSort: RecipeSort;
   recipeGrouped: boolean;
+  /**
+   * „Jasny" / „Ciemny" / „Jak system" (Phase 11 task 4). In `meta` for the same reason
+   * `recipeSort` is: it describes the screen in front of you, not the account, so it never
+   * travels to Drive — and it does travel in the backup, which rebuilds one device.
+   */
+  theme: ThemeChoice;
+  /**
+   * This browser has been through the first-run wizard (Phase 11 task 2). The Drive-driven
+   * `syncState.setupNeeded` can live in memory because a sync re-sets it on every load; the
+   * local trigger has nothing to re-set it, so without this key every reload would reopen the
+   * wizard for a user who skipped it. It never travels to Drive, which is right: it records
+   * what happened on this device (STATE.md decision 193).
+   */
+  setupDone: boolean;
 }
 
 export type MetaKey = keyof MetaValues;
@@ -183,9 +198,15 @@ export function toIngredientRecord(ingredient: Ingredient): IngredientRecord {
   return { ...ingredient, ...ingredientIndexKeys(ingredient) };
 }
 
-/** Stored row -> wire shape, with the local-only index keys dropped. */
+/**
+ * Stored row -> wire shape, with the local-only index keys dropped.
+ *
+ * `updatedAt` is absent on every row written before Phase 10 and on every bundled one, and it
+ * stays absent here rather than being invented: an unknown edit time must lose a merge, and a
+ * fabricated one would win it.
+ */
 export function fromIngredientRecord(record: IngredientRecord): Ingredient {
-  return {
+  const ingredient: Ingredient = {
     id: record.id,
     name: record.name,
     aliases: record.aliases,
@@ -193,6 +214,8 @@ export function fromIngredientRecord(record: IngredientRecord): Ingredient {
     per100g: record.per100g,
     source: record.source
   };
+  if (record.updatedAt !== undefined) ingredient.updatedAt = record.updatedAt;
+  return ingredient;
 }
 
 export class EatMyWayDb extends Dexie {

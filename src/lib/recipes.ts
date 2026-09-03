@@ -278,6 +278,8 @@ export interface RecipeDraft {
   instructions: string;
   tagLabels: string[];
   items: DraftItem[];
+  /** The page this recipe came from, or `''`. Cleaned before it ever reaches the draft. */
+  sourceUrl: string;
 }
 
 export function emptyDraftItem(id: string): DraftItem {
@@ -293,7 +295,7 @@ export function emptyDraftItem(id: string): DraftItem {
 }
 
 export function emptyDraft(): RecipeDraft {
-  return { name: '', instructions: '', tagLabels: [], items: [] };
+  return { name: '', instructions: '', tagLabels: [], items: [], sourceUrl: '' };
 }
 
 /** `null` and non-finite values count as zero once the draft leaves the editor. */
@@ -323,7 +325,8 @@ export function draftFromRecipe(
     name: recipe.name,
     instructions: recipe.instructions,
     tagLabels: [...labels],
-    items: recipe.items.map((item) => draftFromRecipeItem(item, nextId()))
+    items: recipe.items.map((item) => draftFromRecipeItem(item, nextId())),
+    sourceUrl: recipe.sourceUrl ?? ''
   };
 }
 
@@ -382,6 +385,7 @@ export function draftToRecipe(
   draft: RecipeDraft,
   options: { id: string; createdAt?: string | undefined; now: string }
 ): Recipe {
+  const source = draft.sourceUrl.trim();
   return {
     id: options.id,
     name: draft.name.trim(),
@@ -389,7 +393,10 @@ export function draftToRecipe(
     items: toRecipeItems(draft.items),
     tags: toTagKeys(draft.tagLabels),
     createdAt: options.createdAt ?? options.now,
-    updatedAt: options.now
+    updatedAt: options.now,
+    // Omitted rather than written as `''`, like every other optional field here: an absent
+    // source and an empty one must not be two different things in the Drive JSON.
+    ...(source === '' ? {} : { sourceUrl: source })
   };
 }
 
@@ -431,6 +438,9 @@ export function duplicateRecipe(
     })),
     tags: [...recipe.tags],
     createdAt: options.now,
-    updatedAt: options.now
+    updatedAt: options.now,
+    // A variant of a recipe still came from the page the original came from, and the row can
+    // be cleared on the copy if the variant has drifted too far to claim it.
+    ...(recipe.sourceUrl === undefined ? {} : { sourceUrl: recipe.sourceUrl })
   };
 }

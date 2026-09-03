@@ -77,6 +77,19 @@ describe('first sync', () => {
     });
   });
 
+  it('names the two waits in order, so a button can say which one it is in', async () => {
+    // Drive reports no totals, so the stage names are the only progress there is to report
+    // (STATE.md decision 194) — and „waiting on Google" must come before „reading your files",
+    // or the label would be wrong for the whole of the longest wait the app ever has.
+    const drive = new FakeDrive();
+    const a = device(drive);
+    const stages: string[] = [];
+
+    await a.engine.sync({ onstage: (stage) => stages.push(stage) });
+
+    expect(stages).toEqual(['authenticating', 'transferring']);
+  });
+
   it('pulls the whole dataset onto a fresh device', async () => {
     const drive = new FakeDrive();
     const a = device(drive);
@@ -265,6 +278,99 @@ describe('two devices', () => {
     await b.engine.sync({ resolveConflicts: neverAsks });
     expect((await b.repository.getIngredient('custom:1'))?.name).toBe('Sos babci');
     expect(await b.repository.getIngredient('usda:999')).toBeUndefined();
+  });
+
+  it('converges on the newer edit of a custom ingredient, not on the local one', async () => {
+    const [a, b] = await paired();
+
+    const base = {
+      id: 'custom:1',
+      name: 'Twarog poltlusty',
+      aliases: [],
+      state: 'raw' as const,
+      per100g: macros(130, 18, 3, 4),
+      source: 'custom' as const
+    };
+    await a.repository.saveCustomIngredient(base, '2026-09-10T08:00:00.000Z');
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    // Both devices correct the same row; B's edit is the later one.
+    await a.repository.saveCustomIngredient(
+      { ...base, name: 'Twaróg półtłusty' },
+      '2026-09-11T08:00:00.000Z'
+    );
+    await b.repository.saveCustomIngredient(
+      { ...base, name: 'Twaróg półtłusty 3%' },
+      '2026-09-12T08:00:00.000Z'
+    );
+
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+    await a.engine.sync({ resolveConflicts: neverAsks });
+
+    expect((await a.repository.getIngredient('custom:1'))?.name).toBe('Twaróg półtłusty 3%');
+    expect((await b.repository.getIngredient('custom:1'))?.name).toBe('Twaróg półtłusty 3%');
+  });
+
+  it('propagates a deleted custom ingredient rather than resurrecting it', async () => {
+    const [a, b] = await paired();
+
+    await a.repository.saveCustomIngredient({
+      id: 'custom:1',
+      name: 'Sos babci',
+      aliases: [],
+      state: 'cooked',
+      per100g: macros(300, 2, 5, 30),
+      source: 'custom'
+    });
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+    expect(await b.repository.getIngredient('custom:1')).toBeDefined();
+
+    await a.repository.deleteIngredient('custom:1');
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    // B still held the row, and must not push it back onto A.
+    expect(await b.repository.getIngredient('custom:1')).toBeUndefined();
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    expect(await a.repository.getIngredient('custom:1')).toBeUndefined();
+  });
+
+  it('carries a replacement across as a recipe change and a deletion in one sync', async () => {
+    const [a, b] = await paired();
+
+    for (const ingredient of [
+      { id: 'custom:1', name: 'Twarog' },
+      { id: 'custom:2', name: 'Twaróg półtłusty' }
+    ]) {
+      await a.repository.saveCustomIngredient({
+        ...ingredient,
+        aliases: [],
+        state: 'raw',
+        per100g: macros(130, 18, 3, 4),
+        source: 'custom'
+      });
+    }
+    await a.repository.saveRecipe(
+      makeRecipe({ items: [{ ingredientId: 'custom:1', amount: 200, unit: 'g' }] })
+    );
+    await a.repository.putCorrection({
+      nameKey: 'twarog',
+      ingredientId: 'custom:1',
+      updatedAt: '2026-09-01T10:00:00.000Z'
+    });
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    await a.repository.replaceIngredient('custom:1', 'custom:2', '2026-09-12T08:00:00.000Z');
+    await a.engine.sync({ resolveConflicts: neverAsks });
+    await b.engine.sync({ resolveConflicts: neverAsks });
+
+    expect(await b.repository.getIngredient('custom:1')).toBeUndefined();
+    expect((await b.repository.getRecipe('recipe-1'))?.items[0]?.ingredientId).toBe('custom:2');
+    expect((await b.repository.allCorrections())[0]?.ingredientId).toBe('custom:2');
   });
 
   it('sums the Gemini tally from both devices instead of letting one overwrite the other', async () => {

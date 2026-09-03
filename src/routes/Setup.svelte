@@ -2,11 +2,18 @@
   import { push } from 'svelte-spa-router';
   import Screen from '../lib/components/Screen.svelte';
   import GoalsForm from '../lib/components/GoalsForm.svelte';
+  import Spinner from '../lib/components/Spinner.svelte';
   import type { Macros } from '../lib/types';
   import { DEFAULT_GOALS } from '../lib/db';
   import { repository } from '../lib/repository';
-  import { testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
-  import { connectDrive, syncNow, syncState, useDifferentAccount } from '../lib/sync/state.svelte';
+  import { AI_STUDIO_KEY_URL, testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
+  import {
+    STAGE_LABELS,
+    connectDrive,
+    syncNow,
+    syncState,
+    useDifferentAccount
+  } from '../lib/sync/state.svelte';
   import { createVault, saveSecrets, vaultState } from '../lib/vault/session.svelte';
 
   /**
@@ -16,6 +23,11 @@
    * because the key goes inside the vault the password protects. Every step after Drive is
    * skippable — a user who wants to start planning meals immediately can, and finish this in
    * settings later.
+   *
+   * From Phase 11 the wizard is also reachable without Drive at all (`isNeverUsed`, in
+   * `App.svelte`), so leaving it writes the `setupDone` meta key: the Drive-driven flag lives
+   * in memory and is re-set by every sync, and a locally triggered wizard has nothing to re-set
+   * it — without the key, every reload would reopen it (STATE.md decision 193).
    */
 
   type Step = 'drive' | 'profile' | 'password' | 'key' | 'goals' | 'done';
@@ -34,9 +46,14 @@
 
   let goals = $state<Macros>({ ...DEFAULT_GOALS });
 
-  /** Leaving the wizard clears the flag, so it does not reappear on the next screen. */
+  /**
+   * Leaving the wizard clears the in-memory flag and records, on this device, that the wizard
+   * has been through. `meta` never travels to Drive, which is exactly right: what is recorded
+   * is that *this browser* has been offered the wizard, not that the account has.
+   */
   function leave(target: string): void {
     syncState.setupNeeded = false;
+    void repository.setMeta('setupDone', true);
     void push(target);
   }
 
@@ -133,7 +150,7 @@
       </p>
 
       {#if syncState.foreignAccount !== null}
-        <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+        <div class="mt-3 rounded-lg border border-(--color-warn-border) bg-(--color-warn-surface) p-3 text-sm">
           <p class="font-medium">To konto Google jest inne niż to, z którego pochodzą dane tutaj.</p>
           <p class="pt-1 text-(--color-ink-muted)">
             Nie zakładamy po cichu nowego profilu. Wybierz świadomie.
@@ -153,17 +170,22 @@
       {/if}
 
       {#if error !== ''}
-        <p class="pt-2 text-sm text-red-700" role="alert">{error}</p>
+        <p class="pt-2 text-sm text-(--color-danger)" role="alert">{error}</p>
       {/if}
 
       <div class="flex flex-wrap gap-2 pt-4">
         <button
           type="button"
-          class={buttonClass}
+          class="{buttonClass} inline-flex items-center gap-2"
           disabled={!syncState.configured || syncState.phase === 'syncing'}
           onclick={() => void connect()}
         >
-          {syncState.phase === 'syncing' ? 'Łączenie…' : 'Połącz Dysk Google'}
+          {#if syncState.phase === 'syncing'}
+            <Spinner />
+            {syncState.stage === null ? 'Łączenie…' : STAGE_LABELS[syncState.stage]}
+          {:else}
+            Połącz Dysk Google
+          {/if}
         </button>
         <button type="button" class={secondaryClass} onclick={() => (step = 'password')}>
           Pomiń — tylko to urządzenie
@@ -210,7 +232,7 @@
           <input class={inputClass} type="password" autocomplete="new-password" bind:value={repeat} />
         </label>
       {:else}
-        <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+        <div class="mt-3 rounded-lg border border-(--color-warn-border) bg-(--color-warn-surface) p-3 text-sm">
           <p class="font-medium">Sejf bez szyfrowania</p>
           <p class="pt-1 text-(--color-ink-muted)">
             Klucz Gemini będzie zapisany otwartym tekstem na tym urządzeniu i na Twoim Dysku
@@ -224,7 +246,7 @@
       {/if}
 
       {#if error !== ''}
-        <p class="pt-2 text-sm text-red-700" role="alert">{error}</p>
+        <p class="pt-2 text-sm text-(--color-danger)" role="alert">{error}</p>
       {/if}
 
       <div class="flex flex-wrap gap-2 pt-4">
@@ -236,8 +258,13 @@
       <h2 class="text-base font-semibold">4. Klucz API Gemini</h2>
       <p class="pt-2 text-sm text-(--color-ink-muted)">
         Klucz jest potrzebny tylko do importu przepisów z internetu. Utworzysz go w Google AI
-        Studio — <span class="font-medium">aistudio.google.com/apikey</span>. Sprawdzimy go od
-        razu i zapiszemy dopiero, gdy zadziała.
+        Studio —
+        <a
+          class="font-medium text-(--color-accent) underline"
+          href={AI_STUDIO_KEY_URL}
+          target="_blank"
+          rel="noopener noreferrer">aistudio.google.com/apikey</a>. Sprawdzimy go od razu i
+        zapiszemy dopiero, gdy zadziała.
       </p>
       <label class="block pt-3 text-sm font-medium">
         Klucz API
@@ -246,7 +273,7 @@
 
       {#if keyResult !== null}
         <p
-          class="pt-2 text-sm {keyResult.status === 'ok' ? 'text-(--color-ink-muted)' : 'text-red-700'}"
+          class="pt-2 text-sm {keyResult.status === 'ok' ? 'text-(--color-ink-muted)' : 'text-(--color-danger)'}"
           role="status"
         >
           {keyResult.message}

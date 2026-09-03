@@ -7,6 +7,7 @@ import {
   draftToRecipe,
   budgetFit,
   duplicateRecipe,
+  emptyDraft,
   emptyDraftItem,
   filterByTags,
   fitToBudget,
@@ -20,6 +21,7 @@ import {
   toRecipeItem,
   toRecipeItems,
   type DraftItem,
+  type RecipeDraft,
   type RecipeListEntry
 } from './recipes';
 import type { Macros, Tag } from './types';
@@ -204,7 +206,8 @@ describe('draftToRecipe', () => {
         name: '  Jajecznica  ',
         instructions: '  Usmaż.  ',
         tagLabels: ['Śniadanie', 'sniadanie', ' '],
-        items: [draft()]
+        items: [draft()],
+        sourceUrl: ''
       },
       { id: 'r1', createdAt: '2026-01-01T00:00:00.000Z', now: '2026-09-01T00:00:00.000Z' }
     );
@@ -218,15 +221,19 @@ describe('draftToRecipe', () => {
 
   it('stamps createdAt for a new recipe', () => {
     const recipe = draftToRecipe(
-      { name: 'Nowy', instructions: '', tagLabels: [], items: [] },
+      { name: 'Nowy', instructions: '', tagLabels: [], items: [], sourceUrl: '' },
       { id: 'r2', now: '2026-09-01T00:00:00.000Z' }
     );
     expect(recipe.createdAt).toBe('2026-09-01T00:00:00.000Z');
   });
 
   it('only a blank name blocks saving', () => {
-    expect(canSaveDraft({ name: ' ', instructions: '', tagLabels: [], items: [] })).toBe(false);
-    expect(canSaveDraft({ name: 'X', instructions: '', tagLabels: [], items: [] })).toBe(true);
+    expect(
+      canSaveDraft({ name: ' ', instructions: '', tagLabels: [], items: [], sourceUrl: '' })
+    ).toBe(false);
+    expect(
+      canSaveDraft({ name: 'X', instructions: '', tagLabels: [], items: [], sourceUrl: '' })
+    ).toBe(true);
   });
 });
 
@@ -240,6 +247,47 @@ describe('draftFromRecipe', () => {
     expect(toRecipeItems(loaded.items)).toEqual(recipe.items);
   });
 });
+
+describe('the recipe source', () => {
+  const now = '2026-09-03T00:00:00.000Z';
+
+  it('survives the editor unchanged', () => {
+    const recipe = makeRecipe({ sourceUrl: 'https://kwestiasmaku.com/przepis/zurek' });
+    const loaded = draftFromRecipe(recipe, [], () => 'k1');
+
+    expect(loaded.sourceUrl).toBe('https://kwestiasmaku.com/przepis/zurek');
+    expect(draftToRecipe(loaded, { id: recipe.id, now }).sourceUrl).toBe(recipe.sourceUrl);
+  });
+
+  it('is absent, never empty, on a recipe that came from nowhere', () => {
+    // An absent source and an empty one must not be two different things in the Drive JSON.
+    const written = draftToRecipe(emptyDraft2('Jajecznica'), { id: 'r1', now });
+    expect('sourceUrl' in written).toBe(false);
+  });
+
+  it('is cleared by emptying the field, so a rewritten recipe stops claiming a page', () => {
+    const loaded = draftFromRecipe(
+      makeRecipe({ sourceUrl: 'https://example.com/a' }),
+      [],
+      () => 'k1'
+    );
+    loaded.sourceUrl = '';
+    expect('sourceUrl' in draftToRecipe(loaded, { id: 'r1', now })).toBe(false);
+  });
+
+  it('travels with a copy — a variant still came from the same page', () => {
+    const copy = duplicateRecipe(makeRecipe({ sourceUrl: 'https://example.com/a' }), {
+      id: 'r2',
+      now
+    });
+    expect(copy.sourceUrl).toBe('https://example.com/a');
+  });
+});
+
+/** A draft with a name and nothing else, for the assertions above. */
+function emptyDraft2(name: string): RecipeDraft {
+  return { ...emptyDraft(), name };
+}
 
 describe('fitToBudget', () => {
   const entries: RecipeListEntry[] = [

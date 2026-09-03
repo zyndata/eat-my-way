@@ -68,7 +68,7 @@
     </label>
 
     {#if vaultState.message !== ''}
-      <p class="pt-2 text-sm text-red-700" role="alert">{vaultState.message}</p>
+      <p class="pt-2 text-sm text-(--color-danger)" role="alert">{vaultState.message}</p>
     {/if}
     {#if vaultState.failedAttempts >= ATTEMPTS_BEFORE_EXPLANATION}
       <a class="mt-2 inline-block text-sm text-(--color-accent) underline" href="#/settings">

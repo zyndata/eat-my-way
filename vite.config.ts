@@ -33,6 +33,12 @@ export default defineConfig({
         background_color: SURFACE,
         theme_color: ACCENT,
         categories: ['food', 'health', 'lifestyle'],
+        // What makes `navigator.getInstalledRelatedApps()` able to answer at all: it reports
+        // only applications the manifest names here, so without this entry the „already
+        // installed, opened in a tab" copy could never appear (STATE.md decision 208). The URL
+        // is relative, so it resolves per origin and the container run is not a special case.
+        // `prefer_related_applications` stays absent — installability is untouched.
+        related_applications: [{ platform: 'webapp', url: '/manifest.webmanifest' }],
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },

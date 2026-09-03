@@ -74,9 +74,9 @@
     </button>
     <button
       type="button"
-      class="rounded-lg px-3 py-2 text-sm font-medium text-(--color-accent-ink) {danger
-        ? 'bg-red-600'
-        : 'bg-(--color-accent)'}"
+      class="rounded-lg px-3 py-2 text-sm font-medium {danger
+        ? 'bg-(--color-danger-solid) text-(--color-danger-solid-ink)'
+        : 'bg-(--color-accent) text-(--color-accent-ink)'}"
       onclick={onconfirm}
     >
       {confirmLabel}

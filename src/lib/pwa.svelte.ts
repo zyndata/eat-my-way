@@ -28,11 +28,26 @@ export const pwaState = $state<{
   installable: boolean;
   /** The app is running from a launcher rather than a browser tab. */
   installed: boolean;
+  /**
+   * The browser has this app installed, but we are looking at it in a tab. Best-effort:
+   * `navigator.getInstalledRelatedApps()` exists on Chromium only, so `false` means „installed
+   * elsewhere, or the browser would not say" and never „definitely not installed".
+   */
+  installedElsewhere: boolean;
+  /**
+   * The platform whose install route is a menu item we can describe rather than a prompt we
+   * can fire. iOS Safari has no `beforeinstallprompt` and never will, and „Udostępnij → Do
+   * ekranu początkowego" is a real instruction — unlike „look in your browser's menu", which
+   * is what the section used to say to everyone else (STATE.md decision 189).
+   */
+  ios: boolean;
 }>({
   updateReady: false,
   offlineReady: false,
   installable: false,
-  installed: false
+  installed: false,
+  installedElsewhere: false,
+  ios: false
 });
 
 /** Resolved by `registerSW`; calling it activates the waiting worker and reloads. */
@@ -48,11 +63,44 @@ function isStandalone(): boolean {
 }
 
 /**
+ * iOS, told apart by the property Safari alone puts on `navigator` — the same signal
+ * `isStandalone()` already reads, and the reason this needs no UA string. Every browser on iOS
+ * is WebKit and inherits it, so this answers for Chrome and Firefox there too, which is
+ * exactly right: they all install through the share sheet.
+ */
+function isIos(): boolean {
+  return 'standalone' in navigator;
+}
+
+/**
+ * Ask the browser whether it already has this app installed. Chromium-only, and it answers
+ * only for applications the manifest names in `related_applications` (STATE.md decision 208),
+ * so an empty answer is „no information", never „not installed".
+ */
+async function findInstalledApp(): Promise<boolean> {
+  const query = (
+    navigator as { getInstalledRelatedApps?: () => Promise<unknown[]> }
+  ).getInstalledRelatedApps;
+  if (typeof query !== 'function') return false;
+  try {
+    return (await query.call(navigator)).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Register the service worker and start listening for install events. Called once from
  * `main.ts`, before the app mounts — `beforeinstallprompt` fires early and is not replayed.
  */
 export function startPwa(): void {
   pwaState.installed = isStandalone();
+  pwaState.ios = isIos();
+
+  // Only interesting in a tab: inside the installed app the answer is already known.
+  if (!pwaState.installed) {
+    void findInstalledApp().then((found) => (pwaState.installedElsewhere = found));
+  }
 
   window.addEventListener('beforeinstallprompt', (event) => {
     // Without this the browser shows its own bar; the app offers the prompt from Settings
@@ -65,7 +113,7 @@ export function startPwa(): void {
   window.addEventListener('appinstalled', () => {
     installEvent = null;
     pwaState.installable = false;
-    pwaState.installed = true;
+    pwaState.installedElsewhere = true;
   });
 
   update = registerSW({

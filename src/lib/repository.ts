@@ -11,6 +11,7 @@ import type { IngredientCorrection } from './sync/documents';
 import { monthOf } from './sync/documents';
 import type { BackupDocument, BackupInput } from './backup';
 import {
+  DEFAULT_GOALS,
   DEFAULT_PROFILE,
   PROFILE_KEY,
   SCHEMA_VERSION,
@@ -45,6 +46,11 @@ import {
   type RecipeUsage
 } from './recipes';
 import type { SearchCandidate } from './search';
+import {
+  IngredientInUseError,
+  NotCustomIngredientError,
+  replaceIngredientInItems
+} from './custom-ingredients';
 
 /**
  * A copy IndexedDB will accept.
@@ -87,6 +93,24 @@ export interface SnapshotRefresh {
  */
 export interface IngredientSearchEntry extends SearchCandidate {
   ingredient: Ingredient;
+}
+
+/** Just enough of a recipe to name it and link to it. */
+export interface RecipeRef {
+  id: string;
+  name: string;
+}
+
+/**
+ * What stands in the way of changing one ingredient: the recipes that refer to it, and the
+ * planned meals those recipes account for, split at „today" exactly as `RecipeReferences` is.
+ *
+ * The delete dialog names the recipes; the „update future days?" question counts the meals.
+ */
+export interface IngredientReferences {
+  recipes: RecipeRef[];
+  past: number;
+  future: number;
 }
 
 /**
@@ -231,6 +255,47 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       await database.meta.delete(key);
     },
 
+    /**
+     * Whether this browser has genuinely never been used — the local trigger for the first-run
+     * wizard (PLAN.md Phase 11 task 2, STATE.md decision 193).
+     *
+     * Narrow on purpose. „No recipes and no days" alone would also describe someone who deleted
+     * everything, so the profile must still be *identical* to `DEFAULT_PROFILE` and there must
+     * be no vault: together those say nothing has ever been set, not merely that the calendar is
+     * empty. `googleSub` counts as a difference, so a device that has ever connected Drive is
+     * never „never used".
+     *
+     * The bundled USDA ingredients are ignored — they arrive on first run without anyone doing
+     * anything, so counting them would make every database look used.
+     */
+    async isNeverUsed(): Promise<boolean> {
+      const [recipes, days, vaultFile, setupDone, profile] = await Promise.all([
+        database.recipes.count(),
+        database.days.count(),
+        database.meta.get('vaultFile' satisfies MetaKey) as Promise<string | undefined>,
+        database.meta.get('setupDone' satisfies MetaKey) as Promise<boolean | undefined>,
+        database.profile.get(PROFILE_KEY)
+      ]);
+
+      if (recipes > 0 || days > 0) return false;
+      if (vaultFile !== undefined || setupDone === true) return false;
+      if (profile === undefined) return true;
+
+      // Compared field by field rather than by serialising both: key order would decide the
+      // answer, and nothing guarantees it.
+      return (
+        profile.googleSub === undefined &&
+        profile.geminiUsage === undefined &&
+        profile.geminiModel === DEFAULT_PROFILE.geminiModel &&
+        profile.encryptVault === DEFAULT_PROFILE.encryptVault &&
+        profile.locale === DEFAULT_PROFILE.locale &&
+        profile.goals.kcal === DEFAULT_GOALS.kcal &&
+        profile.goals.protein === DEFAULT_GOALS.protein &&
+        profile.goals.carbs === DEFAULT_GOALS.carbs &&
+        profile.goals.fat === DEFAULT_GOALS.fat
+      );
+    },
+
     // ---- ingredients ---------------------------------------------------------------
 
     async getIngredient(id: string): Promise<Ingredient | undefined> {
@@ -242,6 +307,10 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       return (await database.ingredients.toArray()).map(fromIngredientRecord);
     },
 
+    /**
+     * The raw write, stamping nothing. Anything the *user* wrote goes through
+     * `saveCustomIngredient` instead, which is what carries the `updatedAt` the merge needs.
+     */
     async putIngredient(ingredient: Ingredient): Promise<Ingredient> {
       const row = plain(ingredient);
       await database.ingredients.put(toIngredientRecord(row));
@@ -281,6 +350,141 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         aliasKeys: row.aliasKeys,
         useCount: useCounts.get(row.id) ?? 0
       }));
+    },
+
+    /**
+     * Write an ingredient the user owns, stamping the edit time the merge needs.
+     *
+     * Every write from Phase 10 goes through here, creation from the recipe editor included,
+     * so no custom row leaves this app without an `updatedAt` (STATE.md decision 182). A
+     * bundled row is refused rather than written: `importBundledNutrition` would overwrite it
+     * at the next data refresh and `syncSnapshot` would never upload it (decision 176).
+     */
+    async saveCustomIngredient(
+      ingredient: Ingredient,
+      now: string = new Date().toISOString()
+    ): Promise<Ingredient> {
+      if (ingredient.source !== 'custom') throw new NotCustomIngredientError(ingredient.id);
+      const row = plain({ ...ingredient, updatedAt: now });
+      await database.ingredients.put(toIngredientRecord(row));
+      return row;
+    },
+
+    /**
+     * Everything one ingredient is tied to. Read in one pass over the recipes and one over
+     * the days, which is the same cost `recipeReferences` pays for a single recipe.
+     */
+    async ingredientReferences(ingredientId: string, today: string): Promise<IngredientReferences> {
+      const users = (await database.recipes.toArray()).filter((recipe) =>
+        recipe.items.some((item) => item.ingredientId === ingredientId)
+      );
+
+      const references: IngredientReferences = {
+        recipes: users.map((recipe) => ({ id: recipe.id, name: recipe.name })),
+        past: 0,
+        future: 0
+      };
+      if (users.length === 0) return references;
+
+      const ids = new Set(users.map((recipe) => recipe.id));
+      for (const day of await database.days.toArray()) {
+        const meals = day.meals.filter((meal) => ids.has(meal.recipeId)).length;
+        if (meals === 0) continue;
+        if (day.date < today) references.past += meals;
+        else references.future += meals;
+      }
+
+      return references;
+    },
+
+    /**
+     * Delete an ingredient nobody uses, and the corrections that named it.
+     *
+     * The refusal is here rather than only in the dialog because the damage would be silent:
+     * `itemPer100g` falls back to `ZERO_MACROS` for an id that no longer resolves, so a recipe
+     * would lose its numbers with nothing to say so (STATE.md decision 180). A recipe still
+     * using it means „replace it or leave it" — there is no third answer.
+     *
+     * Corrections go with it: `resolveName` returns a correction's id outright without
+     * checking that it resolves, so one left behind would make the next Gemini import match a
+     * name to nothing at all (decision 181).
+     */
+    async deleteIngredient(id: string): Promise<void> {
+      await database.transaction(
+        'rw',
+        database.ingredients,
+        database.recipes,
+        database.corrections,
+        async () => {
+          const row = await database.ingredients.get(id);
+          if (row !== undefined && row.source !== 'custom') throw new NotCustomIngredientError(id);
+
+          const users = (await database.recipes.toArray()).filter((recipe) =>
+            recipe.items.some((item) => item.ingredientId === id)
+          );
+          if (users.length > 0) {
+            throw new IngredientInUseError(id, users.map((recipe) => recipe.name));
+          }
+
+          await database.ingredients.delete(id);
+          const stale = (await database.corrections.toArray()).filter(
+            (correction) => correction.ingredientId === id
+          );
+          if (stale.length > 0) {
+            await database.corrections.bulkDelete(stale.map((correction) => correction.nameKey));
+          }
+        }
+      );
+    },
+
+    /**
+     * „Zastąp innym składnikiem": point every recipe item at `toId`, repoint every correction
+     * that named `fromId`, and then delete it — one transaction, because a half-done swap is a
+     * recipe pointing at an ingredient that no longer exists.
+     *
+     * Everything else on an item — `amount`, `unit`, `gramsPerUnit`, a manual `macroOverride`
+     * — is left exactly as it was: only identity moves. Affected recipes get a new
+     * `updatedAt` so the merge carries the swap, and the caller is expected to ask the
+     * „update future days?" question afterwards, because the macros have moved.
+     *
+     * Returns the ids of the recipes it rewrote.
+     */
+    async replaceIngredient(
+      fromId: string,
+      toId: string,
+      now: string = new Date().toISOString()
+    ): Promise<string[]> {
+      if (fromId === toId) throw new Error('An ingredient cannot replace itself');
+
+      return database.transaction(
+        'rw',
+        database.ingredients,
+        database.recipes,
+        database.corrections,
+        async () => {
+          const row = await database.ingredients.get(fromId);
+          if (row !== undefined && row.source !== 'custom') throw new NotCustomIngredientError(fromId);
+          if ((await database.ingredients.get(toId)) === undefined) {
+            throw new Error(`Unknown ingredient: ${toId}`);
+          }
+
+          const rewritten: string[] = [];
+          for (const recipe of await database.recipes.toArray()) {
+            const items = replaceIngredientInItems(recipe.items, fromId, toId);
+            if (items === recipe.items) continue;
+            await database.recipes.put(plain({ ...recipe, items, updatedAt: now }));
+            rewritten.push(recipe.id);
+          }
+
+          for (const correction of await database.corrections.toArray()) {
+            if (correction.ingredientId !== fromId) continue;
+            await database.corrections.put({ ...correction, ingredientId: toId, updatedAt: now });
+          }
+
+          await database.ingredients.delete(fromId);
+          return rewritten;
+        }
+      );
     },
 
     // ---- tags ----------------------------------------------------------------------
@@ -817,20 +1021,39 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     // ---- backup (Phase 8) ----------------------------------------------------------
 
     /**
-     * Everything the export file carries. The same reading as `syncSnapshot`, minus the
-     * vault: a downloaded file must not carry the Gemini key (`backup.ts`).
+     * Everything the export file carries: the same reading as `syncSnapshot`, plus the vault
+     * and the two per-device list settings (Phase 10 task 9). What it still leaves out —
+     * `deviceId`, `driveAccountLabel`, the sync bookkeeping and the bundled rows — is listed
+     * with its reasons in `backup.ts`.
      */
     async backupInput(): Promise<BackupInput> {
-      const [profile, recipes, tags, ingredients, corrections, days, schemaVersion] =
-        await Promise.all([
-          database.profile.get(PROFILE_KEY),
-          database.recipes.toArray(),
-          database.tags.toArray(),
-          database.ingredients.where('source').equals('custom').toArray(),
-          database.corrections.toArray(),
-          database.days.toArray(),
-          database.meta.get('schemaVersion' satisfies MetaKey) as Promise<number | undefined>
-        ]);
+      const [
+        profile,
+        recipes,
+        tags,
+        ingredients,
+        corrections,
+        days,
+        schemaVersion,
+        vaultFile,
+        recipeSort,
+        recipeGrouped,
+        theme
+      ] = await Promise.all([
+        database.profile.get(PROFILE_KEY),
+        database.recipes.toArray(),
+        database.tags.toArray(),
+        database.ingredients.where('source').equals('custom').toArray(),
+        database.corrections.toArray(),
+        database.days.toArray(),
+        database.meta.get('schemaVersion' satisfies MetaKey) as Promise<number | undefined>,
+        database.meta.get('vaultFile' satisfies MetaKey) as Promise<string | undefined>,
+        database.meta.get('recipeSort' satisfies MetaKey) as Promise<
+          MetaValues['recipeSort'] | undefined
+        >,
+        database.meta.get('recipeGrouped' satisfies MetaKey) as Promise<boolean | undefined>,
+        database.meta.get('theme' satisfies MetaKey) as Promise<MetaValues['theme'] | undefined>
+      ]);
 
       return {
         profile: profile ?? DEFAULT_PROFILE,
@@ -839,7 +1062,13 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         customIngredients: ingredients.map(fromIngredientRecord),
         corrections,
         days,
-        schemaVersion: schemaVersion ?? SCHEMA_VERSION
+        schemaVersion: schemaVersion ?? SCHEMA_VERSION,
+        ...(vaultFile === undefined ? {} : { vaultFile }),
+        settings: {
+          ...(recipeSort === undefined ? {} : { recipeSort }),
+          ...(recipeGrouped === undefined ? {} : { recipeGrouped }),
+          ...(theme === undefined ? {} : { theme })
+        }
       };
     },
 
@@ -848,10 +1077,22 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
      * complete picture of a database, and merging it into another one would silently keep
      * rows the user believes they replaced.
      *
-     * The bundled USDA ingredients are untouched — they belong to the build, not to the user
-     * — and so is the vault. What sync remembers *is* cleared: after a restore this device's
-     * data no longer descends from the last sync, and a stale baseline would let the merge
-     * read a restored row as a deletion.
+     * The bundled USDA ingredients are untouched — they belong to the build, not to the user.
+     * What sync remembers *is* cleared: after a restore this device's data no longer descends
+     * from the last sync, and a stale baseline would let the merge read a restored row as a
+     * deletion.
+     *
+     * Three things about the restore are deliberate:
+     *
+     * - **A vault in the file is swapped in, not written over.** The previous `vault.json` is
+     *   kept in `vaultFileReplaced`, the same undo sync already uses (STATE.md decisions 93,
+     *   150, 185) — and it matters here precisely because the restored vault may carry a
+     *   different master password and then cannot be opened on this device at all.
+     * - **`googleSub` from the file never displaces one this device already holds**, so
+     *   restoring a copy onto a machine connected to another account does not fake the
+     *   wrong-account check (decision 186).
+     * - **`deviceId` and `driveAccountLabel` are not touched**, because they describe this
+     *   device and this connection, not the data being restored.
      */
     async restoreBackup(backup: BackupDocument): Promise<void> {
       const rows = plain({
@@ -874,10 +1115,16 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           database.corrections,
           database.days,
           database.syncBaseline,
-          database.driveFiles
+          database.driveFiles,
+          database.meta
         ],
         async () => {
-          await database.profile.put(rows.profile, PROFILE_KEY);
+          const current = await database.profile.get(PROFILE_KEY);
+          const googleSub = current?.googleSub ?? rows.profile.googleSub;
+          await database.profile.put(
+            googleSub === undefined ? rows.profile : { ...rows.profile, googleSub },
+            PROFILE_KEY
+          );
 
           await database.recipes.clear();
           await database.recipes.bulkPut(rows.recipes);
@@ -894,6 +1141,28 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
           await database.days.clear();
           await database.days.bulkPut(rows.days);
+
+          const vault = backup.vault;
+          if (vault !== undefined) {
+            const held = (await database.meta.get('vaultFile' satisfies MetaKey)) as
+              | string
+              | undefined;
+            if (held !== undefined && held !== vault) {
+              await database.meta.put(held, 'vaultFileReplaced' satisfies MetaKey);
+            }
+            await database.meta.put(vault, 'vaultFile' satisfies MetaKey);
+          }
+
+          const { recipeSort, recipeGrouped, theme } = backup.settings;
+          if (recipeSort !== undefined) {
+            await database.meta.put(recipeSort, 'recipeSort' satisfies MetaKey);
+          }
+          if (recipeGrouped !== undefined) {
+            await database.meta.put(recipeGrouped, 'recipeGrouped' satisfies MetaKey);
+          }
+          // The screen reloads after a restore, and `startTheme` re-reads this and re-mirrors
+          // it into `localStorage`, so the restored choice is what the next paint uses.
+          if (theme !== undefined) await database.meta.put(theme, 'theme' satisfies MetaKey);
 
           await database.syncBaseline.clear();
           await database.driveFiles.clear();

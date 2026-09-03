@@ -5,6 +5,7 @@
   import BackupSection from '../lib/components/BackupSection.svelte';
   import InstallSection from '../lib/components/InstallSection.svelte';
   import TagSection from '../lib/components/TagSection.svelte';
+  import Spinner from '../lib/components/Spinner.svelte';
   import type { Macros, Profile } from '../lib/types';
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
@@ -14,12 +15,15 @@
   import { geminiUsageByModel, modelGeminiUsage } from '../lib/sync/documents';
   import { formatBytes, pluralPl } from '../lib/text';
   import {
+    STAGE_LABELS,
     connectDrive,
     disconnectDrive,
     syncNow,
     syncState,
     useDifferentAccount
   } from '../lib/sync/state.svelte';
+  import { AI_STUDIO_KEY_URL } from '../lib/gemini/key-test';
+  import { setTheme, themeState, type ThemeChoice } from '../lib/theme.svelte';
   import {
     createVault,
     disableEncryption,
@@ -235,6 +239,13 @@
     'rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50';
   const secondaryClass = 'rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium';
 
+  /** „Jak system" is the default, so it is listed last — the two explicit answers come first. */
+  const THEMES: { value: ThemeChoice; label: string }[] = [
+    { value: 'light', label: 'Jasny' },
+    { value: 'dark', label: 'Ciemny' },
+    { value: 'system', label: 'Jak system' }
+  ];
+
   void load();
 </script>
 
@@ -255,7 +266,7 @@
       </p>
 
       {#if syncState.foreignAccount !== null}
-        <div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+        <div class="mt-3 rounded-lg border border-(--color-warn-border) bg-(--color-warn-surface) p-3 text-sm">
           <p class="font-medium">To jest inne konto Google niż poprzednio.</p>
           <p class="pt-1 text-(--color-ink-muted)">
             Dane na tym urządzeniu pochodzą z innego konta. Nie tworzymy po cichu nowego profilu —
@@ -276,7 +287,10 @@
         <dt class="text-(--color-ink-muted)">Stan</dt>
         <dd>
           {#if syncState.phase === 'syncing'}
-            Synchronizacja…
+            <span class="inline-flex items-center gap-2">
+              <Spinner class="size-3.5" />
+              {syncState.stage === null ? 'Synchronizacja…' : STAGE_LABELS[syncState.stage]}
+            </span>
           {:else if syncState.connected}
             Połączono{syncState.account?.label ? ` — ${syncState.account.label}` : ''}
           {:else}
@@ -306,7 +320,7 @@
               <svg
                 class="mt-1 h-1.5 w-full max-w-56 rounded-full bg-(--color-border) {storageUsedPercent >=
                 90
-                  ? 'text-amber-600'
+                  ? 'text-(--color-warn)'
                   : 'text-(--color-accent)'}"
                 viewBox="0 0 100 6"
                 preserveAspectRatio="none"
@@ -318,7 +332,7 @@
                 <rect x="0" y="0" height="6" width={storageUsedPercent} fill="currentColor" />
               </svg>
               {#if storageUsedPercent >= 90}
-                <p class="pt-1 text-xs text-amber-700">
+                <p class="pt-1 text-xs text-(--color-warn)">
                   Dysk jest prawie pełny. Gdy zabraknie miejsca, synchronizacja przestanie
                   zapisywać — dane na tym urządzeniu zostaną nietknięte.
                 </p>
@@ -329,7 +343,7 @@
       </dl>
 
       {#if syncState.message !== ''}
-        <p class="pt-2 text-sm text-red-700" role="status">{syncState.message}</p>
+        <p class="pt-2 text-sm text-(--color-danger)" role="status">{syncState.message}</p>
       {/if}
       {#if syncState.vaultAdopted}
         <p class="pt-2 text-sm text-(--color-ink-muted)" role="status">
@@ -341,11 +355,16 @@
         {#if syncState.connected}
           <button
             type="button"
-            class={buttonClass}
+            class="{buttonClass} inline-flex items-center gap-2"
             disabled={syncState.phase === 'syncing'}
             onclick={() => void syncNow({ interactive: true })}
           >
-            Synchronizuj teraz
+            {#if syncState.phase === 'syncing'}
+              <Spinner />
+              Synchronizacja…
+            {:else}
+              Synchronizuj teraz
+            {/if}
           </button>
           <button
             type="button"
@@ -360,11 +379,16 @@
         {:else}
           <button
             type="button"
-            class={buttonClass}
+            class="{buttonClass} inline-flex items-center gap-2"
             disabled={syncState.phase === 'syncing'}
             onclick={() => void connectDrive()}
           >
-            Połącz Dysk Google
+            {#if syncState.phase === 'syncing'}
+              <Spinner />
+              Łączenie…
+            {:else}
+              Połącz Dysk Google
+            {/if}
           </button>
         {/if}
       </div>
@@ -385,7 +409,7 @@
     {#if vaultState.replaced}
       <!-- The swap can lock this device out of its own secrets, so it is stated in full and
            kept until the user answers it — not only while the sync that caused it is fresh. -->
-      <p class="pt-3 text-sm text-amber-700" role="status">
+      <p class="pt-3 text-sm text-(--color-warn)" role="status">
         Sejf z Dysku zastąpił ten z tego urządzenia. Jeśli hasła główne były różne, ten sejf
         otworzy tylko hasło z drugiego urządzenia.
       </p>
@@ -406,7 +430,7 @@
     {#if vaultState.status === 'unknown'}
       <p class="pt-3 text-sm text-(--color-ink-muted)">Wczytywanie…</p>
     {:else if vaultState.status === 'corrupt'}
-      <p class="pt-3 text-sm text-red-700" role="alert">{vaultState.message}</p>
+      <p class="pt-3 text-sm text-(--color-danger)" role="alert">{vaultState.message}</p>
       <button type="button" class="{secondaryClass} mt-3" onclick={() => (resetStep = 1)}>
         Załóż sejf od nowa
       </button>
@@ -425,7 +449,7 @@
           Hasła głównego nie da się odzyskać — nikt go nie przechowuje.
         </p>
       {:else}
-        <p class="pt-2 text-sm text-amber-700">
+        <p class="pt-2 text-sm text-(--color-warn)">
           Bez szyfrowania klucz Gemini będzie zapisany otwartym tekstem na tym urządzeniu i na
           Twoim Dysku.
         </p>
@@ -451,7 +475,12 @@
         <input class={inputClass} type="password" autocomplete="off" bind:value={apiKey} />
       </label>
       <p class="pt-1 text-xs text-(--color-ink-muted)">
-        Klucz utworzysz w Google AI Studio (aistudio.google.com). Zapisujemy go dopiero po
+        Klucz utworzysz w Google AI Studio —
+        <a
+          class="font-medium text-(--color-accent) underline"
+          href={AI_STUDIO_KEY_URL}
+          target="_blank"
+          rel="noopener noreferrer">aistudio.google.com/apikey</a>. Zapisujemy go dopiero po
         udanym teście.
       </p>
       <button type="button" class="{buttonClass} mt-3" disabled={testingKey} onclick={() => void saveKey()}>
@@ -459,7 +488,7 @@
       </button>
       {#if keyResult !== null}
         <p
-          class="pt-2 text-sm {keyResult.status === 'ok' ? 'text-(--color-ink-muted)' : 'text-red-700'}"
+          class="pt-2 text-sm {keyResult.status === 'ok' ? 'text-(--color-ink-muted)' : 'text-(--color-danger)'}"
           role="status"
         >
           {keyResult.message}
@@ -603,6 +632,43 @@
       {#if goalsSaved}
         <p class="pt-2 text-sm text-(--color-ink-muted)" role="status">Zapisano.</p>
       {/if}
+    {/if}
+  </section>
+
+  <!-- ---- appearance ----------------------------------------------------------------- -->
+  <section class="mt-4 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-4">
+    <h2 class="text-base font-semibold">Wygląd</h2>
+    <p class="pt-2 text-sm text-(--color-ink-muted)">
+      Ustawienie dotyczy tego urządzenia i nie jest wysyłane na Dysk — telefon i komputer mogą
+      mieć różne. Trafia natomiast do kopii danych.
+    </p>
+    <fieldset class="pt-3">
+      <legend class="sr-only">Motyw</legend>
+      <div class="flex flex-wrap gap-2">
+        {#each THEMES as option (option.value)}
+          <label
+            class="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm {themeState.choice ===
+            option.value
+              ? 'border-(--color-accent) text-(--color-accent)'
+              : 'border-(--color-border)'}"
+          >
+            <input
+              type="radio"
+              name="theme"
+              value={option.value}
+              checked={themeState.choice === option.value}
+              onchange={() => void setTheme(option.value)}
+            />
+            {option.label}
+          </label>
+        {/each}
+      </div>
+    </fieldset>
+    {#if themeState.choice === 'system'}
+      <p class="pt-2 text-xs text-(--color-ink-muted)">
+        Teraz: {themeState.resolved === 'dark' ? 'ciemny' : 'jasny'} — zgodnie z ustawieniem
+        systemu.
+      </p>
     {/if}
   </section>
 

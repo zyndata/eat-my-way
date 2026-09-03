@@ -119,7 +119,7 @@
       {:else if outcome === 'shared'}
         <span class="text-sm text-(--color-ink-muted)" role="status">Udostępniono.</span>
       {:else if outcome === 'failed'}
-        <span class="text-sm text-amber-700" role="status">
+        <span class="text-sm text-(--color-warn)" role="status">
           Nie udało się udostępnić ani skopiować — zaznacz listę powyżej i skopiuj ręcznie.
         </span>
       {/if}

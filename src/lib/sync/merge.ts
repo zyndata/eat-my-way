@@ -119,9 +119,15 @@ export function applyResolutions<T>(
   return merged;
 }
 
-/** Anything carrying an ISO `updatedAt`, which is enough to break a tie without asking. */
+/**
+ * Anything carrying an ISO `updatedAt`, which is enough to break a tie without asking.
+ *
+ * Optional, because custom ingredients only started stamping one in Phase 10 and every row
+ * written before that has none (STATE.md decision 182). Recipes and corrections have always
+ * carried it, and a required field satisfies an optional one, so they are unaffected.
+ */
 export interface Timestamped {
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 /**
@@ -129,12 +135,16 @@ export interface Timestamped {
  * *different* recipes never collide, and two devices editing the *same* recipe is rare enough
  * — and recoverable enough, the recipe is still there — that a prompt would cost more than it
  * saves. PLAN.md reserves the prompt for days, where the loss would be a day's plan.
+ *
+ * A missing timestamp sorts before every real one, so an un-stamped row loses to an edited
+ * copy. That is the only honest reading: „when was this last changed" has no answer here, and
+ * inventing one would let a row nobody touched beat a row somebody did.
  */
 export function newerWins<T extends Timestamped>(): BothChanged<T> {
   return (local, remote) => {
     if (local === undefined) return remote;
     if (remote === undefined) return local;
-    return remote.updatedAt > local.updatedAt ? remote : local;
+    return (remote.updatedAt ?? '') > (local.updatedAt ?? '') ? remote : local;
   };
 }
 

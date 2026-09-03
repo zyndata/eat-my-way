@@ -15,6 +15,7 @@
     syncState
   } from './lib/sync/state.svelte';
   import { loadVault } from './lib/vault/session.svelte';
+  import { repository } from './lib/repository';
 
   // First run loads the bundled USDA subset into IndexedDB; every later load reads a meta
   // flag and skips it. Deliberately not awaited: the app is usable while it runs.
@@ -30,14 +31,30 @@
   // The vault is read from IndexedDB (never unlocked) so the settings screen knows whether one
   // exists. Drive sync then resumes silently — it opens no popup and shows no error when the
   // user has never connected, or is simply offline.
-  void loadVault().then(() => resumeSync());
+  //
+  // The wizard's local trigger waits for that resume to have had its say, and this is why it
+  // is chained rather than run alongside: a second device is „never used" for the seconds
+  // before its first sync lands, and greeting it with a first-run wizard for an account it
+  // already owns would be worse than never showing one (STATE.md decision 193). `isNeverUsed`
+  // re-reads the database afterwards, so a sync that pulled anything cancels it by itself.
+  void loadVault()
+    .then(() => resumeSync())
+    .then(() => offerSetup());
+
+  /** Open the wizard on a database that has never been used, unless a sync already did. */
+  async function offerSetup(): Promise<void> {
+    if (syncState.setupNeeded) return;
+    if (await repository.isNeverUsed()) syncState.setupNeeded = true;
+  }
 
   // Drive offers no push channel, so a sync is attempted when the tab regains focus, when the
   // network comes back, and periodically while the tab is open.
   $effect(() => startAutoSync());
 
-  // PLAN.md: the wizard is shown when Drive is connected and its folder holds no data. The
-  // flag is cleared by the wizard itself, so skipping it does not bounce the user back.
+  // PLAN.md: the wizard is shown when Drive is connected and its folder holds no data — and,
+  // from Phase 11, on a database that has never been used at all. The flag is cleared by the
+  // wizard itself, which also records the visit in `meta`, so skipping does not bounce the
+  // user back and a reload does not reopen it.
   $effect(() => {
     if (syncState.setupNeeded && router.location !== '/setup') void push('/setup');
   });

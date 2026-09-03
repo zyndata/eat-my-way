@@ -22,6 +22,13 @@ export const navItems: NavItem[] = [
     icon: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H18a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6.5A1.5 1.5 0 0 1 5 19.5v-15ZM5 17h14M9 7.5h6'
   },
   {
+    href: '#/ingredients',
+    match: '/ingredients',
+    label: 'Składniki',
+    // A carrot: the one food shape that reads at 24 px without colour.
+    icon: 'M14.5 5.5c1.6-1.6 3.4-1.9 4.6-1.7.2 1.2-.1 3-1.7 4.6M17 8.5 8.9 16.6M11.4 7.7c1.4-.6 3-.3 4 .8l.5.5c1.1 1.1 1.4 2.7.7 4.1l-3.7 7.2a1.6 1.6 0 0 1-2.6.4l-6.6-6.6a1.6 1.6 0 0 1 .4-2.6l7.3-3.8Z'
+  },
+  {
     href: '#/settings',
     match: '/settings',
     label: 'Ustawienia',

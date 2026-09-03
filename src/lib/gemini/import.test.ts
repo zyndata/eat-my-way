@@ -365,7 +365,10 @@ describe('importing a link', () => {
     );
     const pasted = await importRecipe(PANCAKES_TEXT, deps(viaText.fetchImpl));
 
-    expect(linked).toEqual(pasted);
+    // Identical but for the one thing a link has and pasted text does not (Phase 11 task 5).
+    const { sourceUrl, ...linkedRecipe } = linked;
+    expect(linkedRecipe).toEqual(pasted);
+    expect(sourceUrl).toBe('https://example.com/nalesniki');
 
     // The retrieval call is the only one carrying the tool, and the parse call that follows
     // it was given the page's text — which is why the two drafts are the same by construction.
@@ -385,6 +388,27 @@ describe('importing a link', () => {
     await importRecipe('example.com/nalesniki', deps(fetchImpl));
 
     expect(at(calls).prompt).toContain('https://example.com/nalesniki');
+  });
+
+  it('remembers where a link import came from, cleaned of tracking parameters', async () => {
+    const { fetchImpl } = fakeGemini({
+      page: PANCAKES_TEXT,
+      recipe: PANCAKES_JSON,
+      matches: PANCAKES_MATCHES
+    });
+
+    const result = await importRecipe(
+      'https://example.com/nalesniki?p=17&utm_source=fb&fbclid=abc',
+      deps(fetchImpl)
+    );
+
+    // `?p=17` is very often the recipe's identity, so it stays; the tracking pair goes.
+    expect(result.sourceUrl).toBe('https://example.com/nalesniki?p=17');
+  });
+
+  it('has no source to remember when the recipe was pasted as text', async () => {
+    const { fetchImpl } = fakeGemini({ recipe: PANCAKES_JSON, matches: PANCAKES_MATCHES });
+    expect((await importRecipe(PANCAKES_TEXT, deps(fetchImpl))).sourceUrl).toBeUndefined();
   });
 
   it('points at pasting the text when the page cannot be read', async () => {

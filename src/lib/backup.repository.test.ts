@@ -128,6 +128,52 @@ describe('export and restore', () => {
     expect(await into.recipeMacros([restored!])).toEqual(await from.recipeMacros([restored!]));
   });
 
+  it('brings the vault and the list settings across, so nothing is left to retype', async () => {
+    await seed(from);
+    await from.setMeta('vaultFile', '{"v":1,"cipher":"sealed"}');
+    await from.setMeta('recipeSort', 'kcal');
+    await from.setMeta('recipeGrouped', true);
+    await from.setMeta('theme', 'dark');
+    await into.putIngredients(ingredients);
+
+    await into.restoreBackup(readBackup(JSON.stringify(buildBackup(await from.backupInput()))));
+
+    expect(await into.getMeta('vaultFile')).toBe('{"v":1,"cipher":"sealed"}');
+    expect(await into.getMeta('recipeSort')).toBe('kcal');
+    expect(await into.getMeta('recipeGrouped')).toBe(true);
+    expect(await into.getMeta('theme')).toBe('dark');
+  });
+
+  it('swaps a vault rather than overwriting it, so the exchange can be undone', async () => {
+    await seed(from);
+    await from.setMeta('vaultFile', '{"v":1,"cipher":"z pliku"}');
+    await into.putIngredients(ingredients);
+    // The restoring device holds a vault of its own, possibly with another master password.
+    await into.setMeta('vaultFile', '{"v":1,"cipher":"tutejszy"}');
+
+    await into.restoreBackup(readBackup(JSON.stringify(buildBackup(await from.backupInput()))));
+
+    expect(await into.getMeta('vaultFile')).toBe('{"v":1,"cipher":"z pliku"}');
+    expect(await into.getMeta('vaultFileReplaced')).toBe('{"v":1,"cipher":"tutejszy"}');
+  });
+
+  it('leaves this device its own identity: googleSub, deviceId and the account label', async () => {
+    await seed(from);
+    await from.saveProfile({ ...(await from.getProfile()), googleSub: 'konto-A' });
+    await into.putIngredients(ingredients);
+    await into.saveProfile({ ...(await into.getProfile()), googleSub: 'konto-B' });
+    await into.setMeta('deviceId', 'to-urzadzenie');
+    await into.setMeta('driveAccountLabel', 'b@example.com');
+
+    await into.restoreBackup(readBackup(JSON.stringify(buildBackup(await from.backupInput()))));
+
+    // Otherwise a copy restored onto a machine connected elsewhere would fake the
+    // wrong-account check, and two devices would share one Gemini tally key.
+    expect((await into.getProfile()).googleSub).toBe('konto-B');
+    expect(await into.getMeta('deviceId')).toBe('to-urzadzenie');
+    expect(await into.getMeta('driveAccountLabel')).toBe('b@example.com');
+  });
+
   it('does not resurrect an empty day as a row', async () => {
     await seed(from);
     const backup = readBackup(JSON.stringify(buildBackup(await from.backupInput())));

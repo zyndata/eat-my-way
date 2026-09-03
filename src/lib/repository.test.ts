@@ -671,3 +671,48 @@ describe('duplicateRecipe', () => {
     expect(await repo.allRecipes()).toEqual([]);
   });
 });
+
+describe('isNeverUsed', () => {
+  it('is true for a database nothing has ever written to', async () => {
+    expect(await repo.isNeverUsed()).toBe(true);
+  });
+
+  it('is still true once the bundled ingredients have landed', async () => {
+    // They arrive on first run without anyone doing anything; counting them would make every
+    // database look used and the wizard would never open.
+    await repo.putIngredients(ingredients);
+    expect(await repo.isNeverUsed()).toBe(true);
+  });
+
+  it('is false once anything the user could have made exists', async () => {
+    await seedRecipe();
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+
+  it('is false once a day has meals', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+
+  it('is false once goals have been set, even to a value that looks default', async () => {
+    await repo.setGoals({ ...DEFAULT_PROFILE.goals, kcal: 2400 });
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+
+  it('is false once this device has ever connected Drive', async () => {
+    const profile = await repo.getProfile();
+    await repo.saveProfile({ ...profile, googleSub: 'sub-1' });
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+
+  it('is false once a vault exists', async () => {
+    await repo.setMeta('vaultFile', '{}');
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+
+  it('is false once the wizard has been through, so a reload does not reopen it', async () => {
+    await repo.setMeta('setupDone', true);
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+});

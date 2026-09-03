@@ -137,6 +137,70 @@ export function normalizeUrl(input: string): string {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
+/**
+ * Tracking parameters removed from a stored source URL. A **deny-list**, deliberately, and the
+ * direction is the whole point (STATE.md decision 197): a query parameter is very often the
+ * recipe's own identity — `?p=1234`, `?recipe=17` — so a cleaner that kept only what it
+ * recognised would quietly break the link the row exists to offer. `utm_*` is matched by
+ * prefix; everything below is matched exactly.
+ */
+const TRACKING_PARAMS = new Set([
+  'fbclid',
+  'gclid',
+  'dclid',
+  'msclkid',
+  'twclid',
+  'yclid',
+  'igshid',
+  'mc_cid',
+  'mc_eid',
+  '_ga',
+  'ref_src',
+  'si'
+]);
+
+/**
+ * The page a recipe came from, cleaned for storage (PLAN.md Phase 11 task 5).
+ *
+ * Returns `undefined` for anything that must not be stored, which is one rule and it is
+ * security rather than tidiness: **only `http` and `https`**. The value arrives as something
+ * the user pasted and leaves as an `href`, so any other scheme is refused here rather than
+ * rendered and hoped about.
+ *
+ * Everything else is preserved. The path is never rewritten, the fragment is kept — `#skladniki`
+ * is part of where on the page the recipe is — and every query parameter survives except the
+ * tracking ones above.
+ */
+function parseUrl(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+export function cleanSourceUrl(input: string): string | undefined {
+  const trimmed = input.trim();
+  if (trimmed === '') return undefined;
+
+  // Parsed as pasted *first*, so a scheme the user actually typed is judged as itself. Going
+  // through `normalizeUrl` here would turn `file:///etc/passwd` into `https://file///etc/passwd`
+  // — a refusal quietly rewritten into an accepted URL, which is the opposite of the rule.
+  const url: URL | undefined = parseUrl(trimmed) ?? parseUrl(normalizeUrl(trimmed));
+  if (url === undefined) return undefined;
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
+
+  for (const key of [...url.searchParams.keys()]) {
+    const lower = key.toLowerCase();
+    if (lower.startsWith('utm_') || TRACKING_PARAMS.has(lower)) url.searchParams.delete(key);
+  }
+  // `URL` keeps the `?` after the last parameter is gone; a bare trailing `?` is noise.
+  if ([...url.searchParams.keys()].length === 0) url.search = '';
+
+  return url.toString();
+}
+
 // ---- readers ----------------------------------------------------------------------------
 
 /**

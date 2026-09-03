@@ -1,5 +1,8 @@
 import type { Day, Ingredient, Macros, Profile, Recipe, Tag } from './types';
 import type { IngredientCorrection } from './sync/documents';
+import type { RecipeSort } from './recipes';
+import { isRecipeSort } from './recipes';
+import { isThemeChoice, type ThemeChoice } from './theme.svelte';
 import { DEFAULT_PROFILE } from './db';
 
 /**
@@ -11,22 +14,53 @@ import { DEFAULT_PROFILE } from './db';
  * so it is written to be read by a human and by a future version of this app, not to be
  * clever — one flat document, every field named as it is named everywhere else.
  *
- * Two things are deliberately **not** in it:
+ * It carries **the vault too** (Phase 10 task 9, STATE.md decision 184). Decision 137 kept the
+ * Gemini key out, reasoning about the file — Downloads, mail attachments — and that reasoning
+ * was right about the file and wrong about the whole: `syncSnapshot` already carries
+ * `vault.json` verbatim to Drive, so the exclusion only ever weakened the path taken by the
+ * user who does *not* sync, which is the user this export exists for. A restore that ends with
+ * „now go find your API key" is one the user has to finish by hand, on the day they are least
+ * able to. The vault travels exactly as the device holds it: encrypted, that is an Argon2id +
+ * AES-GCM blob whose password never enters the file; unencrypted, the key is in the file in
+ * the clear, and the export says so at the moment of export rather than in small print.
  *
- * - **The vault.** It holds the Gemini API key, and when the user turned encryption off it
- *   holds it in the clear. A backup is a file that ends up in Downloads, in a mail attachment
- *   and in someone's cloud drive; the key does not travel that way. The key is re-entered
- *   after a restore, which takes a minute (STATE.md decision 137).
+ * What is deliberately **not** in it:
+ *
  * - **The bundled USDA ingredients.** They ship inside the app and are re-imported on first
  *   run, so a backup that carried them would be a few hundred kB of the same public data.
  *   Only ingredients the user wrote themselves are exported.
+ * - **`deviceId`**, which keys the per-device Gemini tally: that counter merges by taking the
+ *   larger value, so two devices sharing an id would corrupt it silently.
+ * - **`driveAccountLabel`**, which describes a connection the restoring device may not have,
+ *   and the sync bookkeeping (`syncBaseline`, `driveFiles`), which `restoreBackup` clears —
+ *   a restored baseline would let the next merge read a restored row as a deletion.
  */
 
-/** Bumped only when an older file would be read wrongly rather than merely incompletely. */
+/**
+ * Bumped only when an older file would be read wrongly rather than merely incompletely.
+ *
+ * Adding `vault` and `settings` does not qualify: a build that predates them reads a v1-shaped
+ * document and ignores two sections it does not know, which is incomplete, not wrong. Bumping
+ * would make that build refuse the file outright — taking a user's recipes away to protect
+ * them from missing an API key (STATE.md decision 188).
+ */
 export const BACKUP_VERSION = 1;
 
 /** Identifies our own files, so a stray JSON is refused instead of half-imported. */
 export const BACKUP_KIND = 'eat-my-way-backup';
+
+/**
+ * Per-device display settings. They live in `meta` precisely because how a list is drawn
+ * belongs to the screen in front of you and not to the account, which is why they never travel
+ * to Drive — and the same fact inverts for a backup: sync equalises two devices that may
+ * reasonably disagree, a backup rebuilds *one* device that had one answer (decision 187).
+ */
+export interface BackupSettings {
+  recipeSort?: RecipeSort;
+  recipeGrouped?: boolean;
+  /** „Jasny" / „Ciemny" / „Jak system" (Phase 11 task 4). Same argument as the two above. */
+  theme?: ThemeChoice;
+}
 
 export interface BackupDocument {
   kind: typeof BACKUP_KIND;
@@ -42,6 +76,9 @@ export interface BackupDocument {
   ingredients: Ingredient[];
   corrections: IngredientCorrection[];
   days: Day[];
+  /** Raw `vault.json` text, exactly as the device holds it. Absent when there is no vault. */
+  vault?: string;
+  settings: BackupSettings;
 }
 
 /** Everything a backup is built from — exactly what the repository reads out of IndexedDB. */
@@ -53,6 +90,9 @@ export interface BackupInput {
   corrections: IngredientCorrection[];
   days: Day[];
   schemaVersion: number;
+  /** Raw `vault.json` text, or `undefined` when this device has never had one. */
+  vaultFile?: string;
+  settings: BackupSettings;
 }
 
 export function buildBackup(input: BackupInput, now: Date = new Date()): BackupDocument {
@@ -66,7 +106,10 @@ export function buildBackup(input: BackupInput, now: Date = new Date()): BackupD
     tags: input.tags,
     ingredients: input.customIngredients,
     corrections: input.corrections,
-    days: input.days
+    days: input.days,
+    // Absent rather than `undefined`: the file is read by people as well as by this app.
+    ...(input.vaultFile === undefined ? {} : { vault: input.vaultFile }),
+    settings: input.settings
   };
 }
 
@@ -82,6 +125,8 @@ export interface BackupSummary {
   meals: number;
   ingredients: number;
   exportedAt: string;
+  /** Whether the file carries a vault, so the restore dialog can say the key comes with it. */
+  vault: boolean;
 }
 
 export function summarizeBackup(backup: BackupDocument): BackupSummary {
@@ -90,7 +135,8 @@ export function summarizeBackup(backup: BackupDocument): BackupSummary {
     days: backup.days.length,
     meals: backup.days.reduce((total, day) => total + day.meals.length, 0),
     ingredients: backup.ingredients.length,
-    exportedAt: backup.exportedAt
+    exportedAt: backup.exportedAt,
+    vault: backup.vault !== undefined
   };
 }
 
@@ -180,6 +226,25 @@ export function readBackup(text: string): BackupDocument {
     tags,
     ingredients,
     corrections,
-    days
+    days,
+    // The vault is opaque to everything outside `vault/`, so it is checked for being text and
+    // nothing else: parsing it here would be this module deciding what a valid vault is.
+    ...(typeof document.vault === 'string' && document.vault !== ''
+      ? { vault: document.vault }
+      : {}),
+    settings: readSettings(document.settings)
+  };
+}
+
+/** Settings are conveniences: an unreadable one is dropped, never a reason to refuse a file. */
+function readSettings(value: unknown): BackupSettings {
+  if (typeof value !== 'object' || value === null) return {};
+  const settings = value as Partial<BackupSettings>;
+  return {
+    ...(isRecipeSort(settings.recipeSort) ? { recipeSort: settings.recipeSort } : {}),
+    ...(typeof settings.recipeGrouped === 'boolean'
+      ? { recipeGrouped: settings.recipeGrouped }
+      : {}),
+    ...(isThemeChoice(settings.theme) ? { theme: settings.theme } : {})
   };
 }

@@ -30,6 +30,16 @@ export interface Ingredient {
   state: IngredientState;
   per100g: Macros;
   source: IngredientSource;
+  /**
+   * When this row was last written, ISO 8601. Custom rows only: the bundled subset is
+   * rewritten wholesale by every data refresh, so an edit time would say nothing about it.
+   *
+   * Absent means "written before Phase 10", when a custom ingredient could only ever be
+   * created. That is exactly why it is optional and unindexed — no schema version, no
+   * migration — and why the merge counts a row without it as the older side (STATE.md
+   * decision 182).
+   */
+  updatedAt?: string;
 }
 
 export interface RecipeItem {
@@ -56,6 +66,15 @@ export interface Recipe {
   createdAt: string;
   /** ISO 8601 timestamp. */
   updatedAt: string;
+  /**
+   * The page this recipe was imported from, cleaned by `cleanSourceUrl` and always `http`/
+   * `https` (Phase 11 task 5). Absent for a recipe pasted as text or written by hand, and
+   * clearable — a recipe edited beyond recognition no longer comes from anywhere.
+   *
+   * Optional on purpose: it costs no schema version, no migration and nothing in the Drive
+   * format, because `readRecipesDocument` keeps the fields it does not know.
+   */
+  sourceUrl?: string;
 }
 
 /** `key` is lowercase with diacritics stripped; `label` is the spelling first typed. */

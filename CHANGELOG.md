@@ -6,6 +6,23 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+
+- Record that v1.0.0 shipped
+- Plan phases 10 and 11
+- Plan the repository About box as a Phase 11 task
+
+### Features
+
+- Phase 10 — składniki i pełna kopia danych
+- Phase 11 — zgłoszenia z użytkowania
+
+### Miscellaneous
+
+- Update CHANGELOG
+
 ## [1.0.0] - 2026-09-02
 
 ### Bug Fixes

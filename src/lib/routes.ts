@@ -3,6 +3,7 @@ import Day from '../routes/Day.svelte';
 import Meal from '../routes/Meal.svelte';
 import Recipes from '../routes/Recipes.svelte';
 import RecipeEditor from '../routes/RecipeEditor.svelte';
+import Ingredients from '../routes/Ingredients.svelte';
 import Settings from '../routes/Settings.svelte';
 import Setup from '../routes/Setup.svelte';
 import About from '../routes/About.svelte';
@@ -18,6 +19,7 @@ export const routes = {
   '/day/:date/:mealId': Meal,
   '/recipes': Recipes,
   '/recipes/:id/edit': RecipeEditor,
+  '/ingredients': Ingredients,
   '/settings': Settings,
   '/setup': Setup,
   '/about': About,

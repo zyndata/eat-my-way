@@ -22,13 +22,13 @@
     <li>
       <p class="flex items-baseline justify-between gap-1 text-xs">
         <span class="text-(--color-ink-muted)">{row.label}</span>
-        <span class="font-medium tabular-nums {over ? 'text-amber-700' : ''}">
+        <span class="font-medium tabular-nums {over ? 'text-(--color-warn)' : ''}">
           {Math.round(row.value)}/{Math.round(row.goal)}
         </span>
       </p>
       <svg
         class="mt-1 h-1.5 w-full rounded-full bg-(--color-border) {over
-          ? 'text-amber-600'
+          ? 'text-(--color-warn)'
           : 'text-(--color-accent)'}"
         viewBox="0 0 100 6"
         preserveAspectRatio="none"

@@ -143,6 +143,6 @@
     {saving ? 'Zapisywanie…' : 'Zapisz cele'}
   </button>
   {#if !valid}
-    <p class="pt-2 text-sm text-red-700">Wszystkie wartości muszą być liczbami nieujemnymi.</p>
+    <p class="pt-2 text-sm text-(--color-danger)">Wszystkie wartości muszą być liczbami nieujemnymi.</p>
   {/if}
 {/if}

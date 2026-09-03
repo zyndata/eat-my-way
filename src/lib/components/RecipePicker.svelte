@@ -112,7 +112,7 @@
 
 <BottomSheet {open} title="Dodaj posiłek" {onclose}>
   {#if budget.exhausted}
-    <p class="pb-3 text-sm text-amber-700">
+    <p class="pb-3 text-sm text-(--color-warn)">
       Limit dzienny już wykorzystany — {Math.round(-budget.remaining)} kcal ponad cel. Poniżej
       cała biblioteka.
     </p>
@@ -122,7 +122,7 @@
         Zostało
         {#each left as goal, index (goal.key)}
           {#if index > 0}<span class="text-(--color-ink-muted)"> · </span>{/if}<span
-            class="font-semibold tabular-nums {goal.remaining < 0 ? 'text-amber-700' : ''}"
+            class="font-semibold tabular-nums {goal.remaining < 0 ? 'text-(--color-warn)' : ''}"
             >{Math.round(goal.remaining)} {goal.label}</span
           >
         {/each}
@@ -202,7 +202,7 @@
               {/if}
             </span>
             {#if fits.get(entry.recipe.id) === 'half'}
-              <span class="block pt-1 text-xs text-amber-700">
+              <span class="block pt-1 text-xs text-(--color-warn)">
                 Zmieści się przy pół porcji
               </span>
             {/if}

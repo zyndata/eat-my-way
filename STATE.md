@@ -16,12 +16,29 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 7     | Gemini import               | done    | 2026-09-01 |
 | 8     | PWA & polish                | done    | 2026-09-01 |
 | 9     | Daily-use comfort           | done    | 2026-09-02 |
+| 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
+| 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
-Phase 8 is done except for its ninth task, `v1.0.0` — releasing is a separate act through the
-`/release` skill, not something a phase does (decision 141). The app is feature-complete for
-1.0 and waiting on that tag.
+Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
+after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
+ingredient library, and an export that finally holds everything); Phase 11 is the pile of
+things daily use reported about what the app says. Both are built. Neither has shipped: they
+reach the live app when a tag is pushed, and the one exception is Phase 11's last task —
+the repository's About box, which is not in the build and took effect the moment it was set
+(decision 217).
+
+**Phase 11 left one thing unfinished, deliberately and on the record**: why Chrome on Android
+offered no install button. That needs the phone the report came from, so the copy was fixed
+here and the diagnosis moved to open question 26 (decisions 207, 216).
+
+Phase 8's ninth task, `v1.0.0`, is done: released 2026-09-02 through the `/release` skill,
+which is where a release belongs — not inside a phase (decision 141). Live at
+https://eatmyway.gorny.dev. What that release does *not* settle is open questions 15 and 26:
+the first live Drive round trip and the first install on a real phone, both still verified by
+proxy only. The checklist for that visit is in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it).
 
 ## Decisions
 
@@ -1916,6 +1933,526 @@ one of which broke the feature outright.
      names a 16 106 127 360-byte account „15 GB"; precision falls as the number grows, and the
      separator is the Polish comma.
 
+### 2026-09-02 — Phases 10 and 11 planned
+
+175. **PLAN.md gains a Phase 10, and it is recorded here before any of it is built.** Asked for
+     from real use after the 1.0 release: a place where the user's own ingredients can be added,
+     reviewed and corrected, instead of being created blind from the recipe editor and never
+     seen again. The plan ended at Phase 9, so this is a deviation and this section is the
+     record the workflow rule asks for.
+
+     Half of the machinery is already there and that is what makes the phase small: `custom:*`
+     ids, `source: 'custom'`, a working per-100 g form (decision 53), a search index that
+     already returns a use count per ingredient, and a sync layer that already carries exactly
+     the custom rows and nothing else. What is missing is a screen, an edit path, a delete path,
+     and the safeguards that editability requires but creation never did.
+
+176. **Only `custom:*` rows are editable; the bundled base is read-only.** Two independent
+     reasons, either of which would be enough. `importBundledNutrition` writes the whole bundle
+     with `bulkPut` whenever `NUTRITION_DATA_VERSION` rises, so an edited `usda:*` row would be
+     overwritten at the next data refresh without a word. And `syncSnapshot` uploads `custom`
+     rows only — the USDA subset ships in the build — so the edit would exist on one device
+     while every other one kept the old number, which is the exact failure mode this project
+     treats as the worst one available: silently different numbers.
+
+     A bundled entry that is genuinely wrong for Poland is fixed where it comes from —
+     `data/pl-ingredients.tsv` plus `npm run build:nutrition` and a `DATA_VERSION` bump (Phase 9
+     task 8) — not patched on one device.
+
+177. **The way out of a read-only row is „Kopiuj i edytuj", and the copy drops the aliases.** The
+     copy takes the source's values and `state`, gets a name of „<nazwa> (kopia)" — the recipe
+     convention from Phase 9 task 3 — and a fresh `custom:<uuid>`, so it syncs and survives a
+     bundle refresh. It deliberately starts with **no aliases**: copying them would put two rows
+     answering to the same alias into one autocomplete and into Gemini's candidate list, which
+     is the ambiguity this phase exists to reduce. It also carries no reference back to its
+     source; `Ingredient` keeps the shape it has, and nothing in the wire format changes for it.
+
+178. **Every macro field must be entered before an ingredient can be saved, and `0` is a valid
+     entry.** Asked for explicitly, and it fixes a real trap: `CustomIngredientForm`'s `value()`
+     maps an untouched field to `0`, so an ingredient saved „to finish later" reads as 0 kcal in
+     every recipe using it, and nothing anywhere says so. The draft holds `number | null`
+     (decision 54's pattern) and saving is disabled, with the reason stated, until the name and
+     all four numbers are present.
+
+     This changes the **existing** creation path in the recipe editor as well, on purpose. It is
+     a deliberate departure from decision 52's „a half-filled recipe the user wants to come back
+     to is more useful than a form that refuses to close": a half-filled *recipe* announces
+     itself with a warning and a flagged row, while a half-filled *ingredient* looks complete
+     and is wrong everywhere it is later used, including in recipes written months afterwards.
+
+179. **Changing an ingredient's macros raises the same „zaktualizować przyszłe dni?" question a
+     recipe edit raises.** Recipe macros are computed live through `recipePortionMacros`, but a
+     planned meal holds a frozen `macroSnapshot` and the only path that rewrites one is
+     `refreshFutureSnapshots(recipeId, fromDate)`, which today is reachable only from saving a
+     recipe. Without this, editing an ingredient would leave the recipe screen showing one
+     number and tomorrow's calendar entry another, with nothing having asked. The new path
+     collects the recipes using the ingredient, counts the planned meals from today onwards, and
+     runs the existing refresh per recipe on „Tak". Past days are never touched, by the same
+     rule as always. Changing only the name, the `state` or the aliases moves no number and asks
+     nothing.
+
+180. **Deleting is either free or a replacement, and never a silent zero.** The question was
+     whether to block a delete and make the user walk through every recipe by hand. Blocking
+     alone is honest but punitive — the real reason for deleting an in-use custom ingredient is
+     almost always a duplicate („twarog poltlusty" beside „Twaróg półtłusty"), and the useful
+     operation there is a merge, not a deletion. So:
+
+     - Nothing uses it → one confirmation and it is gone.
+     - Something uses it → the dialog names **every** recipe that does, each one a link into its
+       editor, and offers „Zastąp innym składnikiem" as the primary action. An autocomplete
+       picks the replacement, one transaction rewrites `ingredientId` in every matching item of
+       every recipe, and the old row is deleted afterwards. Everything else on the item —
+       `amount`, `unit`, `gramsPerUnit`, a manual `macroOverride` — is left untouched; only the
+       identity moves. The operation ends in decision 179's question, because it changes macros.
+     - Deleting an in-use ingredient *without* replacing it is not offered. There is no third
+       meaning of „delete" that does not quietly zero a recipe: `itemPer100g` falls back to
+       `ZERO_MACROS` for an id that no longer resolves. The recipe list is the manual way out,
+       and the cheap path appears by itself once the last use is gone.
+
+     `deleteIngredient` is new and enforces this in the repository, not only in the UI.
+
+     One alternative was considered and rejected: freezing the old values into a `macroOverride`
+     on every affected row before deleting, so no recipe's numbers move. It preserves arithmetic
+     at the cost of scattering invisible overrides through the library, which is worse to live
+     with than being asked one question about future days.
+
+181. **A correction must not outlive the ingredient it points at.** `corrections` maps a
+     normalized Polish name to an ingredient id, and `resolveName` in `gemini/match.ts` returns
+     that id outright without checking that it still resolves — a correction is a lookup, by
+     design. So a delete that leaves corrections behind would make the next import match a name
+     to nothing at all. A replacement repoints every affected correction to the new id; a plain
+     delete removes them.
+
+182. **`Ingredient` gains an optional `updatedAt`, and the ingredient merge stops being
+     `localWins`.** Found while planning, and it is the one thing here that is not a UI concern.
+     Custom ingredients are resolved with `localWins`, whose own comment states the premise this
+     phase destroys: „the rule for entities that are **only ever added to**". Once they can be
+     edited, two devices that both changed one row would keep whichever synced last, silently,
+     with no conflict raised — and a delete racing an edit would be undone by `local ?? remote`.
+
+     Every write from this phase stamps `updatedAt`, the resolver becomes the timestamped one
+     recipes already use, and a row without a timestamp counts as the older side. The field is
+     optional and **not indexed**, so Dexie needs no new schema version and no migration; rows
+     written before this phase stay valid and simply lose to an edited copy. The first sync
+     after the upgrade re-uploads the custom rows it stamps, because their content hash changes
+     — harmless, and worth expecting rather than debugging.
+
+183. **The screen is a fourth navigation item; editing happens in a bottom sheet, not a route.**
+     „Składniki" sits between „Przepisy" and „Ustawienia" in both `navItems` consumers; the
+     mobile bar lays items out with `flex-1`, so a fourth fits without a layout change. Editing
+     one ingredient is a short form with no deep-link value, unlike the recipe editor, so it
+     reuses `BottomSheet` over the list and the route table gains exactly one entry.
+     `ingredientIndex.invalidate()` is called after every write, as decision 39 requires.
+
+184. **The backup carries the vault after all — decision 137 is reversed.** Asked for directly:
+     a copy should be one file that brings everything back, „bez martwienia się o inne rzeczy".
+     Decision 137 kept the Gemini key out of the export because the file lands in Downloads and
+     in mail attachments. That reasoning was sound about the file and wrong about the whole:
+     `syncSnapshot` already carries `vaultFile` verbatim to Drive, so anyone who syncs already
+     has the vault travelling — the exclusion only ever weakened the path taken by the user who
+     does *not* sync, which is the exact user the export exists for. And a restore that ends
+     with „now go find your API key" is a restore the user has to finish by hand, on the day
+     they are least able to.
+
+     What makes it defensible rather than merely convenient: the vault is exported **as the
+     device holds it**, and with encryption on that is an Argon2id + AES-GCM blob whose
+     password never enters the file. The residual risk is the encryption-off case, where the
+     key sits in the export in the clear. That is not hidden in a footnote — the export states
+     which of the two files it is about to produce, at the moment of export.
+
+185. **A restored vault is swapped, not overwritten.** The restore reuses `vaultFileReplaced`
+     (decisions 93 and 150), which already exists for the sync path. The reason is the same one
+     that created it: the incoming vault may have a different master password, in which case it
+     cannot be opened on this device at all, and the previous one must still be recoverable.
+
+186. **What the backup still refuses to carry, and why each one.** The bundled USDA rows belong
+     to the build and are re-imported on first run. `deviceId` keys the per-device Gemini tally,
+     which merges by taking the larger value — two devices sharing an id would silently corrupt
+     a counter that has no other way to be wrong. `driveAccountLabel` describes a connection the
+     restoring device may not have. `syncBaseline` and `driveFiles` are cleared by
+     `restoreBackup` already, and a restored baseline would let the next merge read a restored
+     row as a deletion. And `googleSub` from the file never displaces a `googleSub` the device
+     already holds, so restoring onto a machine connected to a different account does not fake
+     the wrong-account check.
+
+187. **`recipeSort` and `recipeGrouped` travel in the backup, although they never travel to
+     Drive.** These live in `meta` precisely because how a list is drawn belongs to the screen
+     in front of you and not to the account. That argument holds for sync and inverts for a
+     backup: sync equalises two devices that may reasonably disagree, a backup rebuilds *one*
+     device that had one answer. Same fact, opposite conclusion, so it is written down here
+     rather than left to look like an oversight.
+
+188. **`BACKUP_VERSION` stays at 1.** The file's own rule is to bump only when an older build
+     would read a newer file *wrongly* rather than merely incompletely, and a build that
+     predates this change reads a v1-shaped document and ignores two sections it does not know.
+     Bumping would make it refuse the file outright — taking a user's recipes away to protect
+     them from missing an API key.
+
+189. **The install box hides itself when it has nothing to offer.** Reported from real use: on
+     Android the section explains how to install while no „Zainstaluj aplikację" button is
+     there, so the screen reads as a broken feature. It now renders only when it can offer the
+     captured prompt or the iOS „Udostępnij → Do ekranu początkowego" instruction, which is
+     actionable; otherwise nothing. iOS is told apart by `'standalone' in navigator` rather
+     than a UA string — the signal `isStandalone()` already relies on. The offline note is not
+     install advice and stays when it is true.
+
+     Hiding the text is right regardless, but it is a symptom and the cause is still open:
+     `beforeinstallprompt` is Chromium-only, so Firefox or Samsung Internet would explain it
+     entirely, while Chrome on Android withholding it would mean a failing installability
+     criterion — a manifest or service-worker bug affecting every Android user. Phase 11 finds
+     out which and records it here. Open question 26 (nothing installed on a real phone yet) is
+     the reason this was never caught.
+
+190. **The missing Android install button is not a static-configuration bug — that half is
+     already ruled out.** Checked while planning the phase, so it starts on the device
+     instead of re-reading the same files:
+
+     - The manifest has everything Chrome requires and the build emits it intact: `id`, `name`,
+       `short_name`, `start_url`, `scope`, `display: standalone`, and icons at 192 and 512 with
+       a separate maskable 512. `dist/manifest.webmanifest` matches, `dist/index.html` carries
+       `<link rel="manifest">`, and all three PNGs exist in `public/icons/`.
+     - The CSP does not stand in the way: `manifest-src 'self'` and `worker-src 'self' blob:`
+       are both in the Caddyfile header.
+     - The service worker is generated with a precache and `navigateFallback`, so it has the
+       fetch handler installability needs, and `e2e/pwa.spec.ts` already proves it caches in the
+       container.
+     - The report cannot have come from the local container: `docker-compose.yml` publishes
+       `127.0.0.1:8080` only, so no phone can reach it, and `http://` on a LAN address would not
+       be a secure context anyway. The observation is about production.
+
+     What is left is a device question — one of Chrome's deliberate refusals (incognito, or an
+     app already installed), its engagement heuristic, or a criterion Lighthouse will name.
+     Phase 11 task 1 runs that diagnosis and fixes whatever it names.
+
+191. **Today's copy lies to a user who has already installed the app.** Found while writing the
+     above, and it is a real defect independent of the Android question: Chrome withholds
+     `beforeinstallprompt` for an installed app, and a browser *tab* showing that app does not
+     match `display-mode: standalone`, so `pwaState` reads „not installed, not installable" and
+     the section prints „Ta przeglądarka nie daje przycisku instalacji". That is exactly the
+     dead-end sentence that was reported. Phase 11 gives the state its own copy, best-effort
+     through `navigator.getInstalledRelatedApps()`.
+
+192. **No wizard in a fresh incognito tab is intended, and incomplete.** Asked after a
+     `http://localhost:8080` incognito run. The wizard is gated on `syncState.setupNeeded`,
+     which is set in exactly one place — a sync that succeeded against an empty
+     `appDataFolder` on a device with no local vault — so a database that never connects to
+     Drive never sees it. That is PLAN.md's own definition („shown when Drive is connected and
+     `appDataFolder` has no data"), and it matches the wizard's first step being „Connect
+     Google Drive".
+
+     It is still a gap, and it grew with decision 184: a user who never connects Drive is
+     precisely the user the export exists for, and today that user lands on the calendar with
+     default goals of 2000/100/250/70, no Gemini key and nothing having asked. Whether the
+     wizard should also open on a database that has never been used — no recipes, no days, no
+     vault, an untouched profile — with the Drive step skippable, was raised here and then
+     decided: **yes**, see decision 193. It is Phase 11 task 2.
+
+193. **The wizard also opens on a never-used database, and the Drive step becomes skippable.**
+     Decided directly after 192 raised it. The condition is local and narrow — no recipes, no
+     days, no vault, a profile still identical to `DEFAULT_PROFILE` — so it describes a browser
+     that has genuinely never been used, not merely an empty calendar.
+
+     Two things make it work rather than annoy. It waits for `resumeSync()` to have had its
+     say, because a second device is „never used" for the seconds before its first sync lands
+     and must not be greeted with a wizard for an account it already owns. And skipping is
+     remembered in a `meta` key rather than in memory: the Drive-driven flag could live in
+     memory because a sync re-set it on every load, and a locally triggered one cannot. `meta`
+     never travels to Drive, which is exactly right — the fact recorded is that *this browser*
+     has been through the wizard, not that the account has.
+
+194. **Connecting to Drive gets visible progress, not just a sentence.** Reported from real
+     use: the only sign that signing in is doing anything is one grey line („Synchronizacja z
+     Dyskiem…") at the top of the screen, while „Połącz Dysk Google" — the button the user is
+     actually looking at — merely fades to `opacity-50`. A dimmed button with static text reads
+     as broken, and the sync that follows a connection is the longest one the app ever runs:
+     every file of the account, merged and written.
+
+     What it does *not* become is a permanent badge. The indicator's rule from Phase 6 stands —
+     a successful sync is silent, because a status light that is always on is one nobody reads.
+     The change is to how loud „in progress" is, not to how long anything is shown.
+
+     Three constraints shape the implementation. The spinner animates from a class in the
+     bundled stylesheet and never an inline `style`, because the production CSP has no
+     `'unsafe-inline'` for styles (decision 71) — the same rule that already forces every bar
+     in this app to be SVG geometry. It is `aria-hidden`, so the existing `role="status"` line
+     is announced once rather than twice. And it stands still under `prefers-reduced-motion`,
+     where the words carry the whole message.
+
+     The step names are worth the small state change they need: Drive reports no totals, so
+     there is no honest percentage, but „waiting for the Google window" and „reading and
+     writing your files" are different waits and the user can tell which one is stuck.
+
+195. **A dark theme is seven variables, and that is why it is a task rather than a phase.**
+     Every colour in the app already comes from the tokens in `@theme` (`src/app.css`), so the
+     dark palette is those seven redefined under `:root[data-theme="dark"]` in `@layer base` —
+     plain CSS in the bundled stylesheet, because the production CSP has no `'unsafe-inline'`
+     for styles and never will (decision 71).
+
+     Three things about it are decisions rather than implementation:
+
+     - **The choice lives in `meta`, not in `Profile`.** Same argument as `recipeSort`: how a
+       screen is drawn belongs to the device in front of you, and a phone and a laptop may
+       reasonably disagree. It therefore never reaches Drive, and it *does* reach the backup,
+       by decision 187.
+     - **It is read from `localStorage` before the first paint**, with IndexedDB as the source
+       of truth behind it. This CSP allows no inline bootstrap script, so `main.ts` is the
+       earliest point anything of ours runs, and only a synchronous read gets the theme onto
+       the document before it is painted. Every access is wrapped, as decision 173 established
+       for the account hint: a browser with site data blocked throws on it.
+     - **`index.html`'s hardcoded `color-scheme: light` and light `theme-color` are part of the
+       feature, not an afterthought.** Left alone, the browser's own chrome, its form controls
+       and its scrollbars stay light around a dark app, which looks like a bug in the app.
+
+     The risk is not the tokens, it is everything that bypassed them: `--color-ink-muted` at 52%
+     lightness fails on a dark surface, and the literal Tailwind colours already in the code —
+     the amber sync warnings, the red delete button, `backdrop:bg-black/40` — plus the SVG bars
+     and rings that carry their own fills all have to be looked at rather than assumed.
+
+196. **`Recipe` gains an optional `sourceUrl`.** `importRecipe` receives the link, reads the
+     page with it and then drops it — `ImportedRecipe` has nowhere to put it — so a recipe that
+     came from a page cannot be traced back to that page, which is the one thing a user wants
+     when the app's own copy of a recipe looks wrong. The field is optional, so it costs no
+     schema version, no migration and nothing in the Drive format: `readRecipesDocument` keeps
+     fields it does not know, and the backup carries recipes verbatim.
+
+     It is filled only when the import began with a link — pasted text has no source and a
+     hand-written recipe has none — and it can be cleared, because a recipe edited beyond
+     recognition no longer comes from anywhere. The row shows the host rather than the URL: a
+     200-character link is unreadable on a phone, and the host is what tells the user whether
+     it is worth opening.
+
+197. **The stored URL is cleaned with a deny-list, never an allow-list.** `utm_*` and the known
+     click ids (`fbclid`, `gclid`, `dclid`, `msclkid`, `twclid`, `yclid`, `igshid`, `mc_cid`,
+     `mc_eid`, `_ga`, `ref_src`, `si`) come off; everything else stays, the path is never
+     rewritten and the fragment is kept. The direction matters: a query parameter is very often
+     the recipe's own identity (`?p=1234`) and a fragment is often where on the page it lives,
+     so a cleaner that keeps only what it recognises would quietly break the link the row
+     exists to provide.
+
+     One rule is security rather than tidiness: **only `http` and `https` are ever stored.** The
+     value arrives as something the user pasted and leaves as an `href`, so any other scheme is
+     refused at the point of storage rather than rendered and hoped about. The link itself
+     carries `rel="noopener noreferrer"`.
+
+198. **Phase 10 is split in two, and the line runs between data and what the app says about
+     it.** It had grown to fifteen tasks — nearly twice Phase 9 — which the „one phase per
+     conversation" rule would have made unworkable. The split was made before any of it was
+     built, so nothing is being re-planned mid-flight.
+
+     **Phase 10 — Składniki i pełna kopia danych** keeps everything that touches stored data:
+     the ingredient screen, editing, copying a bundled row, the delete-or-replace flow, the
+     corrections that must not outlive their target, `updatedAt` and the merge that needs it,
+     the complete backup, and the sync coverage for all of it. Every one of these can write a
+     number the user will later read, which is why they belong together and why they come
+     first.
+
+     **Phase 11 — Zgłoszenia z użytkowania** takes the five reports about what the app *says*:
+     the install box, the unreachable wizard, the silent Drive loader, the dark theme and the
+     recipe's source link. Not one of them changes a stored number, so they can be built in any
+     order, and nothing in Phase 10 depends on them.
+
+     The one thread crossing the seam is recorded rather than duplicated: the theme setting
+     travels in the backup's `settings` section, which Phase 10 task 9 creates, so Phase 11
+     task 4 refers to it explicitly.
+
+     Later requests go into whichever phase matches that line — data and its integrity into 10,
+     what the app shows and says into 11.
+
+199. **The Gemini key field gets a link, closing a deviation nobody recorded.** Asked for
+     directly, and it turns out PLAN.md asked for it first: the first-run wizard's
+     specification says „Gemini API key — **link** to AI Studio + a live test request". What
+     shipped is an address the user has to read and retype — Settings prints
+     „(aistudio.google.com)" as plain text and the wizard wraps `aistudio.google.com/apikey` in
+     a `<span>`. Both become links to `https://aistudio.google.com/apikey`, the page that
+     actually creates a key rather than the studio's front door.
+
+     Two notes so this is not re-litigated later. The link carries `rel="noopener noreferrer"`
+     and opens in a new tab, the same treatment as the recipe source row (decision 196) — the
+     app is a place someone is in the middle of setting up, and it should still be there when
+     they come back with a key. And it needs no CSP change: the policy governs what the page
+     loads and connects to, not where a link may take the browser.
+
+200. **The GitHub repository has said nothing about itself since the first commit.** Checked
+     while planning: `zyndata/eat-my-way` has an empty `description`, an empty `homepageUrl`
+     and no topics, so the About panel — the first thing a visitor reads, and on mobile the
+     thing they read *instead* of the README — is blank, and nothing on the page links to the
+     running app at https://eatmyway.gorny.dev.
+
+     The description is taken from the README's opening sentence rather than written afresh, so
+     the two cannot drift; it stays in **English**, like every other word of documentation here
+     — the Polish rule is about the interface, not about the repository. Topics describe what
+     the thing is (`pwa`, `svelte`, `typescript`, `indexeddb`, `meal-planner`, `offline-first`).
+
+     It sits in Phase 11 because it is the same failure as the rest of that phase — the project
+     doing the right thing and saying nothing about it — but it is worth noting that it is the
+     one task in either phase that ships **outside a tag**: repository metadata is not in the
+     build, so it takes effect the moment it is set and no release carries it.
+
+### 2026-09-03 — Phase 10 built
+
+201. **Phase 10 shipped as planned, with one addition and no deviations.** Every task landed as
+     decisions 176-188 described it, so this entry records only what those did not say.
+
+     The addition: **the ingredients screen re-reads itself when the first-run nutrition import
+     lands.** It was found by the e2e test, not by reasoning — a device opening „Składniki"
+     during the import saw an empty base and stayed that way until the screen was navigated
+     away from and back, which is precisely the first minute of a new install. The list now
+     reads on mount and again when `nutritionStatus.phase` leaves `importing`.
+
+202. **The pure rules live in `custom-ingredients.ts`, and the repository enforces the two that
+     protect a number.** The split follows this project's usual line: `custom-ingredients.ts`
+     holds the draft, the validation, the copy-and-edit seeding and the item rewrite, all
+     testable without a database; `repository.ts` holds `saveCustomIngredient`,
+     `deleteIngredient`, `replaceIngredient` and `ingredientReferences`.
+
+     Two refusals are in the repository rather than only in the screen, and both throw a named
+     error the UI can act on: `IngredientInUseError` (a delete that would silently zero a
+     recipe) and `NotCustomIngredientError` (a write to a bundled row, which no data refresh
+     would preserve). A screen is the wrong place for either, because the damage would be
+     silent and permanent, and because the same repository is what sync writes through.
+
+203. **The bundled list is capped at 50 rows on screen.** ~1300 rows behind one toggle is a
+     page a phone renders slowly and nobody reads; the cap comes with the count it is hiding
+     and a line saying to narrow the search. The cap is on rendering only — the ranking runs
+     over everything, so the right row is in the first fifty whenever the query says enough.
+
+204. **The „update future days?" question is asked once for the whole edit, not once per
+     recipe.** An ingredient in five recipes could raise five prompts, which is five ways to
+     answer one question inconsistently. The count in the prompt is the total planned meals
+     from today onwards across every affected recipe, and „Tak" runs `refreshFutureSnapshots`
+     per recipe behind that single answer.
+
+     For a replacement the recipes counted are the ones that used the *old* ingredient — taken
+     before the swap, because afterwards they are indistinguishable from recipes that already
+     used the replacement and whose macros never moved.
+
+205. **`vaultState` is what the export copy reads to decide what it is about to write.** Three
+     states, because „the file contains your API key" is true in two very different ways and
+     false in the third: no vault at all, an encrypted one (the key travels sealed, the
+     password never enters the file), and an unencrypted one (the key is in the file in the
+     clear, said in red at the moment of export). Decision 184 required the sentence; this is
+     where it comes from.
+
+### 2026-09-03 — Phase 11, deviations recorded before building
+
+206. **The dark theme needs more than seven tokens, and the extra ones are semantic rather than
+     new colours.** Decision 195 said the palette is the seven `@theme` variables redefined, and
+     that half is true. What it also flagged — „everything that bypassed them" — turns out to be
+     53 literal Tailwind colours across 14 files: `text-red-700`, `text-amber-700`,
+     `border-amber-300`, `bg-amber-50`, `bg-red-600` and their neighbours. Each one is a fixed
+     light-mode shade that cannot follow a theme, and rewriting each call site with a
+     `dark:` variant would put the palette back into the markup, which is the thing `@theme`
+     exists to prevent.
+
+     So seven more tokens are added — `--color-warn`, `--color-warn-border`,
+     `--color-warn-surface`, `--color-danger`, `--color-danger-border`, `--color-danger-surface`,
+     `--color-danger-solid` — carrying today's light values exactly, and the literals are
+     replaced by them. This is a deviation from PLAN.md's „seven tokens redefined" only in
+     count: the mechanism is unchanged, no colour moves in the light theme, and the dark theme
+     stays one block of variable definitions rather than a sweep of conditional classes.
+
+     `backdrop:bg-black/40` is deliberately **not** tokenised. It is a scrim over whatever is
+     behind the dialog, and black at 40% is right in both themes.
+
+207. **The device half of task 1 cannot be run from here, and is recorded as unfinished rather
+     than guessed at.** PLAN.md asks for Lighthouse's installability audit against
+     https://eatmyway.gorny.dev and the real tab's console through `chrome://inspect`. This
+     environment has neither a browser nor the Android phone the report came from, so the
+     verdict Chrome would give is not available and no amount of re-reading the manifest
+     produces it — decision 190 already established that the static configuration is not the
+     cause.
+
+     What ships is therefore the half that does not need the device: the section no longer
+     shows install advice it cannot act on, and the „already installed, opened in a tab" state
+     gets its own copy. The diagnosis moves to open question 26, which is already the „first
+     install on a real phone" item, with the procedure named there. Acceptance criterion 1 is
+     verified for the copy and **not** verified for the cause.
+
+208. **`getInstalledRelatedApps()` needs the manifest to point back at itself, so the manifest
+     gains `related_applications`.** The API answers only for applications the manifest
+     declares as related, so calling it against today's manifest would return an empty list on
+     every browser and the „already installed" copy would never appear. One entry is added —
+     platform `webapp`, url `/manifest.webmanifest`, relative so it resolves per origin and the
+     container run is not a special case — and `prefer_related_applications` is left absent, so
+     installability is untouched.
+
+     Best-effort remains best-effort: the call is wrapped, a browser without the API says
+     nothing, and this is one more thing open question 26 has to confirm on a real device.
+
+209. **The wizard's Drive step keeps the skip label it already has.** PLAN.md task 2 names the
+     button „Pominę na razie"; the step already carries „Pomiń — tylko to urządzenie", which
+     says the same thing and says what skipping costs. The button is not renamed. What task 2
+     actually adds is the reason it was unreachable — the local trigger and the `meta` key that
+     makes skipping stick.
+
+### 2026-09-03 — Phase 11 built
+
+210. **Phase 11 shipped with the deviations recorded above and no others.** Decisions 189–200
+     described the seven tasks and 206–209 recorded what changed while building them, so this
+     entry records only what those did not say.
+
+     Six of the seven acceptance criteria are verified; the seventh — *why* Chrome on Android
+     withheld the install prompt — is not, and cannot be from here. It is open question 26.
+
+211. **The theme is applied from `main.ts`, before `startPwa()` and before the mount.** That is
+     the earliest point anything of ours runs under a CSP with no inline script, and only the
+     `localStorage` mirror is fast enough to be read there — IndexedDB lands after the first
+     paint. `startTheme()` reads the mirror synchronously, then catches up with `meta` and
+     re-mirrors, so IndexedDB stays the source of truth and a backup restore takes effect on
+     the reload that follows it.
+
+     `data-theme` is set to the *resolved* theme rather than the choice, so the stylesheet
+     needs one selector and no `prefers-color-scheme` block of its own. „Jak system" keeps a
+     `matchMedia` listener, which is what makes it follow the OS while the app is open.
+
+212. **`color-scheme` is set in two places on purpose.** The `<meta>` tag is the pre-boot value
+     and `theme.svelte.ts` rewrites it; `html { color-scheme }` in the stylesheet is what
+     actually holds for the rest of the session and follows `data-theme`. Without both, the
+     form controls and the scrollbars stay light around a dark app, and the installed app's
+     status bar keeps the light accent.
+
+213. **The literal Tailwind colours are gone from `src/`.** 53 occurrences across 14 files
+     became the seven semantic tokens of decision 206, plus `--color-danger-solid-ink` for the
+     one place a red button carries text — it used `--color-accent-ink`, which is a *green*
+     ink and would have been near-black on red in the dark theme. `backdrop:bg-black/40` is
+     the only literal left and is deliberate: a scrim is black in both themes.
+
+     Verified by looking, not only by reasoning: every screen was walked in the dark theme in
+     the Caddy container, including the amber „sejf bez szyfrowania" panel, the red delete
+     dialog, the macro bars and the ring, and the same walk in the light theme confirms nothing
+     moved there.
+
+214. **`cleanSourceUrl` parses the pasted value before it normalises it.** Found by its own
+     test: routing everything through `normalizeUrl` first turns `file:///etc/passwd` into
+     `https://file///etc/passwd`, so a scheme that must be refused would have been quietly
+     rewritten into an accepted one. It now parses as pasted, judges the protocol, and only
+     falls back to prepending `https://` when the value did not parse at all — which is the
+     scheme-less `example.com/przepis` case and nothing else.
+
+215. **The e2e fixture skips the wizard, and that is the proof the wizard opens.** Every device
+     the suite opens is a browser that has genuinely never been used, which is exactly what
+     task 2 made the wizard trigger on — so all 51 existing specs would have landed on it. The
+     fixture now clicks „Pomiń kreator" on the way in, and `keepSetup` leaves it for the specs
+     that are about it.
+
+     The spec that proves the ordering deletes the `setupDone` key from IndexedDB before
+     reloading, because otherwise that key alone would explain the absence of the wizard. What
+     is left is the claim decision 193 makes: a device that pulled an account is not „never
+     used" by the time `offerSetup()` asks.
+
+216. **A locally opened wizard keeps the user in it until they leave it deliberately**, exactly
+     as a Drive-opened one always has: `syncState.setupNeeded` is cleared by the wizard's own
+     „Pomiń kreator" and by finishing, and the `$effect` in `App.svelte` pushes back to
+     `/setup` from anywhere else meanwhile. Noticed while writing the spec above, and left
+     alone: it is pre-existing behaviour of the same effect, it is not what was reported, and
+     the two ways out are both on screen.
+
+217. **The GitHub About box is filled in, and it is the one thing here that is already live.**
+     `zyndata/eat-my-way` now carries the README's own opening sentence as its description, a
+     homepage of `https://eatmyway.gorny.dev` and the six topics decision 200 named. Repository
+     metadata is not in the build, so this took effect the moment it was set and no tag carries
+     it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -2168,13 +2705,33 @@ one of which broke the feature outright.
     what the remaining two pages settle is no longer „which default" but „how much parse quality
     the quota is costing" — worth knowing, and no longer blocking anything.
 
-26. **Nothing has been installed on a real phone yet.** The installability criteria are
-    asserted programmatically (decision 142) and the manifest, the icons and the service worker
-    are all in place, but „it installs on Android and launches standalone" has been verified by
-    proxy, not by installing it. Do this on the first real visit to `eatmyway.gorny.dev` after
-    the `v1.0.0` release, along with open question 15's live Drive round trip — the same visit
-    can settle both, and that visit now has a written checklist (decision 149,
+26. **Nothing has been installed on a real phone yet — and the Android install button is now
+    part of this question.** The installability criteria are asserted programmatically
+    (decision 142) and the manifest, the icons and the service worker are all in place, but
+    „it installs on Android and launches standalone" has been verified by proxy, not by
+    installing it. Do this on the first real visit to `eatmyway.gorny.dev` after the `v1.0.0`
+    release, along with open question 15's live Drive round trip — the same visit can settle
+    both, and that visit now has a written checklist (decision 149,
     [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#the-first-live-sign-in-run-once-then-record-it)).
+
+    Phase 11 added the second half and could not run it from a development machine (decision
+    207). In this order, on a normal tab of a device with no Eat My Way icon:
+
+    - **Rule out Chrome's two deliberate refusals first.** It fires `beforeinstallprompt` in
+      neither an incognito tab nor for an app that is already installed.
+    - **Read the browser's own verdict** rather than guessing: Lighthouse's installability
+      audit against the live URL, and `chrome://inspect` from a desktop for the console of the
+      real tab. Chrome names the failing criterion if there is one.
+    - **Then fix what it names.** A failing criterion is a bug in the manifest, the icons or
+      the service worker; Chrome's engagement heuristic — the event can wait for a real visit
+      rather than the first paint — is not a bug and is the answer if that is what it turns
+      out to be.
+
+    Two things Phase 11 shipped are waiting on the same visit: the „already installed, opened
+    in a tab" copy, which needs `navigator.getInstalledRelatedApps()` to actually answer
+    (decision 208), and the fact that the install section now shows nothing at all where it
+    has nothing to offer — which is right regardless, and also means a missing button no
+    longer announces itself.
 
 27. **A restore is not offered a preview of what it replaces — answered: now it is.** The
     argument for leaving it (a two-step red-button action, the export one click away) was
