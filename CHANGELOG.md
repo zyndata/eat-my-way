@@ -6,6 +6,20 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [1.6.1] - 2026-09-04
+
+### Bug Fixes
+
+- **scan:** Drop a parameter that does not exist, and retry an overloaded model
+
+### Documentation
+
+- Close phase 12 — the camera and the label are both confirmed
+
+### Performance
+
+- **scan:** Ask the model for less work, and say what the wait is for
+
 ## [1.6.0] - 2026-09-04
 
 ### Bug Fixes
