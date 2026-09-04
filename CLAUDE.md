@@ -19,6 +19,11 @@ https://eatmyway.gorny.dev. No application backend.
   after every phase.
 - Any **deviation from PLAN.md must be recorded in STATE.md** before proceeding.
 - **Conventional commits**; push after each phase.
+- **A push is not finished until CI is green.** `ci.yml` runs on every push to `dev` and `main`
+  and is the only check that runs somewhere other than the machine the work was done on — a
+  green local run is evidence, not a substitute. After pushing, wait for the run
+  (`gh run watch <id> --exit-status`) and report what it said. Never call work done while a run
+  is pending or red.
 - **End-of-phase ritual:** update STATE.md → regenerate CHANGELOG.md (`npm run changelog`) →
   commit → push → plain-language summary → go/no-go statement for the next phase.
 - **Code and comments in English. All user-facing UI text in Polish.**
