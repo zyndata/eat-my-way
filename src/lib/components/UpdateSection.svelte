@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { applyUpdate, checkForUpdate, pwaState, type UpdateCheck } from '../pwa.svelte';
+  import {
+    applyUpdate,
+    checkForUpdate,
+    NETWORK_CHECK_PATH,
+    pwaState,
+    type UpdateCheck
+  } from '../pwa.svelte';
   import { APP_VERSION_LABEL } from '../version';
 
   /**
@@ -58,11 +64,34 @@
           Masz najnowszą wersję.
         {:else if result === 'offline'}
           Bez połączenia nie mogę sprawdzić. Spróbuj, kiedy będziesz online.
+        {:else if result === 'blocked'}
+          Serwer odpowiedział, ale nie plikiem aplikacji — coś po drodze przechwytuje
+          połączenie. Zwykle to zabezpieczenie serwera, które chce potwierdzić, że nie jesteś
+          botem; widuje się je przy łączeniu z zagranicy albo przez VPN. Aplikacja działa
+          dalej, bo chodzi z pamięci urządzenia — nowej wersji nie ma tylko skąd pobrać.
         {:else}
           Nie udało się sprawdzić — pobieranie nowej wersji się nie powiodło. Spróbuj przy
           lepszym połączeniu; nic się nie zepsuło i nic nie zginęło.
         {/if}
       </p>
+
+      {#if result === 'blocked'}
+        <!-- The one link on this screen that must not be answered from the cache: it exists so
+             that whatever is standing in front of the server finally gets to ask its question
+             where a person can see it and answer. -->
+        <a
+          class="mt-3 inline-block rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          href={NETWORK_CHECK_PATH}
+          target="_blank"
+          rel="noopener"
+        >
+          Otwórz sprawdzenie połączenia
+        </a>
+        <p class="pt-2 text-sm text-(--color-ink-muted)">
+          Otworzy się nowa karta. Przejdź w niej przez weryfikację, zamknij ją i sprawdź
+          aktualizacje jeszcze raz.
+        </p>
+      {/if}
     {/if}
   {:else}
     <p class="pt-2 text-sm text-(--color-ink-muted)">

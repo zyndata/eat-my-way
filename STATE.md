@@ -2975,6 +2975,59 @@ one of which broke the feature outright.
      icon's teal and rounded it to `#529888`; the new artwork's ground **is** `#529888`. The
      interface and the mark agree by arithmetic rather than by luck.
 
+### 2026-09-04 — the update check could not see what was refusing it
+
+238. **Decision 236's root cause was wrong, and this corrects it.** That entry blamed a
+     rejected `update()` on a weak mobile link and a precache that had just grown by 385 KB.
+     The symptom came back on v1.5.0 — on good wifi, after the icon work had *shrunk* the
+     precache to well below where it started — and the real cause turned out to be somewhere
+     nobody had looked: **the zone has a Cloudflare rule that challenges connections from
+     outside Poland, and the phone was abroad.** A Polish VPN makes the check succeed; without
+     it, it fails every time. The reason it „could not be reproduced from a desktop on a good
+     link" was that the desktop was in Poland.
+
+     **The app and the challenge cannot see each other, and that is structural.**
+     `navigateFallback` answers every navigation from the precache — that is what makes the app
+     open instantly and work with no link at all. So the one request capable of *displaying* a
+     challenge, the navigation, never leaves the device. The user never sees a question, never
+     answers one, and never gets the `cf_clearance` cookie. What does reach the network is
+     `registration.update()`, which is handed an HTML interstitial where a worker script should
+     be, fails on status and content type, and rejects. Refreshing changes nothing, because the
+     refresh is served from the cache too. Clearing site data works, because it removes the
+     worker and lets the next navigation reach the edge — until the cookie expires, which is
+     why it kept coming back.
+
+     Two consequences worth stating plainly. **Narrowing the rule to navigations would not
+     help** — those are exactly the requests the worker answers locally. And **the old message
+     was worse than useless**: „spróbuj przy lepszym połączeniu" is advice that cannot work when
+     the link is fine and the edge is refusing.
+
+     **The rule stays.** It is what keeps crawlers off the origin's egress, which is metered.
+     The fix is in the app instead, and it is two small things:
+
+     - **`/polaczenie` is denylisted out of the navigation route.** The worker does not claim
+       it, so opening it is a real navigation to the origin, whatever stands in front of the
+       origin finally gets to ask its question where a person can answer it, and the server
+       resolves the path to the app like any other deep link. One 2.7 KB document buys back the
+       cookie. `e2e/pwa.spec.ts` asserts *who answered* — precache for an ordinary deep link,
+       network for this one — because that is the difference a future Workbox upgrade could
+       silently undo.
+     - **A failed check now says which failure it was.** `checkForUpdate` probes the worker
+       script — the request that just failed, two kilobytes, served from no cache — and reports
+       `blocked` when the origin answers with something that is not JavaScript. The screen then
+       explains that the app is running from the device and only the *download* is being
+       stopped, and offers the link above.
+
+     **What was checked and found healthy**, before the location was known: a fresh Chromium
+     with a Pixel user agent installs v1.5.0 cleanly (16 precache entries, `update()` resolves);
+     all twenty precache URLs answer 200 with their `__WB_REVISION__` query; `sw.js` is served
+     `no-cache` and `cf-cache-status: DYNAMIC`. Nothing on the server needed fixing.
+
+     Noted for the transfer question that motivates the rule: the hashed bundle already answers
+     `cf-cache-status: HIT` and the icons `REVALIDATED`, so the bytes that matter are already
+     served from the edge rather than the origin. Only `/` and `/sw.js` are `DYNAMIC`, and
+     together they are about five kilobytes.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

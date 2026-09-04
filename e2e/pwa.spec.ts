@@ -136,3 +136,34 @@ test('settings names the version and can say that it is the newest', async ({ de
   await section.getByRole('button', { name: 'Sprawdź aktualizacje' }).click();
   await expect(section.getByText('Masz najnowszą wersję.')).toBeVisible();
 });
+
+/**
+ * The escape hatch from the app's own offline-first routing.
+ *
+ * `navigateFallback` answers every navigation from the precache, which is what makes the app
+ * open instantly and survive a dead link — and is also why a challenge in front of the origin
+ * can never be seen: the navigation that could display one never leaves the device, so the
+ * only requests that meet the challenge are the worker's own, which have no way to show it.
+ * `/polaczenie` is denylisted out of that route so opening it is a real trip to the server
+ * (STATE.md decision 238).
+ *
+ * The assertion is about *who answered*, not about what came back: both paths render the same
+ * document, and the whole point of the fix is the one difference Playwright can still see.
+ */
+test('the connection check is answered by the server, not the worker', async ({ device }) => {
+  await waitForServiceWorker(device);
+
+  const unknown = await device.goto('/sciezka-ktorej-nie-ma');
+  expect(unknown?.status()).toBe(200);
+  expect(
+    unknown?.fromServiceWorker(),
+    'an ordinary deep link is served from the precache'
+  ).toBe(true);
+
+  const check = await device.goto('/polaczenie');
+  expect(check?.status()).toBe(200);
+  expect(
+    check?.fromServiceWorker(),
+    'the connection check must reach the network, or it checks nothing'
+  ).toBe(false);
+});

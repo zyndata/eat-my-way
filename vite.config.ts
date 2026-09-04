@@ -58,6 +58,14 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,json,png,svg,webmanifest}'],
         // Hash routing means one document answers every URL.
         navigateFallback: '/index.html',
+        // …with one deliberate exception. Answering every navigation from the cache is what
+        // makes the app open instantly and work offline, and it is also why a challenge at the
+        // edge can never be seen: the only request able to display one is the navigation, and
+        // the worker settles that without asking the network. `/polaczenie` is the way out —
+        // the worker does not claim it, so opening it is a real trip to the origin, whatever
+        // stands in front of the origin gets its chance to ask, and the answer is the app like
+        // any other unknown path. See STATE.md decision 238.
+        navigateFallbackDenylist: [/^\/polaczenie$/],
         cleanupOutdatedCaches: true,
         // Deliberately no `runtimeCaching`. Workbox then routes navigations and precached
         // assets and nothing else, so no OAuth redirect, token response or Gemini call ever

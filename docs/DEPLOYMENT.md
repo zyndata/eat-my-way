@@ -40,7 +40,7 @@ Cloudflare → origin hop. Two consequences that are easy to trip over:
   curl -I --resolve eatmyway.gorny.dev:443:127.0.0.1 https://eatmyway.gorny.dev/
   ```
 
-Three Cloudflare rules make this workable, and all three matter:
+Four Cloudflare rules make this workable, and all four matter:
 
 - **WAF custom rule `Deploy health check`** — skips every protection for requests carrying the
   `X-Deploy-Check` header with the `DEPLOY_CHECK_TOKEN` value, so the workflow's final assertion
@@ -52,6 +52,26 @@ Three Cloudflare rules make this workable, and all three matter:
   `/sw.js` and `/manifest.webmanifest`. Cloudflare caches `.js` by default, which would put the
   service worker — the file that governs the app's own caching — into a second, independent
   cache layer. Hashed assets under `/assets/` are safe to cache and are left alone.
+- **A geo challenge** on connections from outside Poland, which is what keeps crawlers off the
+  origin's metered egress. It stays — but it interacts with the app in a way that is worth
+  knowing before debugging the next update report.
+
+### The geo challenge and the service worker
+
+`navigateFallback` answers **every navigation from the precache**, so on a device that already
+has the app, a navigation never reaches Cloudflare. The challenge therefore never gets to ask
+its question, the user never obtains a `cf_clearance` cookie, and the only requests that do meet
+the challenge are the worker's own — which have no way to display it. The visible symptom is an
+app that opens and runs perfectly abroad while **„Sprawdź aktualizacje" always fails**, and a
+page refresh that changes nothing because the refresh is served from the cache too.
+
+Narrowing the rule to navigations would not help, for the same reason. What the app does instead
+is keep **`/polaczenie`** out of the navigation route (`navigateFallbackDenylist`), so opening it
+is a real trip to the origin and the challenge can be answered by a human; the settings screen
+offers that link whenever a check comes back `blocked`. See STATE.md decision 238.
+
+When a report says the update check fails, **ask where the device is** before looking at the
+bundle.
 
 SSL/TLS mode is **Full (strict)**, which the origin can satisfy now that every certificate on the
 VM is valid and renews unattended.
