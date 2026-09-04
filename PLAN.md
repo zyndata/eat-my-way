@@ -1155,16 +1155,15 @@ Gemini section is amended to say so, rather than left to contradict this phase.
 
 #### Acceptance criteria
 
-- [ ] On a phone, „Zeskanuj opakowanie" opens the camera, and a photograph of a Polish
+- [x] On a phone, „Zeskanuj opakowanie" opens the camera, and a photograph of a Polish
       nutrition table fills the name and the four macros with the values from the „w 100 g"
-      column. — **not verified here**: no phone and no live Gemini key in this environment. The
-      whole path is verified on a desktop browser end to end (`e2e/scan.spec.ts`), against a
-      Gemini answered at the network boundary. STATE.md open question 29.
-- [ ] A label that prints kilojoules first yields kilocalories; a label with a per-portion
-      column next to the per-100 g one yields the per-100 g values. — **not verified here**:
-      this is what the prompt asks for, and only a real label read by the real model can show
-      whether it obeys. The reader's half of it is unit-tested (a per-portion block and a
-      nested „w tym cukry" are ignored). STATE.md open question 29.
+      column. — confirmed on Android 2026-09-04: the button opens the system camera, and a
+      photographed carton filled the fields. STATE.md decisions 253–255.
+- [x] A label that prints kilojoules first yields kilocalories; a label with a per-portion
+      column next to the per-100 g one yields the per-100 g values. — verified 2026-09-04 with
+      a live key against a real package printing „1207 kJ / 293 kcal" over a per-100 ml column,
+      in four languages and rotated 90°: twelve calls across six models, every one 4/4 correct,
+      and no invented product name. STATE.md decision 254.
 - [x] A value the model could not read leaves its field empty, the save button stays disabled,
       and the form prints the reason it already prints — no field is ever filled with `0` by a
       scan.

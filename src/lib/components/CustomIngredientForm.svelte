@@ -2,6 +2,7 @@
   import type { Ingredient } from '../types';
   import type { IngredientDraft } from '../custom-ingredients';
   import { draftProblem, draftToIngredient, emptyIngredientDraft } from '../custom-ingredients';
+  import Spinner from './Spinner.svelte';
   import { GeminiError } from '../gemini/client';
   import {
     applyScannedLabel,
@@ -9,6 +10,7 @@
     type ScannedField,
     type ScannedLabel
   } from '../gemini/scan';
+  import type { ScanStage } from '../gemini/scan-run';
 
   /**
    * The one form for a `custom:*` ingredient. Values are per 100 g, like every other
@@ -59,7 +61,10 @@
      * no I/O of its own. Absent means no scan button at all, which is what a test that has no
      * network wants.
      */
-    onscan?: (file: File) => Promise<ScannedLabel>;
+    onscan?: (
+      file: File,
+      options: { onstage: (stage: ScanStage) => void }
+    ) => Promise<ScannedLabel>;
     onsave: (ingredient: Ingredient) => void;
     oncancel: () => void;
   } = $props();
@@ -88,9 +93,18 @@
   let scanned = $state<Partial<Record<ScannedField, boolean>>>({});
 
   let scanning = $state(false);
+  /** What the scan is waiting for. A model call takes seconds; a dead button explains none. */
+  let stage = $state('');
   let scanError = $state('');
   let scanNote = $state('');
   let fileInput = $state<HTMLInputElement | null>(null);
+
+  const STAGES: Record<ScanStage, string> = {
+    preparing: 'Przygotowuję zdjęcie…',
+    reading: 'Czytam etykietę…',
+    // Not a euphemism: the free tier answers „high demand" often, and the app retries once.
+    retrying: 'Gemini jest przeciążony — ponawiam…'
+  };
 
   const SCAN_LABELS: Record<ScannedField, string> = {
     name: 'nazwa',
@@ -114,8 +128,9 @@
     scanning = true;
     scanError = '';
     scanNote = '';
+    stage = '';
     try {
-      const label = await onscan(file);
+      const label = await onscan(file, { onstage: (next) => (stage = STAGES[next]) });
       if (labelIsEmpty(label)) {
         scanError =
           'Nie udało się odczytać z tego zdjęcia żadnej wartości. Zrób je z bliska, na wprost ' +
@@ -139,6 +154,7 @@
           : 'Nie udało się odczytać opakowania. Spróbuj ponownie albo wpisz wartości ręcznie.';
     } finally {
       scanning = false;
+      stage = '';
     }
   }
 
@@ -189,11 +205,14 @@
       />
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium disabled:opacity-50"
+        class="inline-flex items-center gap-2 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium disabled:opacity-50"
         disabled={scanning}
         onclick={() => fileInput?.click()}
       >
-        {scanning ? 'Odczytuję zdjęcie…' : 'Zeskanuj opakowanie'}
+        {#if scanning}
+          <Spinner />
+        {/if}
+        {scanning ? (stage === '' ? 'Odczytuję zdjęcie…' : stage) : 'Zeskanuj opakowanie'}
       </button>
       <p class="pt-1 text-xs text-(--color-ink-muted)">
         Zdjęcie tabeli wartości odżywczych wypełni pola poniżej. Wysyłamy je do Gemini Twoim

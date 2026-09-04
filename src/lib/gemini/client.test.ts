@@ -101,6 +101,31 @@ describe('the Gemini client', () => {
     expect(contents[0]?.parts).toEqual([{ text: 'hi' }]);
   });
 
+  it('passes the media resolution when it is asked for', async () => {
+    const { seen, fetchImpl } = recorder(answer('ok'));
+
+    await generateText({
+      apiKey: 'k',
+      model: 'm',
+      prompt: 'hi',
+      mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
+      fetchImpl
+    });
+
+    expect(at(seen).body.generationConfig).toMatchObject({
+      mediaResolution: 'MEDIA_RESOLUTION_MEDIUM'
+    });
+  });
+
+  it('sends none when it is not asked for, so the import keeps the model’s defaults', async () => {
+    const { seen, fetchImpl } = recorder(answer('ok'));
+
+    await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl });
+
+    const config = at(seen).body.generationConfig as Record<string, unknown>;
+    expect(config.mediaResolution).toBeUndefined();
+  });
+
   it('refuses to call out at all without a key', async () => {
     const failing = (() => {
       throw new Error('should not be called');

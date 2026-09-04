@@ -70,6 +70,20 @@ export interface GeminiRequest {
   image?: { mimeType: string; data: string };
   /** When given, the answer is asked for as JSON in this shape. */
   schema?: ResponseSchema;
+  /**
+   * How many tokens one image may occupy. Sent as `mediaResolution`.
+   *
+   * `MEDIA_RESOLUTION_MEDIUM` was measured against a real package on 2026-09-04: the prompt
+   * goes from 1540 tokens to 1016, and the label still reads correctly. Google's guidance for
+   * document understanding says as much — quality „typically saturates at medium" and going
+   * higher „rarely improves OCR results". It buys tokens, not time (decision 251).
+   *
+   * There is deliberately **no thinking parameter here.** `thinkingLevel` does not exist in
+   * `v1beta` and answers 400; `thinkingConfig.thinkingBudget: 0` is accepted and then ignored —
+   * `gemini-3.8-flash` still spent 337 thought tokens under it. Both were measured, not
+   * assumed (decision 252).
+   */
+  mediaResolution?: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH';
   /** Let the model retrieve the URLs mentioned in the prompt (server-side, decision 113). */
   urlContext?: boolean;
   /**
@@ -242,6 +256,9 @@ export async function generateText(request: GeminiRequest): Promise<string> {
     contents: [{ role: 'user', parts }],
     generationConfig: {
       ...DETERMINISTIC,
+      ...(request.mediaResolution === undefined
+        ? {}
+        : { mediaResolution: request.mediaResolution }),
       ...(request.schema === undefined
         ? {}
         : { responseMimeType: 'application/json', responseSchema: request.schema })

@@ -27,8 +27,9 @@ photographing the package's nutrition table instead of typing it, read by Gemini
 the app already holds. Stage B (a barcode scan against Open Food Facts) stays deferred behind
 the written trigger in PLAN.md, and decision 239 records the one PLAN.md rule this bends. The
 CSP and the `Caddyfile` are untouched — the whole feature added no host, no permission and no
-dependency. Two of its eight acceptance criteria cannot be checked from this machine: they need
-a phone and a live key, and they are open question 29.
+dependency. All eight of its acceptance criteria are verified: the last two needed a phone and
+a live key, and both were supplied on 2026-09-04 — the camera opens on Android, and a real
+four-language label was read 4/4 correctly (decisions 251–255, open question 29 closed).
 
 Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
 after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
@@ -3145,6 +3146,98 @@ one of which broke the feature outright.
      it free to get right is that `client.ts` already reported usage before its own emptiness
      check — the scan only had to call it.
 
+### 2026-09-04 — Phase 12 follow-up: the scan was slow in real use
+
+248. **The wait is the model call, not the browser — measured before anything was changed.**
+     The report from the phone was „pobieranie danych trwa dość długo". The browser half was
+     timed first, on a 12 MP photograph: decode 26 ms, resample 2 ms, JPEG 18 ms, base64 10 ms
+     — **55 ms total** on a desktop, so half a second on a phone an order of magnitude slower.
+     There is nothing to win there, and `image.ts` was left alone. Everything after it is one
+     HTTPS request and one model answer, so that is where the two changes went.
+
+249. **The scan asks for `thinkingLevel: 'minimal'` and `mediaResolution:
+     MEDIA_RESOLUTION_MEDIUM`; the import asks for neither.** Reading a printed table is
+     transcription, and the model's own default is not small — `gemini-3.8-flash` thinks at
+     `medium` unless told otherwise, and the model is whatever the user typed into Settings.
+     Media resolution halves the image's token cost (560 against the default 1120), and
+     Google's guidance for document understanding is that quality „typically saturates at
+     medium" while going higher „rarely improves OCR results" — a close-up of a nutrition
+     table, already downscaled to 1024 px, is exactly that case. Half the input tokens is also
+     half the token count charged against the daily quota. The recipe import keeps the model's
+     defaults: there, reasoning *is* the work.
+
+     **Corrected the same evening, against a live key: the thinking half of this was wrong.**
+     `thinkingLevel` is not a field of `v1beta`'s `generationConfig` and answers
+     `400 Unknown name „thinkingLevel"`, so the app as committed would have paid a doubled
+     request on every single scan. It is gone. `mediaResolution` survives and was measured to
+     do exactly what it promised. See decisions 251 and 252.
+
+250. **A model that refuses the tuning gets one plain retry, rather than the user being told
+     their key was refused.** Both fields are per-model API features and the model name is free
+     text in Settings, so an old one could answer 400 — which this app maps to „Gemini nie
+     przyjął klucza API" everywhere else, and which would be a lie here. `scanLabelImage`
+     catches exactly `kind === 'rejected'`, retries once without the two fields, and lets
+     anything else through untouched; a 503 is still a single attempt. The cost of the guard is
+     one extra request in the one case where the request was going to fail anyway.
+
+     **Neither parameter can be verified from this machine** — that needs a live key, and it is
+     the same visit that closes open question 29.
+
+     **The guard earned itself within the hour.** The user supplied a key and a photograph, the
+     first live call came back 400, and the fallback is the only reason the feature would still
+     have worked. The lesson is not „the guard was clever" but „the parameter was never
+     verified" — the guard is what turned an unverified claim into a slow path instead of a
+     broken one. It stays, now guarding `mediaResolution` alone.
+
+### 2026-09-04 — Phase 12 follow-up, measured against a live key and a real package
+
+The evidence below comes from the user's own API key and a photographed Lidl cream carton
+(Estonian/Latvian/Hungarian/Romanian label, per 100 ml, energy printed as „1207 kJ / 293 kcal",
+sugars nested under carbohydrates, text rotated 90°, no product name on the photographed face).
+Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
+
+251. **`mediaResolution: MEDIA_RESOLUTION_MEDIUM` works, and buys tokens rather than seconds.**
+     Prompt tokens per scan: **1540** at the default, **1016** at medium, **742** at low — and
+     the four values read correctly at every one of them. Medium stays, because it is a third
+     off the daily quota for nothing, and because Google's own guidance puts the quality knee
+     there. Low was not taken: one label is not evidence that a denser one survives it. Sending
+     a smaller picture is pointless — 768 px and 1024 px both cost 1016 prompt tokens, since
+     the resolution setting, not our pixels, decides the token count. `image.ts` stays at 1024.
+
+252. **There is no working way to turn thinking down on this endpoint, and both candidates were
+     tried.** `thinkingLevel` → `400 Unknown name`. `thinkingConfig: { thinkingBudget: 0 }` →
+     accepted, and then ignored: `gemini-3.8-flash` reported **337 thought tokens** under it,
+     against 423 without. So the app sends no thinking parameter at all. Worth knowing that the
+     flash models do think on this task (337–722 thought tokens) while every flash-lite run
+     reported **zero** — which is an argument for lite on scans that has nothing to do with the
+     parameter that was supposed to deliver it.
+
+253. **The wait is Google's queue, not this app's request, and the honest fixes are a retry and
+     a sentence.** Byte-identical scans took **2.7 s, 6.6 s, 9.0 s, 23 s, 34 s, 40 s, 49 s,
+     63 s, 81 s**, and three of eight came back `503 „This model is currently experiencing high
+     demand"` — every one of which succeeded on a second attempt. Nothing in the payload
+     explains that spread: the request is ~1000 tokens and, on flash-lite, zero thinking. So:
+     the scan retries a 503 once after 1.2 s, and the button says „Gemini jest przeciążony —
+     ponawiam…" while it does. `gemini-3.8-flash` was faster than `gemini-3.5-flash-lite` in
+     every batch (median 41 s against 82 s in the last one), but it thinks, its daily quota is
+     the smaller one, and two batches are not a basis for changing anyone's model — so the
+     default is untouched and the finding is reported instead.
+
+254. **The prompt is right, and this is the evidence.** Every one of the twelve successful live
+     calls — across six models and three media resolutions — returned **4/4 correct values**
+     from a rotated, four-language label: kilojoules ignored in favour of 293 kcal, „millest
+     suhkrud" 3.2 g not folded into carbohydrates twice, saturated fat 19.7 g not mistaken for
+     a macro of its own, decimal commas resolved. And `name` came back **empty**, because the
+     product's name is not on the face that was photographed — the model declined to invent one,
+     which is the rule the whole feature rests on.
+
+255. **The camera prediction held on a real phone.** Decision 241 chose `<input capture>` over
+     `getUserMedia` on the argument that the system camera is better than anything we would
+     write and that it asks nothing of `Permissions-Policy: camera=()`. Confirmed on Android on
+     2026-09-04: the button opens the camera, the photograph reaches the form, and the
+     `Caddyfile` never changed. That closes open question 29 and the last two unticked
+     acceptance criteria of Phase 12.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3433,7 +3526,24 @@ one of which broke the feature outright.
     Sync half is answered by decision 151, which rests on the worker having no way to obtain a
     token rather than on `runtimeCaching` alone. See 18.
 
-29. **Two of Phase 12's acceptance criteria need a phone and a live key, and neither exists on
+29. **Half-answered 2026-09-04, with a live key and a real package.** The label half is
+    **settled**: a photographed Lidl carton — four languages, none of them Polish, energy
+    printed as „1207 kJ / 293 kcal", a per-100 ml column, sugars nested under carbohydrates,
+    the whole table rotated 90° — was read 4/4 correctly by every model and every media
+    resolution tried, twelve live calls in all, and the model declined to invent the product
+    name that was not in the photograph (decision 254). That is both criteria PLAN.md left
+    unticked for the label, and more than they asked for.
+
+    **The camera half is now answered too, and the question is closed.** Confirmed on Android,
+    2026-09-04: „Zeskanuj opakowanie" opens the system camera. So `<input type="file"
+    accept="image/*" capture="environment">` does on a real phone exactly what decision 241
+    predicted, under `Permissions-Policy: camera=()` and with the `Caddyfile` untouched — the
+    prediction that made stage A cost nothing structurally holds in the only place it could be
+    tested. Both of the criteria PLAN.md left unticked are now ticked.
+
+    The original text of this question follows.
+
+    **Two of Phase 12's acceptance criteria need a phone and a live key, and neither exists on
     this machine.** What is unverified is narrow and named: (a) that „Zeskanuj opakowanie"
     opens the *system camera* on a phone rather than a file picker, and (b) that the real model
     obeys the two label rules the prompt is built around — the „w 100 g" column over „na
@@ -3448,3 +3558,9 @@ one of which broke the feature outright.
     question 21 — it is answered by using it on a real package, not by a test. **To close this,
     scan two packages on the phone: one whose label prints a per-portion column beside the
     per-100 g one, and one that leads with kilojoules.**
+
+    **A third thing now rides on the same visit** (decisions 249 and 250): the tuned call asks
+    for `thinkingLevel` and `mediaResolution`, and only a live key can show whether the model
+    in Settings accepts them and how much time they actually save. If they are refused the scan
+    still works — it retries once without them — so what the visit measures is speed, not
+    whether the feature runs. Worth timing the same package before and after.
