@@ -3300,6 +3300,45 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      pure module with exact tests. The phase adds no dependency, no CSP change and no network
      call — Gemini is not involved in planning at all.
 
+### 2026-09-04 — Phase 13: cooking for two days
+
+264. **Phase 13 plans in batches, because that is how people cook.** Reported from real use on
+     2026-09-04, before the phase was built: a pot is cooked once and eaten twice, and a weekly
+     plan that assumes seven days of fresh cooking is a plan nobody follows. `MealSlot` gains
+     `batchDays`, and PLAN.md gains a „Gotowanie na dwa dni" section.
+
+265. **The mechanism is not new — the planner plans in terms of the one that exists.** „Gotuję
+     na 2 dni" already sets `cookingScale` on the cooking day and appends a one-portion copy to
+     the next (`cookAlsoOn`, decision 76); the shopping list already counts `cookingScale` and
+     never `portionsEaten`, so a batch is bought once; and the meal screen already detects the
+     copy by `recipeId`, so a batch written by the planner shows up there with the checkbox
+     ticked. What the planner writes is indistinguishable from what the checkbox writes,
+     deliberately.
+
+266. **The setting is a per-slot column, not a global switch.** Dinner and lunch get
+     batch-cooked and breakfast does not, so a single global toggle would have to lie about one
+     of them. `batchDays` is `1` or `2` per slot, the default template ships with lunch at `2`,
+     and it is an aim rather than an obligation: when no batch can be placed the plan still
+     comes back and the sheet names the slot it could not batch.
+
+267. **Batching and the freshness rule would fight, so the freshness cost is counted per
+     batch.** A batch is one decision made once, dated on the first day; the same recipe
+     reappearing on Thursday is the thing decision 259's rule exists to prevent. Counting the
+     second day as a second use would make the solver oscillate between the two rules and
+     produce a different plan every time it was asked.
+
+268. **`cookingScale = batchDays × portionsEaten`, and it is not simply `2`.** The checkbox can
+     hard-code 2 because a person is looking at that meal; the planner sets `portionsEaten`
+     itself (decision 260), so a 1.25-portion dinner cooked for two days needs 2.5 portions in
+     the pot. Getting this wrong is silent — it surfaces only as a shopping list that under-buys
+     — so the invariant is written into PLAN.md as its own test rather than left to be
+     discovered.
+
+269. **Batching makes „za mało przepisów" less likely, and the message says so.** Seven dinners
+     out of a library of ten recipes is a stretch; four cooks covering seven dinners is
+     comfortable. For a small library, turning batch cooking on is the most effective way out of
+     the failure, so it is offered there alongside relaxing the tags.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
