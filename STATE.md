@@ -27,8 +27,9 @@ photographing the package's nutrition table instead of typing it, read by Gemini
 the app already holds. Stage B (a barcode scan against Open Food Facts) stays deferred behind
 the written trigger in PLAN.md, and decision 239 records the one PLAN.md rule this bends. The
 CSP and the `Caddyfile` are untouched — the whole feature added no host, no permission and no
-dependency. Two of its eight acceptance criteria cannot be checked from this machine: they need
-a phone and a live key, and they are open question 29.
+dependency. All eight of its acceptance criteria are verified: the last two needed a phone and
+a live key, and both were supplied on 2026-09-04 — the camera opens on Android, and a real
+four-language label was read 4/4 correctly (decisions 251–255, open question 29 closed).
 
 Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
 after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
@@ -3230,6 +3231,13 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      product's name is not on the face that was photographed — the model declined to invent one,
      which is the rule the whole feature rests on.
 
+255. **The camera prediction held on a real phone.** Decision 241 chose `<input capture>` over
+     `getUserMedia` on the argument that the system camera is better than anything we would
+     write and that it asks nothing of `Permissions-Policy: camera=()`. Confirmed on Android on
+     2026-09-04: the button opens the camera, the photograph reaches the form, and the
+     `Caddyfile` never changed. That closes open question 29 and the last two unticked
+     acceptance criteria of Phase 12.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3526,9 +3534,12 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     name that was not in the photograph (decision 254). That is both criteria PLAN.md left
     unticked for the label, and more than they asked for.
 
-    **What is still open is only the camera**: that „Zeskanuj opakowanie" opens the phone's
-    system camera rather than a file picker. The user's own report („po zeskanowaniu etykiety…")
-    strongly implies it does, but it has not been stated outright, so it stays here until it is.
+    **The camera half is now answered too, and the question is closed.** Confirmed on Android,
+    2026-09-04: „Zeskanuj opakowanie" opens the system camera. So `<input type="file"
+    accept="image/*" capture="environment">` does on a real phone exactly what decision 241
+    predicted, under `Permissions-Policy: camera=()` and with the `Caddyfile` untouched — the
+    prediction that made stage A cost nothing structurally holds in the only place it could be
+    tested. Both of the criteria PLAN.md left unticked are now ticked.
 
     The original text of this question follows.
 
