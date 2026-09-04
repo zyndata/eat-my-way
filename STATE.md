@@ -19,8 +19,12 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
 | 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
 | 12    | Skanowanie opakowania       | done    | 2026-09-04 |
+| 13    | Planer posiłków             | pending | —          |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 13 is **planned, not started**: the specification and the decisions behind it were written
+on 2026-09-04 (decisions 256–263) and it is built in its own conversation, through `/phase 13`.
 
 Phase 12 is built, in the shape it was planned: stage A only — a custom ingredient added by
 photographing the package's nutrition table instead of typing it, read by Gemini with the key
@@ -3237,6 +3241,64 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      2026-09-04: the button opens the camera, the photograph reaches the form, and the
      `Caddyfile` never changed. That closes open question 29 and the last two unticked
      acceptance criteria of Phase 12.
+
+### 2026-09-04 — Phase 13 planned: the planner
+
+256. **A new phase, asked for from daily use.** PLAN.md gains **Phase 13 — Planer posiłków**,
+     and `Profile` gains an optional `mealPlan`. The phase is new: PLAN.md ended at Phase 12,
+     and this was asked for from daily use — the same origin as Phases 10, 11 and 12 (decisions
+     175, 198, 240). The use case in the user's words: there is no time to choose meals and
+     check them against the goals, so the app should propose a day that fits, and should be able
+     to finish a day where only two meals were entered.
+
+257. **The template is rows, not a mini-language.** The feature was first described as a typed
+     rule `tag1, tag2; tag3; tag4` — comma for alternatives, semicolon for the next meal. The
+     semantics are kept exactly; the typing is not. It is stored and edited as one row per slot
+     with a `TagInput` and a share of the daily goal, because a delimiter that changes meaning
+     between `,` and `;` is invisible in a text field, the app already owns tag autocompletion,
+     and the share column is what stops the solver from putting 1200 kcal into breakfast and 300
+     into dinner while claiming the day is correct.
+
+258. **Calories are the target; protein, carbs and fat are tie-breakers.** Chosen by the user
+     over the symmetric "±X% on all four" alternative that was proposed. A plan that hits kcal
+     and is 12 g off on fat is a good plan; one that balances all four and misses by 400 kcal is
+     not.
+
+259. **The week is the unit of accounting, the day is the unit of sanity.** Also the user's
+     call, and the strongest idea in the design: what must sit close to the goal is the *weekly
+     average*, not every single day. Taken alone that rule buys a good average with a 3000 kcal
+     day beside a 1000 kcal one, so it is paired with a hard per-day band of ±15%, and a day
+     planned on its own gets its target corrected by the week's running balance, clamped to ±10%
+     of the daily goal. Weeks start on Monday, as decision 74 already settled.
+
+260. **The solver may set `portionsEaten`, 0.5–2.0 in steps of 0.25.** Recipes have fixed
+     per-portion macros, so a handful of them will not land on a kcal target by themselves; the
+     model already has the knob that makes the problem solvable, and it scales macros without
+     touching the recipe. Outside that range the answer stops being something a person would
+     cook.
+
+261. **Nothing is added to `PlannedMeal`, and exclusion is a tag.** A meal does not learn which
+     slot it came from — that would be a schema change, a sync concern and a migration in
+     exchange for a label, so the sheet maps existing meals to slots by position instead. A
+     recipe that must never be proposed is tagged `nie-planuj`: the tag system already expresses
+     "a property of a recipe", so this costs no column and no settings screen. `mealPlan` itself
+     is optional for the reason `sourceUrl` and `Ingredient.updatedAt` are — no schema version,
+     no migration, and the Drive reader keeps fields it does not know.
+
+262. **Three things were found while planning that the phase now has to handle**, each obvious
+     only in hindsight: a recipe with incomplete items computes to 0 kcal and would be the
+     solver's favourite filler for any gap, so it is excluded and the exclusion is reported; the
+     repetition data needs no new query, because `recipeUsage(today)` already returns
+     `lastPlannedDate` over a one-year window *including days planned ahead*, which also stops a
+     proposal from colliding with what is on the calendar for tomorrow; and "za mało przepisów"
+     has to be three different sentences, one of which shows the best plan found anyway with its
+     difference from the goal, because a dead end reading only „nie da się" is the worst thing
+     this feature could do.
+
+263. **Scope: day and week in one phase**, the user's choice over the deferred stage-B shape
+     that Phase 12 used. Randomness is injected the way `IdFactory` is, so the whole solver is a
+     pure module with exact tests. The phase adds no dependency, no CSP change and no network
+     call — Gemini is not involved in planning at all.
 
 ## Open questions
 
