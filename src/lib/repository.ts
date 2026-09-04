@@ -1,4 +1,13 @@
-import type { Day, Ingredient, Macros, PlannedMeal, Profile, Recipe, Tag } from './types';
+import type {
+  Day,
+  Ingredient,
+  Macros,
+  MealPlanTemplate,
+  PlannedMeal,
+  Profile,
+  Recipe,
+  Tag
+} from './types';
 import type {
   DriveFileRow,
   EatMyWayDb,
@@ -45,6 +54,7 @@ import {
   type RecipeListEntry,
   type RecipeUsage
 } from './recipes';
+import type { PlanWrite } from './planner';
 import type { SearchCandidate } from './search';
 import {
   IngredientInUseError,
@@ -237,6 +247,17 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     async setGoals(goals: Macros): Promise<Profile> {
       const current = (await database.profile.get(PROFILE_KEY)) ?? DEFAULT_PROFILE;
       const profile: Profile = plain({ ...current, goals });
+      await database.profile.put(profile, PROFILE_KEY);
+      return profile;
+    },
+
+    /**
+     * The Phase 13 meal-plan template. Stored on the profile, so it rides the existing
+     * `profile.json` path to Drive and needs no file, no table and no schema version.
+     */
+    async setMealPlan(mealPlan: MealPlanTemplate): Promise<Profile> {
+      const current = (await database.profile.get(PROFILE_KEY)) ?? DEFAULT_PROFILE;
+      const profile: Profile = plain({ ...current, mealPlan });
       await database.profile.put(profile, PROFILE_KEY);
       return profile;
     },
@@ -805,6 +826,33 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
         const copy = { ...clonePlannedMeal(source, nextId()), cookingScale: 1, portionsEaten: 1 };
         return storeDay(addMeals(await loadDay(targetDate), [copy], await currentGoals()));
+      });
+    },
+
+    /**
+     * „Zastosuj" on the planner sheet — the only thing in Phase 13 that writes.
+     *
+     * Deliberately nothing new: each day goes through `copyMealsInto`, which is the same
+     * function „Kopiuj dzień do…" uses, so `goalSnapshot` capture, the fresh ids, the
+     * `macroSnapshot` copied by value and the sync bookkeeping all behave exactly as they do
+     * for a meal added by hand. `append` is the default and `replace` is the choice the user
+     * makes for a day that already has meals — the same `CopyMode` the copy screens model.
+     *
+     * One transaction over the whole range, so a week either lands or does not.
+     */
+    async applyPlan(
+      writes: readonly PlanWrite[],
+      mode: CopyMode = 'append',
+      nextId: IdFactory = newId
+    ): Promise<Day[]> {
+      return database.transaction('rw', database.days, database.profile, async () => {
+        const goals = await currentGoals();
+        const written: Day[] = [];
+        for (const write of writes) {
+          const day = copyMealsInto(await loadDay(write.date), write.meals, mode, { nextId, goals });
+          written.push(await storeDay(day));
+        }
+        return written;
       });
     },
 

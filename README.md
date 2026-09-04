@@ -8,21 +8,22 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–12 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–13 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then four phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then five phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
-> (10), a round of fixes to what the app says (11), and adding an ingredient by photographing
-> the package instead of typing it (12). The live app is
+> (10), a round of fixes to what the app says (11), adding an ingredient by photographing
+> the package instead of typing it (12), and a planner that proposes a day or a week that fits
+> your goals (13). The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
 > record of what was decided and what is still open.
 
 ## What it looks like
 
-| Kalendarz | Przepisy | Edytor | Posiłek |
-|---|---|---|---|
-| ![Day view](docs/screenshots/day.png) | ![Empty library](docs/screenshots/library-empty.png) | ![Recipe editor](docs/screenshots/recipe-editor.png) | ![Meal view](docs/screenshots/meal.png) |
+| Kalendarz | Planer | Przepisy | Edytor | Posiłek |
+|---|---|---|---|---|
+| ![Day view](docs/screenshots/day.png) | ![Planner proposal](docs/screenshots/planner.png) | ![Empty library](docs/screenshots/library-empty.png) | ![Recipe editor](docs/screenshots/recipe-editor.png) | ![Meal view](docs/screenshots/meal.png) |
 
 ## What makes it different
 
@@ -34,13 +35,20 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   invents a nutrition value: it parses a pasted recipe into structured ingredients, and it can
   transcribe the table printed on a package you photograph — a reading you check and correct in
   the form before it is saved, after which the ingredient's values never change again.
+- **It plans the day for you, and never behind your back.** „Zaplanuj dzień" or „Zaplanuj
+  tydzień" proposes a meal per slot of your own day template — a recipe *and* a portion count,
+  chosen to land on your calorie goal, to avoid what you ate last week, and to cook one pot for
+  two or three days where you said you cook that way. It is a proposal: reroll it, lock the
+  slots you like, change how long a pot lasts, then „Zastosuj". Nothing is written until you do,
+  and no AI is involved — it is arithmetic, done in your browser, offline.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
 - **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day
   view scales it to how much you cooked and how much you actually ate, which are two different
   numbers and only the second one counts towards the day. A meal turns into a shopping list, a
-  batch cooked today can be planned onto tomorrow with one checkbox, and anything the USDA
-  subset does not know you add once to your own ingredient library.
+  batch cooked today can be planned onto tomorrow with one checkbox — the same batch the
+  planner writes — and anything the USDA subset does not know you add once to your own
+  ingredient library.
 - **Bring your own key.** The optional Gemini features — the recipe import and the package
   scan — use *your* API key, stored in a
   vault that is encrypted with Argon2id + AES-GCM behind a master password by default; the

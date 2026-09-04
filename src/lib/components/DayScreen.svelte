@@ -14,6 +14,7 @@
   import MealList from './MealList.svelte';
   import MonthGrid from './MonthGrid.svelte';
   import NavIcon from './NavIcon.svelte';
+  import PlannerSheet from './PlannerSheet.svelte';
   import RecipePicker from './RecipePicker.svelte';
   import ShoppingListSheet from './ShoppingListSheet.svelte';
   import WeekStrip from './WeekStrip.svelte';
@@ -59,6 +60,8 @@
   /** Days the shopping list covers; empty while the sheet is closed (STATE.md decision 158). */
   let shoppingDates = $state<string[]>([]);
   let shoppingTitle = $state('');
+  /** Days the planner is proposing for; empty while its sheet is closed (Phase 13). */
+  let plannerDates = $state<string[]>([]);
 
   let dayMenu = $state<HTMLDetailsElement>();
 
@@ -115,6 +118,15 @@
     await load(date, monthAnchor, monthShown);
     // Debounced, and silent unless it fails — see `sync/state.svelte.ts`.
     scheduleSync();
+  }
+
+  /**
+   * „Zaplanuj dzień" / „Uzupełnij dzień" / „Zaplanuj tydzień". One sheet and one solver for
+   * all three — the range is what differs, not the code (PLAN.md Phase 13 task 4).
+   */
+  function openPlanner(scope: 'day' | 'week'): void {
+    closeMenu();
+    plannerDates = scope === 'day' ? [date] : weekDates(date);
   }
 
   /** „Lista zakupów" for this day or for its whole week. */
@@ -282,6 +294,20 @@
           <button
             type="button"
             class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openPlanner('day')}
+          >
+            {day.meals.length === 0 ? 'Zaplanuj dzień' : 'Uzupełnij dzień'}
+          </button>
+          <button
+            type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openPlanner('week')}
+          >
+            Zaplanuj tydzień
+          </button>
+          <button
+            type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
             onclick={() => {
               closeMenu();
               copyDayOpen = true;
@@ -343,6 +369,13 @@
           <button
             type="button"
             class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
+            onclick={() => openPlanner('day')}
+          >
+            Zaplanuj dzień
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
             onclick={() => (pickerOpen = true)}
           >
             Dodaj posiłek
@@ -391,6 +424,17 @@
     goals={headerGoals}
     onpick={(recipeId) => void addRecipe(recipeId)}
     onclose={() => (pickerOpen = false)}
+  />
+
+  <PlannerSheet
+    open={plannerDates.length > 0}
+    dates={plannerDates}
+    {today}
+    onclose={() => (plannerDates = [])}
+    onapplied={() => {
+      plannerDates = [];
+      void refresh();
+    }}
   />
 
   <ShoppingListSheet

@@ -41,6 +41,64 @@ describe('shoppingLines', () => {
     expect(shoppingLines(scope, lookup)[0]?.amount).toBe(600);
   });
 
+  it('buys a pot cooked for two days once, not twice', () => {
+    // What „Gotuję na 2 dni" writes, and what the planner writes: scale 2 on the cooking day,
+    // a `cookingScale: 1` copy on the next. Before this, the week's list bought three
+    // portions for a two-day cook (STATE.md decision 275).
+    const recipe = makeRecipe({ id: 'r1', items: [item(chicken.id, 200)] });
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ id: 'm1', cookingScale: 2, portionsEaten: 1 }), recipe, date: '2026-09-07' },
+      { meal: meal({ id: 'm2', cookingScale: 1, portionsEaten: 1 }), recipe, date: '2026-09-08' }
+    ];
+
+    expect(shoppingLines(scope, lookup)[0]?.amount).toBe(400);
+  });
+
+  it('still counts both plates when one recipe is served twice on the same day', () => {
+    // Not leftovers: the same day is two servings, and the list has always followed the
+    // batch rather than the plate (Phase 9). Only a *later* day comes out of the pot.
+    const recipe = makeRecipe({ id: 'r1', items: [item(chicken.id, 200)] });
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ id: 'm1', cookingScale: 3, portionsEaten: 0.25 }), recipe, date: '2026-09-07' },
+      { meal: meal({ id: 'm2', cookingScale: 1, portionsEaten: 1 }), recipe, date: '2026-09-07' }
+    ];
+
+    expect(shoppingLines(scope, lookup)[0]?.amount).toBe(800);
+  });
+
+  it('buys a planner batch at the portions it really holds', () => {
+    // 1.25 portions a day for three days is 3.75 in the pot — the invariant that would
+    // otherwise surface only as a list that under-buys (STATE.md decision 268).
+    const recipe = makeRecipe({ id: 'r1', items: [item(chicken.id, 200)] });
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ id: 'm1', cookingScale: 3.75, portionsEaten: 1.25 }), recipe, date: '2026-09-07' },
+      { meal: meal({ id: 'm2', cookingScale: 1, portionsEaten: 1.25 }), recipe, date: '2026-09-08' },
+      { meal: meal({ id: 'm3', cookingScale: 1, portionsEaten: 1.25 }), recipe, date: '2026-09-09' }
+    ];
+
+    expect(shoppingLines(scope, lookup)[0]?.amount).toBe(750);
+  });
+
+  it('still buys twice for the same recipe cooked fresh on two days', () => {
+    const recipe = makeRecipe({ id: 'r1', items: [item(chicken.id, 200)] });
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ id: 'm1', cookingScale: 1, portionsEaten: 1 }), recipe, date: '2026-09-07' },
+      { meal: meal({ id: 'm2', cookingScale: 1, portionsEaten: 1 }), recipe, date: '2026-09-08' }
+    ];
+
+    expect(shoppingLines(scope, lookup)[0]?.amount).toBe(400);
+  });
+
+  it('buys a pot nobody eats on the day it is cooked', () => {
+    // `portionsEaten: 0` is cooked-and-not-eaten, not leftovers: it still has to be bought.
+    const recipe = makeRecipe({ id: 'r1', items: [item(chicken.id, 200)] });
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ id: 'm1', cookingScale: 2, portionsEaten: 0 }), recipe }
+    ];
+
+    expect(shoppingLines(scope, lookup)[0]?.amount).toBe(400);
+  });
+
   it('keeps different units of one ingredient apart', () => {
     // 2 szt and 100 g cannot be added into a number anyone can shop by.
     const scope: ShoppingMeal[] = [

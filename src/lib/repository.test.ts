@@ -535,6 +535,82 @@ describe('cookAlsoOn', () => {
   });
 });
 
+describe('the meal plan and applying it (Phase 13)', () => {
+  const template = {
+    slots: [
+      { id: 'sniadanie', label: 'Śniadanie', tagKeys: [], share: 0.3, batchDays: 1 },
+      { id: 'obiad', label: 'Obiad', tagKeys: ['wege'], share: 0.7, batchDays: 2 }
+    ],
+    cookDays: { 6: 3 }
+  };
+
+  it('stores the template on the profile, leaving the rest of it alone', async () => {
+    await repo.setGoals(macros(1800, 120, 180, 60));
+    await repo.setMealPlan(template);
+
+    const profile = await repo.getProfile();
+    expect(profile.mealPlan).toEqual(template);
+    expect(profile.goals).toEqual(macros(1800, 120, 180, 60));
+    expect(profile.geminiModel).toBe(DEFAULT_PROFILE.geminiModel);
+  });
+
+  it('applies a batch the way „Gotuję na 2 dni" writes one, and captures the goals', async () => {
+    const recipe = await seedRecipe();
+    const snapshot = macros(150, 22.5, 0.5, 4.5);
+
+    await repo.applyPlan(
+      [
+        {
+          date: MONDAY,
+          meals: [
+            { id: 'a', recipeId: recipe.id, cookingScale: 2.5, portionsEaten: 1.25, macroSnapshot: snapshot }
+          ]
+        },
+        {
+          date: TUESDAY,
+          meals: [
+            { id: 'b', recipeId: recipe.id, cookingScale: 1, portionsEaten: 1.25, macroSnapshot: snapshot }
+          ]
+        }
+      ],
+      'append',
+      seqIds('plan')
+    );
+
+    const monday = await repo.getDay(MONDAY);
+    const tuesday = await repo.getDay(TUESDAY);
+
+    // Fresh ids from the factory, exactly as every other copy operation takes them.
+    expect(monday.meals[0]?.id).toBe('plan-1');
+    expect(tuesday.meals[0]?.id).toBe('plan-2');
+    // The pot holds 2.5 portions; each day eats 1.25 of it.
+    expect(monday.meals[0]?.cookingScale).toBe(2.5);
+    expect(tuesday.meals[0]?.cookingScale).toBe(1);
+    expect(tuesday.meals[0]?.portionsEaten).toBe(1.25);
+    expect(tuesday.meals[0]?.macroSnapshot).toEqual(snapshot);
+    // `goalSnapshot` capture is not special-cased anywhere: it is the day operation's own.
+    expect(monday.goalSnapshot).toEqual(DEFAULT_PROFILE.goals);
+  });
+
+  it('appends by default and replaces only when asked', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    const meal = {
+      id: 'x',
+      recipeId: recipe.id,
+      cookingScale: 1,
+      portionsEaten: 1,
+      macroSnapshot: macros(150, 22.5, 0.5, 4.5)
+    };
+
+    await repo.applyPlan([{ date: MONDAY, meals: [meal] }]);
+    expect((await repo.getDay(MONDAY)).meals).toHaveLength(2);
+
+    await repo.applyPlan([{ date: MONDAY, meals: [meal] }], 'replace');
+    expect((await repo.getDay(MONDAY)).meals).toHaveLength(1);
+  });
+});
+
 describe('a copy is independent of later recipe edits', () => {
   it('copyDay leaves the copies frozen when the source recipe is refreshed', async () => {
     const recipe = await seedRecipe();

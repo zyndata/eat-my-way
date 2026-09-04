@@ -138,6 +138,40 @@ export interface GeminiUsage {
   models: Record<string, Record<string, DeviceUsage>>;
 }
 
+/**
+ * One row of the meal-plan template: a meal of the day, and the rules the planner fills it by.
+ *
+ * Stored as rows rather than as the typed mini-language the feature was first described in
+ * (STATE.md decision 257): a delimiter that changes meaning between `,` and `;` is invisible
+ * in a text field, and the app already owns tag autocompletion.
+ */
+export interface MealSlot {
+  /** Stable across edits, so a lock in the planner sheet survives a reorder. */
+  id: string;
+  /** „Śniadanie" — the user's own wording, Polish. */
+  label: string;
+  /** ANY of these tag keys qualifies a recipe; empty means "any recipe". */
+  tagKeys: string[];
+  /** Share of the day's goal. Normalized across slots rather than validated. */
+  share: number;
+  /** 1 = cooked fresh; 2 or 3 = days one cook in this slot usually covers. */
+  batchDays: number;
+}
+
+/**
+ * The day template the planner follows, plus the weekdays that say something different from
+ * „normalnie".
+ *
+ * `cookDays` is the per-weekday half of decision 272: Sunday is not Wednesday, so the length
+ * of a cook is as much a property of the day it is started on as of the meal it is. A weekday
+ * set to `1` is the same feature read backwards — do not start a long cook that day.
+ */
+export interface MealPlanTemplate {
+  slots: MealSlot[];
+  /** Weekday (0 = Monday, as `weekdayIndex` numbers them) → run length; overrides the slot. */
+  cookDays?: Record<number, number>;
+}
+
 export interface Profile {
   goals: Macros;
   geminiModel: string;
@@ -147,4 +181,11 @@ export interface Profile {
   googleSub?: string;
   /** Gemini spend for the current quota day. Absent until the first import (Phase 7). */
   geminiUsage?: GeminiUsage;
+  /**
+   * The meal-plan template (Phase 13). Optional for the same reason `sourceUrl` and
+   * `Ingredient.updatedAt` are: no schema version, no migration, nothing in the Drive format
+   * that an older build would trip over. A profile without it gets the built-in default
+   * template the first time the planner is opened (STATE.md decision 261).
+   */
+  mealPlan?: MealPlanTemplate;
 }

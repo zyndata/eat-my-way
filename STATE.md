@@ -19,12 +19,17 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
 | 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
 | 12    | Skanowanie opakowania       | done    | 2026-09-04 |
-| 13    | Planer posiłków             | pending | —          |
+| 13    | Planer posiłków             | done    | 2026-09-04 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
-Phase 13 is **planned, not started**: the specification and the decisions behind it were written
-on 2026-09-04 (decisions 256–263) and it is built in its own conversation, through `/phase 13`.
+Phase 13 is **built**, in the shape it was planned: a solver that proposes a day or a whole
+week against the goals, a template edited as rows in Settings, cooking on stock as runs of one
+to three days, and a proposal that is rerolled, locked slot by slot and only then applied. It
+added **no dependency, no CSP change and no `Caddyfile` change**, and it never talks to the
+network — the planner is arithmetic, and Gemini is not involved in it at all. Every one of its
+eighteen acceptance criteria is verified; see decisions 276–285, and note that the phase also
+had to fix a shopping list that had been over-buying every batch since Phase 9 (decision 281).
 
 Phase 12 is built, in the shape it was planned: stage A only — a custom ingredient added by
 photographing the package's nutrition table instead of typing it, read by Gemini with the key
@@ -3306,7 +3311,7 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      2026-09-04, before the phase was built: a pot is cooked once and eaten twice, and a weekly
      plan that assumes seven days of fresh cooking is a plan nobody follows. `MealSlot` gains
      `batchDays`, and PLAN.md gains a „Gotowanie na zapas" section (named „Gotowanie na dwa
-     dni" until decision 270 raised the run length to three).
+     dni" until decision 272 raised the run length to three).
 
 265. **The mechanism is not new — the planner plans in terms of the one that exists.** „Gotuję
      na 2 dni" already sets `cookingScale` on the cooking day and appends a one-portion copy to
@@ -3320,7 +3325,7 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      batch-cooked and breakfast does not, so a single global toggle would have to lie about one
      of them. `batchDays` is per slot, the default template ships with lunch at `2`, and it is
      an aim rather than an obligation: when no batch can be placed the plan still comes back
-     and the sheet names the slot it could not batch. (Decision 270 keeps the column and adds
+     and the sheet names the slot it could not batch. (Decision 272 keeps the column and adds
      a per-weekday override beside it.)
 
 267. **Batching and the freshness rule would fight, so the freshness cost is counted per
@@ -3373,7 +3378,7 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
 
 ### 2026-09-04 — Phase 13: how long a cook lasts
 
-270. **A cook lasts one, two or three days, and the length is a per-weekday thing as much as a
+272. **A cook lasts one, two or three days, and the length is a per-weekday thing as much as a
      per-slot one.** Asked on 2026-09-04, with the reason that makes it more than a bigger
      number: Sunday is not Wednesday. On a free afternoon someone cooks a pot that covers the
      first half of the week; on a working Wednesday they do not cook at all. So decision 266's
@@ -3382,24 +3387,120 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      Setting a weekday to `1` is the same feature read backwards: do not start a long cook that
      day.
 
-271. **Three is the ceiling, and it is a food-safety statement rather than a UI limit.** Cooked
+273. **Three is the ceiling, and it is a food-safety statement rather than a UI limit.** Cooked
      food keeps about three to four days in a fridge, and this app models no freezer — a portion
      is either planned on a day or it is not. Written into PLAN.md so that raising the cap later
      is a decision about food, not about a slider.
 
-272. **Three layers decide a run's length, each answering a different question, and the sheet's
+274. **Three layers decide a run's length, each answering a different question, and the sheet's
      layer never writes back.** The slot says what is normal, the weekday says when there is
      time, and the control on the proposal says what happens this week. The last one is
      deliberately a one-off: „this Sunday I also have Monday off" is not a rule about Sundays,
      and a planner that learns rules from a single override becomes unpredictable.
 
-273. **Two consequences of long runs that the solver has to carry.** Runs in different slots are
+275. **Two consequences of long runs that the solver has to carry.** Runs in different slots are
      *staggered* — a three-day lunch and a three-day dinner starting on the same Sunday give
      three days that are identical twice over, which is worse than either setting asked for. And
      every day inside a run has that slot's macros fixed, so enough long runs leave a week with
      too few knobs and the per-day band of decision 259 becomes unsatisfiable; that failure
      names itself („zbyt wiele dni gotowanych na zapas"), because it is the one cause a user
      cannot guess from a plan that simply missed.
+
+### 2026-09-04 — Phase 13 built
+
+276. **The numbering had collided, and it is fixed here.** Two blocks written on 2026-09-04 —
+     „Phase 12 stage B: the trigger fired" and „Phase 13: how long a cook lasts" — both started
+     at 270. The cook-length block is renumbered 272–275; the stage-B pair keeps 270 and 271,
+     because a later entry already cites them by number. Every reference in the repository was
+     updated with it.
+
+277. **`readProfileDocument` does not, in fact, keep the fields it does not know.** PLAN.md
+     justifies `mealPlan` being optional partly on that claim. It is true of
+     `readRecipesDocument`, where whole recipe objects pass through, and false of the profile
+     reader, which has always enumerated its fields — so a `mealPlan` nobody read would have
+     been silently dropped on the next sync. `readMealPlan` is therefore a real validating
+     reader with its own tests. What the claim actually buys is still bought in full: no schema
+     version, no migration, and an older build that ignores the key rather than breaking on it.
+
+278. **The default template ships with no tags at all.** PLAN.md illustrates the template with
+     `owsianka`, `szybkie`, `mięsne`, `wege`, `lekkie`. Those are one user's tags; a default
+     naming them would make the planner fail with „brak przepisów na Śniadanie" on any library
+     that has never heard of them. The shipped default is four slots at 25/40/10/25 with lunch
+     at two days and **empty** tag lists, which the model already reads as „any recipe".
+
+279. **The stagger is settled in the structure, not in the cost function.** PLAN.md asks for it
+     as a cost term. The blocks a plan is made of are chosen *before* the recipes are, so a cost
+     over them would mean searching structures as well as fillings — a second search for a rule
+     with one right answer. `planBlocks` instead shortens the later slot's block to a single day
+     when a long cook already starts that date, which is the shortening the rule asks for and
+     satisfies the acceptance criterion („two runs do not start on the same day while any
+     arrangement exists in which they do not") outright rather than on average.
+
+280. **The week is solved whole, not left to right with one repair pass.** PLAN.md task 7
+     describes generating the seven days in order, carrying the balance forward, then repairing
+     the worst day. The implemented solver optimises the whole range at once against the weekly
+     mean, with the per-day band as a hard term and a coordinate pass over the portion counts as
+     the repair. That is strictly stronger: „carry the balance forward" is a greedy
+     approximation of the objective the joint solve states exactly, and it is what makes the
+     ±5% weekly average reachable on every seed rather than on lucky ones.
+
+281. **The shopping list was over-buying every batch, and Phase 13 had to fix it.** „Gotuję na
+     2 dni" writes `cookingScale: 2` on the cooking day and a `cookingScale: 1` copy on the
+     next, and `shoppingLines` added both — so a week's list bought three portions for a
+     two-day cook. Nobody noticed because a hand-made batch is rare and the day-scoped list
+     never sees both days; a generated week is nothing but batches, and the phase's own
+     acceptance criterion says the ingredients are bought once.
+
+     The fix is a **ledger, not a flag**: nothing in `PlannedMeal` says „this one is leftovers"
+     and nothing should. `cookedScales` walks each recipe's meals in scope order, keeps what has
+     been cooked and not yet eaten, and lets a meal **on a later day** come out of that pot for
+     free. „Later day" is what keeps it narrow: two servings of one recipe on the *same* day are
+     two plates off one cook and both scales still count, which is the Phase 9 rule „follows the
+     batch, not the plate" — its e2e test is unchanged. `ShoppingMeal` gains an optional `date`;
+     without one the function behaves exactly as the module did before.
+
+282. **`src/lib/shopping.ts` had a NUL byte in it, committed since Phase 9.** The shopping
+     line's map key was built as `` `${item.ingredientId}\0${item.unit}` `` — a literal NUL
+     where a space was meant. Functionally harmless (it is only a separator inside a `Map` key)
+     but it made git, `grep` and every diff tool treat the file as binary, so its changes had
+     been invisible in review for four phases. Fixed while editing the file; a sweep over every
+     tracked text file found no other.
+
+283. **The 1/2/3 control and the „skrócone gotowanie" note appear in week mode only.** A cook
+     never overruns the range being planned, so on a single day a run can only ever last one
+     day: the control would be two buttons that do nothing, and the note would report as news
+     that a two-day slot did not fit into one day. Both are hidden when the range is one date.
+
+284. **Existing meals are mapped to slots by position, and can be moved with a `<select>`.**
+     Decision 261 said the mapping lives and dies inside the sheet; this is what that means in
+     practice. The control is offered in day mode only — a week sheet listing four dropdowns on
+     each of seven cards would be a worse screen than the problem it solves.
+
+285. **Every acceptance criterion is verified, and two of them are worth naming.** „A meal
+     screen opened on a batch written by the planner shows „Gotuję na 2 dni" already ticked" is
+     verified against the control's *actual* Polish label, „Dodaj też jutro" — PLAN.md names the
+     feature, the screen names the action, and no wording was changed to make a criterion pass.
+     „The week's shopping list buys those ingredients once" is verified as a unit test that runs
+     `planWrites` into `shoppingLines`, which is the whole path from a proposal to a list; the
+     e2e covers the batch reaching the calendar, not the arithmetic of the list.
+
+286. **One Phase 11 e2e assertion was a race, and adding tests made the suite lose it.**
+     „a browser with no install prompt and no iOS share sheet is told nothing at all" asserted
+     that the heading „Aplikacja na urządzeniu" was absent. But that heading covers the offline
+     note as well, which `InstallSection` documents as *not* install advice — so once the
+     service worker finished precaching, the heading appeared legitimately and the test failed.
+     Against the Caddy container it is a timing question, and this phase's ten new specs pushed
+     the run past the point where it lost. The assertion now names the install copy itself, in
+     all four of its forms, which is what decision 189 was ever about. Verified by running the
+     whole suite against `npm run docker:up` before and after.
+
+287. **The proposal shows macros per day, not per meal.** PLAN.md task 6 asks the sheet to list
+     „the proposed recipe, its portion count and its macros". Four rows of four numbers each is
+     a wall on a phone, and it answers a question nobody asked — the proposal has to answer
+     „does this day work". Each slot row therefore carries its portion count and its kilocalories,
+     and the day card carries the existing `MacroBars` against the day's goal, which is how
+     protein, carbohydrate and fat are drawn on every other screen. The tie-breakers are visible;
+     they are just aggregated at the level the decision is made.
 
 ## Open questions
 

@@ -52,21 +52,26 @@
     const wanted = new Set(dates);
     const days = (await repository.getDays(from, to)).filter((day) => wanted.has(day.date));
 
+    // The day travels with the meal: it is what tells a next-day portion out of yesterday's
+    // pot from a second serving cooked today (`cookedScales`).
     const planned = days.flatMap((day) =>
-      day.meals.filter((meal) => mealId === undefined || meal.id === mealId)
+      day.meals
+        .filter((meal) => mealId === undefined || meal.id === mealId)
+        .map((meal) => ({ meal, date: day.date }))
     );
 
     const recipes: Map<string, Recipe> = await repository.recipesByIds(
-      planned.map((meal) => meal.recipeId)
+      planned.map((row) => row.meal.recipeId)
     );
     const ingredientIds = [...recipes.values()].flatMap((recipe) =>
       recipe.items.map((item) => item.ingredientId)
     );
     const lookup = ingredientLookup(await repository.ingredientsByIds(ingredientIds));
 
-    const meals: ShoppingMeal[] = planned.map((meal) => ({
-      meal,
-      recipe: recipes.get(meal.recipeId)
+    const meals: ShoppingMeal[] = planned.map((row) => ({
+      meal: row.meal,
+      date: row.date,
+      recipe: recipes.get(row.meal.recipeId)
     }));
 
     lines = shoppingLines(meals, lookup);
