@@ -74,6 +74,33 @@ describe('the Gemini client', () => {
     expect(at(reading.seen).body.tools).toEqual([{ url_context: {} }]);
   });
 
+  it('sends a picture as inlineData, after the text', async () => {
+    const { seen, fetchImpl } = recorder(answer('ok'));
+
+    await generateText({
+      apiKey: 'k',
+      model: 'm',
+      prompt: 'odczytaj',
+      image: { mimeType: 'image/jpeg', data: 'AAEC' },
+      fetchImpl
+    });
+
+    const contents = at(seen).body.contents as { parts: Record<string, unknown>[] }[];
+    expect(contents[0]?.parts).toEqual([
+      { text: 'odczytaj' },
+      { inlineData: { mimeType: 'image/jpeg', data: 'AAEC' } }
+    ]);
+  });
+
+  it('sends no image part when there is no picture', async () => {
+    const { seen, fetchImpl } = recorder(answer('ok'));
+
+    await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl });
+
+    const contents = at(seen).body.contents as { parts: Record<string, unknown>[] }[];
+    expect(contents[0]?.parts).toEqual([{ text: 'hi' }]);
+  });
+
   it('refuses to call out at all without a key', async () => {
     const failing = (() => {
       throw new Error('should not be called');

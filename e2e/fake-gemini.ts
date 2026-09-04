@@ -19,13 +19,15 @@ export interface GeminiScript {
   recipe?: unknown;
   /** Parsed names the model refuses to match, so the row lands in the editor empty. */
   refuse?: string[];
+  /** Answer to the package-scan call, as the object the app should receive (Phase 12). */
+  label?: unknown;
   /** HTTP status for every call. 200 unless a test is checking a failure. */
   status?: number;
 }
 
 export interface FakeGemini {
   /** Every request the app made, newest last. */
-  calls: { system: string; prompt: string; key: string | null }[];
+  calls: { system: string; prompt: string; key: string | null; imageBytes: number }[];
   script: GeminiScript;
 }
 
@@ -63,7 +65,7 @@ export async function installFakeGemini(context: BrowserContext, fake: FakeGemin
 
     // The key check in the wizard and in settings: a plain GET for the model list.
     if (request.method() === 'GET') {
-      fake.calls.push({ system: 'models', prompt: '', key });
+      fake.calls.push({ system: 'models', prompt: '', key, imageBytes: 0 });
       return route.fulfill({
         status: fake.script.status ?? 200,
         contentType: 'application/json',
@@ -94,11 +96,15 @@ export async function installFakeGemini(context: BrowserContext, fake: FakeGemin
 
     const body = JSON.parse(request.postData() ?? '{}') as {
       systemInstruction?: { parts?: { text?: string }[] };
-      contents?: { parts?: { text?: string }[] }[];
+      contents?: { parts?: { text?: string; inlineData?: { data?: string } }[] }[];
     };
     const system = body.systemInstruction?.parts?.[0]?.text ?? '';
-    const prompt = body.contents?.[0]?.parts?.[0]?.text ?? '';
-    fake.calls.push({ system, prompt, key });
+    const parts = body.contents?.[0]?.parts ?? [];
+    const prompt = parts[0]?.text ?? '';
+    // How much picture the app actually sent, so a test can check that the downscale ran and
+    // that a call without an image carries none.
+    const image = parts.find((part) => part.inlineData !== undefined)?.inlineData?.data ?? '';
+    fake.calls.push({ system, prompt, key, imageBytes: image.length });
 
     if (fake.script.status !== undefined && fake.script.status !== 200) {
       return route.fulfill({
@@ -113,6 +119,17 @@ export async function installFakeGemini(context: BrowserContext, fake: FakeGemin
         status: 200,
         contentType: 'application/json',
         body: answer(fake.script.page ?? 'BRAK_PRZEPISU')
+      });
+    }
+
+    if (system.startsWith('Odczytujesz tabelę')) {
+      // A string is sent through verbatim, so a test can make the answer unparseable on
+      // purpose; anything else is the object the app should receive.
+      const label = fake.script.label;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: answer(typeof label === 'string' ? label : JSON.stringify(label ?? {}))
       });
     }
 

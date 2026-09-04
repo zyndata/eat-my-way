@@ -23,14 +23,15 @@ const QUOTA_TIMEZONE = 'America/Los_Angeles';
 
 /**
  * Requests one import costs: two for pasted text (parse, match), three for a link (retrieval
- * first). Used only to turn a request count into „about N recipes" on screen.
+ * first) — and one for a package scan, which is a single call with a picture attached
+ * (PLAN.md Phase 12 task 6). Used only to turn a request count into „about N recipes" on screen.
  *
  * There is deliberately no constant for the daily cap. It is **not** one number: Google's own
  * dashboard shows 20 requests a day for `gemini-3.6-flash` and 500 for `gemini-3.5-flash-lite`,
  * and nothing in the API reports it until a 429 arrives (STATE.md decision 129). Printing „20"
  * as a fact would be wrong for most models.
  */
-export const REQUESTS_PER_IMPORT = { paste: 2, link: 3 } as const;
+export const REQUESTS_PER_IMPORT = { paste: 2, link: 3, scan: 1 } as const;
 
 /** `YYYY-MM-DD` of the current quota window. `en-CA` is ISO order by definition. */
 export function quotaDay(now: Date = new Date()): string {

@@ -6,6 +6,39 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Bug Fixes
+
+- **pwa:** Let the update check say when the edge is refusing it
+- **screenshots:** Skip the first-run wizard, which now intercepts the walk
+
+### Build
+
+- Bump svelte in the npm-minor-patch group across 1 directory
+
+### CI/CD
+
+- Bump the actions group across 1 directory with 6 updates
+
+### Documentation
+
+- A push is not finished until CI is green
+- Bring the README back in line with the app it describes
+- Make the README part of the end-of-phase ritual
+
+### Features
+
+- Phase 12 — skanowanie opakowania
+
+### Miscellaneous
+
+- Drop the debug probe committed by accident
+
+### Tests
+
+- **pwa:** Measure the load the worker was offered, not the one that arrived
+
 ## [1.5.0] - 2026-09-04
 
 ### Features

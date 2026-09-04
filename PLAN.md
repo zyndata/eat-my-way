@@ -99,6 +99,12 @@ days/2026-09.json    # one file per month: { "2026-09-03": Day, ... }
   returns structured JSON: `{ingredients:[{name, amount, unit, state}], instructions}` —
   **never nutrition numbers** (repeatability beats plausibility; the same meal must always
   compute identically).
+- **One exception, and only one: transcribing a nutrition table off a photographed package**
+  (Phase 12). The rule above forbids *invented* values entering a calculation. There, the
+  numbers are printed on the package, the user reads and corrects them in the form before
+  anything is stored, and what gets saved is an ordinary `custom:*` ingredient whose values
+  never change again — so every meal still computes identically. A scanned value that the
+  model could not read comes back empty, never as `0`.
 - Ingredient matching: app code matches parsed names to the local nutrition DB. Provide Gemini a
   controlled vocabulary (candidate ids) so it returns a `fdcId`, not free text. Persist user
   corrections in `ingredients.json` (PL name → id) so matching becomes deterministic over time.
@@ -116,7 +122,10 @@ days/2026-09.json    # one file per month: { "2026-09-03": Day, ... }
   USDA has separate entries).
 - Frying fat: recipes must carry a concrete amount ("odrobina oliwy" is 100–200 kcal) — parser
   must be instructed to quantify, plus manual field.
-- Open Food Facts as a later second source for branded Polish products (has CORS).
+- Open Food Facts as a later second source for branded Polish products (has CORS — confirmed,
+  `access-control-allow-origin: *`). Scoped and scheduled in Phase 12, stage B: a barcode scan
+  that fills one custom ingredient, deferred behind a written trigger, and never a bulk import
+  into the curated USDA bundle.
 
 ## Data model
 
@@ -1025,3 +1034,194 @@ since the first commit.
 - [x] The CSP is unchanged, or the widening is recorded in STATE.md and verified with zero
       console violations under `npm run docker:up`.
 - [x] All UI text in Polish; code/comments in English.
+
+## Phase 12 — Skanowanie opakowania
+
+Adding a custom ingredient means typing five things off the back of a package: a name and four
+numbers that are already printed, in a fixed layout, on every product sold in the EU. The
+phone that would type them has a camera pointed at the table. This phase makes the camera do
+it — the user photographs the nutrition table, the fields fill themselves, and what could not
+be read stays empty.
+
+**The phase ships in two stages, and the second one may never be built.** Stage A reads the
+printed table with the Gemini key the app already holds; stage B adds a barcode scan against
+Open Food Facts as a free shortcut for packaged products. A is first because it covers every
+package — every product has a table, not every product is in a database — and because it needs
+no new dependency, no new host in the CSP and no camera permission. B is deferred behind a
+condition stated below rather than a date, because its whole value is saving Gemini requests,
+and nobody yet knows whether those requests are scarce in practice.
+
+**One rule from this document is being bent, and this is the record of it.** „Gemini … returns
+structured JSON … **never nutrition numbers** (repeatability beats plausibility; the same meal
+must always compute identically)" — see the Gemini section. That rule protects a specific
+thing: a recipe's macros must not depend on what a model guessed on a given day. It is not
+bent here, because nothing in this phase computes anything. Gemini is asked to **transcribe
+numbers that are printed on a package**, into a form the user reads, corrects and saves once.
+After the save the ingredient is an ordinary `custom:*` row with fixed values, and every meal
+using it computes deterministically forever. The prohibition is on *invented* values entering
+a calculation; a transcription the user confirms before it is stored is a different act. The
+Gemini section is amended to say so, rather than left to contradict this phase.
+
+### Stage A — the photo (built in this phase)
+
+#### Tasks
+
+1. **A „Zeskanuj opakowanie" button in the ingredient form.** `CustomIngredientForm.svelte` is
+   used from two places and owns no I/O of its own (its own header comment), so the scan
+   follows that: the form renders the button and the result, and the caller supplies the
+   function that performs it. That keeps the recipe editor's inline use and „Składniki"'s
+   bottom sheet on one code path, and keeps the form testable without a network.
+
+   The camera is reached with `<input type="file" accept="image/*" capture="environment">`,
+   **not** `getUserMedia`. On a phone that opens the system camera, with framing, focus and a
+   confirm step already built and better than anything we would write; on a laptop it opens a
+   file picker, which is the honest behaviour there — a webcam pointed at a package by hand
+   photographs a blurred one. It also asks nothing of `Permissions-Policy`, whose `camera=()`
+   in the `Caddyfile` governs `getUserMedia`. **That last claim is verified under
+   `npm run docker:up` before the task is called done, not assumed** — `npm run dev` applies
+   no CSP and no permissions policy, and this is exactly the class of thing it fails to test.
+
+2. **The photo is downscaled in the browser before it is sent.** A modern phone camera
+   produces 3–12 MB; the readable part is a table occupying a fraction of it. A canvas
+   resample to at most 1024 px on the long edge and JPEG at ~0.8 keeps the digits legible,
+   cuts the upload to a couple of hundred kilobytes and holds the image cost near the
+   per-image floor Google charges. `img-src` already allows `blob:` and `data:`, so the
+   preview needs no CSP change either. The original file is never stored — not in IndexedDB,
+   not on Drive.
+
+3. **`gemini/client.ts` learns to send an image.** The request gains an optional image part
+   alongside `prompt`, sent as `inlineData: { mimeType, data }` in the same `parts` array. Every
+   existing rule of that module holds unchanged and is the reason it is extended rather than
+   duplicated: the key travels in `x-goog-api-key`, no response body is ever quoted into an
+   error, the `DETERMINISTIC` config still applies, and the polish error sentences already map
+   every status this call can return. `connect-src` already permits
+   `generativelanguage.googleapis.com` — **this feature widens the CSP nowhere.**
+
+4. **`gemini/scan.ts`, beside `parse.ts` and `match.ts`.** The prompt, the `responseSchema` and
+   a pure reader that turns the answer into an `IngredientDraft`, following the shape those two
+   modules already established: the model returns JSON, and the deterministic half lives on
+   this side of the call, in functions with unit tests and no network.
+
+   What the prompt has to get right is not the OCR — it is the label:
+
+   - **The „w 100 g" column, never „na porcję" and never „%RWS".** Polish labels routinely
+     print all three side by side, and the app's whole data model is per 100 g
+     (STATE.md decision 53).
+   - **kcal, not kJ.** EU labels lead with kilojoules; `2252 kJ / 539 kcal` must yield 539.
+   - **„w tym cukry" and „w tym kwasy nasycone" are sub-entries**, not macros of their own. A
+     naive read puts sugars into carbohydrates twice.
+   - **Decimal comma**, and a value that is a range or „<0,5" resolves to the number a person
+     would write.
+   - **The product name from the front of the pack**, not the legal designation in six-point
+     type.
+   - **`state` is never guessed.** Raw versus cooked is not on a label; it stays the user's
+     choice, defaulting as the form already defaults.
+
+   And one rule that outranks all of them: **a field that could not be read comes back `null`,
+   never `0`.** `IngredientDraft` already models the four macros as `number | null` precisely
+   because „nie wpisano" and „zero" are different facts (decision 178), and a scan that
+   silently returned `0` would recreate the exact bug that decision fixed, with a photograph as
+   the alibi. The reader enforces this on the way out of the model, whatever the model sent:
+   anything not a finite non-negative number becomes `null`.
+
+5. **The result is a proposal, not a save.** The scan writes into the draft the user is looking
+   at, the scanned fields are visibly marked as coming from the scan, and nothing is persisted
+   until the ordinary „Zapisz składnik" is pressed. `draftProblem` is left exactly as it is:
+   a partial scan leaves the button disabled with the sentence it already prints, which is the
+   behaviour the user asked for — fewer fields to type, no fields silently invented. A second
+   scan replaces the proposal; a field the user has edited by hand is not overwritten by it.
+
+6. **It costs one request, and the app says so.** `REQUESTS_PER_IMPORT` in `gemini/usage.ts`
+   gains a `scan: 1` entry so the counter keeps telling the truth about a budget that can be as
+   small as 20 requests a day per model (decision 129), and the scan is reported through
+   `onusage` on any answered call, including one whose parsing later fails — the same rule as
+   decision 127. The three states that make this feature unavailable are handled where they
+   occur rather than as a generic failure: **no key** sends the user to Settings, a **locked
+   vault** goes through `requestUnlock()` like every other secret-using path, and **offline**
+   says so through `isOffline()` and points out that the rest of the form still works.
+
+7. **The user is told where the photograph goes, before they take it.** One line under the
+   button: the photo is sent to Google's Gemini API with the user's own key, only when the
+   button is pressed, and is not stored anywhere. This app holds credentials and its README
+   makes claims about what it sends where; a feature that uploads a picture of something on
+   your kitchen table does not get to be quiet about it. SECURITY.md gains the same sentence.
+
+8. **Tests.** The reader and the normaliser are pure and get unit tests, including the cases
+   the prompt is written against: kJ-only labels, a per-portion column present, sugars nested
+   under carbohydrates, a comma decimal, a missing protein row (→ `null`, not `0`), and a
+   model that answers with a string where a number belongs. The end-to-end path reuses
+   `e2e/fake-gemini.ts` with a fixture answer, so CI never photographs anything and never
+   spends a request.
+
+#### Acceptance criteria
+
+- [ ] On a phone, „Zeskanuj opakowanie" opens the camera, and a photograph of a Polish
+      nutrition table fills the name and the four macros with the values from the „w 100 g"
+      column. — **not verified here**: no phone and no live Gemini key in this environment. The
+      whole path is verified on a desktop browser end to end (`e2e/scan.spec.ts`), against a
+      Gemini answered at the network boundary. STATE.md open question 29.
+- [ ] A label that prints kilojoules first yields kilocalories; a label with a per-portion
+      column next to the per-100 g one yields the per-100 g values. — **not verified here**:
+      this is what the prompt asks for, and only a real label read by the real model can show
+      whether it obeys. The reader's half of it is unit-tested (a per-portion block and a
+      nested „w tym cukry" are ignored). STATE.md open question 29.
+- [x] A value the model could not read leaves its field empty, the save button stays disabled,
+      and the form prints the reason it already prints — no field is ever filled with `0` by a
+      scan.
+- [x] Nothing is written to IndexedDB until „Zapisz składnik"; the photograph is not stored at
+      all.
+- [x] The scan counts as one request in the Gemini usage counter, including when the answer
+      fails to parse.
+- [x] With no key, a locked vault, or no network, the button explains which of the three it is
+      and the rest of the form keeps working.
+- [x] Verified under `npm run docker:up` with zero CSP or permissions-policy violations in the
+      console, and **the `Caddyfile` is unchanged** — if it turns out it cannot be, the widening
+      is recorded in STATE.md first.
+- [x] All UI text in Polish; code and comments in English.
+
+### Stage B — the barcode (deferred, with a written trigger)
+
+Not built in this phase. It is written down here so that the decision to build it is a decision
+about evidence rather than a fresh design session.
+
+**The trigger.** Stage B is built when stage A is in daily use and one of these is true, each
+recorded in STATE.md when observed: the free daily Gemini budget is actually being hit while
+adding ingredients; the round trip is slow enough to be annoying at the shop shelf; or the
+photo path proves unreliable on a class of packages (foil, curved, glossy) common enough to
+matter. Absent those, stage A is the whole feature and B is a thing not to maintain.
+
+**What it would be.** The camera reads an EAN, and the app looks it up in Open Food Facts —
+the second nutrition source this document has planned since before 1.0 (see „Nutrition data",
+and STATE.md open question 9a). Scoped to this one screen: it fills a `custom:*` draft, and it
+does **not** bulk-import anything into the bundled USDA database, which stays curated.
+
+**What was measured while planning, so it is not researched twice** (2026-09-04):
+
+- `GET https://world.openfoodfacts.org/api/v2/product/<ean>.json` answers
+  `access-control-allow-origin: *` — usable straight from the browser, no key, no proxy.
+- The fields map onto `Macros` one-to-one: `energy-kcal_100g`, `proteins_100g` (plural),
+  `carbohydrates_100g`, `fat_100g`, plus `product_name` and `brands`. Verified on a real
+  Polish product (Masło extra, Mlekovita, EAN 5900512300108).
+- Coverage: about **37 200** products tagged `countries_tags=poland`. Enough for supermarket
+  staples, not enough to be the only path — which is the argument for A first.
+- Limits: 15 read requests per minute per IP; a descriptive `User-Agent` is requested but a
+  browser cannot set that header, so identification goes in `app_name` / `app_version` query
+  parameters.
+- The data is volunteer-entered and sometimes wrong, so it arrives as a proposal to be checked,
+  under exactly the same rule as stage A: nothing is saved until the user presses save.
+
+**What it would cost, and why that is not free.** `BarcodeDetector` exists in Chromium and in
+**neither Safari/iOS nor Firefox**, so a cross-platform scan needs a WebAssembly decoder —
+a new dependency in an app whose rule is that every package must justify itself. Aiming a
+camera at a barcode needs a live preview, so this is the stage that requires `getUserMedia`
+and therefore `Permissions-Policy: camera=(self)` in the `Caddyfile`, plus
+`connect-src https://world.openfoodfacts.org` — two CSP-adjacent widenings, against zero for
+stage A. Note also that `getUserMedia` needs a secure context: production and `localhost` are
+fine, but testing from a phone against `http://<LAN-ip>:8080` will not work.
+
+**What was rejected outright.** Local OCR with tesseract.js: measured at ~4.75 MB for the WASM
+core plus ~4.77 MB for `pol.traineddata`, about **10 MB** of assets to download and cache in an
+app whose entire precache is currently measured in hundreds of kilobytes — and in exchange, a
+weaker read of a tabular layout than either path above, plus a table parser of our own to
+maintain. Offline operation without a key is its only advantage, and it is not worth that
+price. Recorded so it is not re-proposed.

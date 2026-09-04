@@ -136,3 +136,50 @@ test('settings names the version and can say that it is the newest', async ({ de
   await section.getByRole('button', { name: 'Sprawdź aktualizacje' }).click();
   await expect(section.getByText('Masz najnowszą wersję.')).toBeVisible();
 });
+
+/**
+ * The escape hatch from the app's own offline-first routing.
+ *
+ * `navigateFallback` answers every navigation from the precache, which is what makes the app
+ * open instantly and survive a dead link — and is also why a challenge in front of the origin
+ * can never be seen: the navigation that could display one never leaves the device, so the
+ * only requests that meet the challenge are the worker's own, which have no way to show it.
+ * `/polaczenie` is denylisted out of that route so opening it is a real trip to the server
+ * (STATE.md decision 238).
+ *
+ * The assertion is about *who answered*, not about what came back: both paths render the same
+ * document, and the whole point of the fix is the one difference Playwright can still see.
+ */
+test('the connection check is answered by the server, not the worker', async ({ device }) => {
+  await waitForServiceWorker(device);
+
+  const unknown = await controlledGoto(device, '/sciezka-ktorej-nie-ma');
+  expect(unknown?.status()).toBe(200);
+  expect(
+    unknown?.fromServiceWorker(),
+    'an ordinary deep link is served from the precache'
+  ).toBe(true);
+
+  const check = await controlledGoto(device, '/polaczenie');
+  expect(check?.status()).toBe(200);
+  expect(
+    check?.fromServiceWorker(),
+    'the connection check must reach the network, or it checks nothing'
+  ).toBe(false);
+});
+
+/**
+ * Navigate somewhere and measure the load that follows, not the one that got there.
+ *
+ * A cross-document navigation lands in a brand-new client, and whether the worker has claimed
+ * it yet is a race — `registerType: 'prompt'` means nothing calls `clients.claim()`, so the
+ * first load of a fresh client can be answered by the server whatever the routes say. Asserting
+ * on that load tests the race rather than the routing; it passed here and failed in CI. Waiting
+ * for control and reloading makes each measurement one the worker was definitely offered, which
+ * is the only condition under which „who answered" means anything.
+ */
+async function controlledGoto(page: Page, path: string) {
+  await page.goto(path);
+  await waitForServiceWorker(page);
+  return await page.reload();
+}

@@ -8,10 +8,15 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: feature-complete for 1.0.** Phases 1–8 of [PLAN.md](PLAN.md) are done: the
-> calendar, the recipe library, the nutrition database, Drive sync, the encrypted vault, the
-> Gemini import, and the installable offline PWA. [STATE.md](STATE.md) is the record of what
-> was decided and what is still open; [PLAN.md](PLAN.md) Phase 9 is the post-1.0 comfort list.
+> **Status: released, and in daily use.** Phases 1–12 of [PLAN.md](PLAN.md) are done — the
+> calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
+> and the installable offline PWA for 1.0, then four phases that daily use asked for after it:
+> the comfort features (9), an ingredient library and a backup that finally holds everything
+> (10), a round of fixes to what the app says (11), and adding an ingredient by photographing
+> the package instead of typing it (12). The live app is
+> https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
+> [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
+> record of what was decided and what is still open.
 
 ## What it looks like
 
@@ -25,16 +30,26 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   source of truth; Google Drive's private `appDataFolder` is only a sync layer, so the data is
   visible to this app and to nobody else — not even to a server of mine, because there isn't one.
 - **The numbers are repeatable.** Nutrition comes from a bundled subset of the USDA FoodData
-  Central database, computed locally. The same meal always produces the same calories. AI is
-  used *only* to parse a pasted recipe into structured ingredients — never to invent nutrition
-  values.
+  Central database, computed locally. The same meal always produces the same calories. AI never
+  invents a nutrition value: it parses a pasted recipe into structured ingredients, and it can
+  transcribe the table printed on a package you photograph — a reading you check and correct in
+  the form before it is saved, after which the ingredient's values never change again.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
-- **Bring your own key.** The optional Gemini recipe import uses *your* API key, stored in a
-  vault encrypted with Argon2id + AES-GCM. The decrypted key never leaves your browser's memory.
+- **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day
+  view scales it to how much you cooked and how much you actually ate, which are two different
+  numbers and only the second one counts towards the day. A meal turns into a shopping list, a
+  batch cooked today can be planned onto tomorrow with one checkbox, and anything the USDA
+  subset does not know you add once to your own ingredient library.
+- **Bring your own key.** The optional Gemini features — the recipe import and the package
+  scan — use *your* API key, stored in a
+  vault that is encrypted with Argon2id + AES-GCM behind a master password by default; the
+  decrypted key never leaves your browser's memory. You may decline the password, and the app
+  then says plainly — on every screen that moves the vault — that the key is stored unencrypted.
 - **It works with the network off.** Installed as a PWA it opens, plans and edits in airplane
-  mode. Only two things need a connection — syncing with Drive and importing a recipe — and both
-  say so in plain Polish and pick themselves up when the network returns.
+  mode. Only the things that talk to Google need a connection — syncing with Drive, importing a
+  recipe and scanning a package — and each says so in plain Polish, leaves the rest of the
+  screen working, and picks itself up when the network returns.
 
 ## Stack
 
@@ -45,7 +60,7 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 | Local storage | Dexie over IndexedDB |
 | Crypto | hash-wasm (Argon2id, in a Web Worker) + WebCrypto (AES-GCM) |
 | Sync | Google Drive `appDataFolder` behind a `StorageBackend` interface |
-| AI | Gemini (BYO key) — recipe parsing only |
+| AI | Gemini (BYO key) — recipe parsing, and reading a photographed nutrition table |
 | Serving | Caddy in Docker, static files only |
 | Deploy | GitHub Actions → build in CI → rsync + versioned `docker build` on the server |
 
@@ -95,10 +110,14 @@ enter the master password when the vault is fetched. The calendar, the recipes, 
 ingredients and the Gemini key all come back from the app's private `appDataFolder`.
 
 **A new device, without Drive.** *Zapisz kopię* on the old device writes one JSON file with
-everything local in it; *Wczytaj kopię* on the new one reads it back and replaces what is
-there. The file deliberately does **not** contain the vault — re-enter the Gemini key
-afterwards, because a backup ends up in Downloads and in mail attachments, and an API key
-should not travel that way.
+everything local in it — the goals, the recipes, the tags, your own ingredients, every planned
+day, and the vault; *Wczytaj kopię* on the new one reads it back and replaces what is there.
+The vault travels exactly as the device holds it, so an encrypted vault is an Argon2id + AES-GCM
+blob and the master password is nowhere in the file — you re-enter it at the first import after
+the restore. If you chose a vault **without** a password, the Gemini key is in that file in the
+clear; the export screen says which of those two files it is about to write before it writes it.
+A backup ends up in Downloads and in mail attachments, so treat an unencrypted one as you would
+the key itself.
 
 **A forgotten master password.** It cannot be recovered: nothing anywhere stores it. *Nie
 pamiętam hasła* → *Załóż sejf od nowa* discards the vault and asks for the Gemini key again.

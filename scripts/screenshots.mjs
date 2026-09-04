@@ -35,6 +35,14 @@ async function shot(name) {
   console.log(`docs/screenshots/${name}.png`);
 }
 
+// A browser that has never been used meets the first-run wizard, which pushes itself over
+// whatever route was asked for (STATE.md decision 193). Skipping it writes `setupDone`, so the
+// rest of the walk sees the app a returning user sees — the same move the e2e fixture makes.
+await page.goto(`${BASE_URL}/#/`);
+const skipSetup = page.getByRole('button', { name: 'Pomiń kreator' });
+await skipSetup.waitFor({ state: 'visible' });
+await skipSetup.click();
+
 await page.goto(`${BASE_URL}/#/recipes`);
 // The bundled USDA subset is imported on first run; the autocomplete is empty until it lands.
 await page.waitForFunction(() => document.body.textContent?.includes('Nowy przepis') === true);

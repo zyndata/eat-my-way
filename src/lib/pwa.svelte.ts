@@ -79,8 +79,25 @@ let lastCheck = 0;
 /** How stale an answer may be before returning to the app asks again. A manual check ignores it. */
 const AUTO_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
-/** What a check found. `unavailable` means there is no worker to ask, not that nothing is new. */
-export type UpdateCheck = 'update-ready' | 'current' | 'offline' | 'failed' | 'unavailable';
+/**
+ * What a check found. `unavailable` means there is no worker to ask, not that nothing is new;
+ * `blocked` means the origin answered and what came back was not this app.
+ */
+export type UpdateCheck =
+  | 'update-ready'
+  | 'current'
+  | 'offline'
+  | 'blocked'
+  | 'failed'
+  | 'unavailable';
+
+/**
+ * A path the service worker deliberately does not answer — `navigateFallbackDenylist` in
+ * `vite.config.ts` keeps it out of the navigation route, and the server resolves it to the app
+ * like any other unknown path. Opening it is therefore a real navigation to the origin, which
+ * is the only way a challenge in front of the origin can put its question to a human.
+ */
+export const NETWORK_CHECK_PATH = '/polaczenie';
 
 /** True when the page is running as an installed app rather than in a browser tab. */
 function isStandalone(): boolean {
@@ -189,15 +206,14 @@ export async function checkForUpdate(): Promise<UpdateCheck> {
     await reg.update();
   } catch (error) {
     lastCheck = Date.now();
-    // `update()` rejects for the fetch *and* for an installation that fails behind it — a
-    // precache is more than a megabyte, and a phone that lost the link halfway through lands
-    // here. So the registration is asked before the failure is believed: a worker that made it
-    // to `waiting` is a found update, whatever the promise said (STATE.md decision 236).
+    // `update()` rejects for the fetch *and* for an installation that fails behind it. So the
+    // registration is asked before the failure is believed: a worker that made it to `waiting`
+    // is a found update, whatever the promise said (STATE.md decision 236).
     if (reg.waiting !== null && navigator.serviceWorker.controller !== null) return ready();
     // The one line that makes a report from a phone worth anything. It says what threw; the
     // screen still says only what the user can act on.
     console.warn('[eat-my-way] update check failed', error);
-    return navigator.onLine ? 'failed' : 'offline';
+    return await diagnose(reg);
   }
   lastCheck = Date.now();
 
@@ -213,6 +229,38 @@ export async function checkForUpdate(): Promise<UpdateCheck> {
       if (installing.state === 'redundant') resolve('current');
     });
   });
+}
+
+/**
+ * Why the check failed, as far as the network will say.
+ *
+ * `update()` reports one rejection for situations the user has to answer differently, and
+ * guessing between them was the whole trouble: „try again on a better connection" is advice
+ * that can never work when the link is fine and something in front of the origin is refusing.
+ * That refusal has a shape — the origin replies, and what it replies with is an HTML page
+ * rather than the worker — and it is worth telling apart from a link that is simply not there
+ * (STATE.md decision 238).
+ *
+ * The probe is the worker script itself: the exact request that just failed, two kilobytes, and
+ * served from no cache, so the answer describes the network now rather than what was true when
+ * the app was last reachable.
+ */
+async function diagnose(reg: ServiceWorkerRegistration): Promise<UpdateCheck> {
+  if (!navigator.onLine) return 'offline';
+
+  const url = reg.active?.scriptURL ?? reg.installing?.scriptURL ?? reg.waiting?.scriptURL;
+  if (url === undefined) return 'failed';
+
+  try {
+    const response = await fetch(url, { cache: 'no-store' });
+    const type = response.headers.get('content-type') ?? '';
+    if (response.ok && /javascript|ecmascript/i.test(type)) return 'failed';
+    console.warn(`[eat-my-way] worker fetch answered ${response.status} as "${type}"`);
+    return 'blocked';
+  } catch {
+    // `navigator.onLine` said otherwise, but it only ever knew about the network interface.
+    return 'offline';
+  }
 }
 
 /** A waiting worker is exactly what the update bar means, so say it in both places at once. */

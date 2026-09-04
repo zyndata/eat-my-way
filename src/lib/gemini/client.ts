@@ -62,6 +62,12 @@ export interface GeminiRequest {
   system?: string;
   /** The user turn. */
   prompt: string;
+  /**
+   * A picture to read alongside `prompt`, base64 without a data: prefix. Sent as `inlineData`
+   * in the same `parts` array, after the text. Used by the package scan (Phase 12); the image
+   * is never stored anywhere — it exists for the duration of this call (PLAN.md Phase 12).
+   */
+  image?: { mimeType: string; data: string };
   /** When given, the answer is asked for as JSON in this shape. */
   schema?: ResponseSchema;
   /** Let the model retrieve the URLs mentioned in the prompt (server-side, decision 113). */
@@ -225,8 +231,15 @@ export async function generateText(request: GeminiRequest): Promise<string> {
   const model = request.model.trim();
   const url = `${API_ROOT}/${encodeURIComponent(model)}:generateContent`;
 
+  // Text first, then the picture: the order the model is prompted in, and the order every
+  // reader of this request (including the e2e fake) expects the parts to arrive in.
+  const parts: Record<string, unknown>[] = [{ text: request.prompt }];
+  if (request.image !== undefined) {
+    parts.push({ inlineData: { mimeType: request.image.mimeType, data: request.image.data } });
+  }
+
   const body: Record<string, unknown> = {
-    contents: [{ role: 'user', parts: [{ text: request.prompt }] }],
+    contents: [{ role: 'user', parts }],
     generationConfig: {
       ...DETERMINISTIC,
       ...(request.schema === undefined

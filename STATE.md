@@ -18,8 +18,17 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 9     | Daily-use comfort           | done    | 2026-09-02 |
 | 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
 | 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
+| 12    | Skanowanie opakowania       | done    | 2026-09-04 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 12 is built, in the shape it was planned: stage A only — a custom ingredient added by
+photographing the package's nutrition table instead of typing it, read by Gemini with the key
+the app already holds. Stage B (a barcode scan against Open Food Facts) stays deferred behind
+the written trigger in PLAN.md, and decision 239 records the one PLAN.md rule this bends. The
+CSP and the `Caddyfile` are untouched — the whole feature added no host, no permission and no
+dependency. Two of its eight acceptance criteria cannot be checked from this machine: they need
+a phone and a live key, and they are open question 29.
 
 Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
 after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
@@ -2975,6 +2984,167 @@ one of which broke the feature outright.
      icon's teal and rounded it to `#529888`; the new artwork's ground **is** `#529888`. The
      interface and the mark agree by arithmetic rather than by luck.
 
+### 2026-09-04 — the update check could not see what was refusing it
+
+238. **Decision 236's root cause was wrong, and this corrects it.** That entry blamed a
+     rejected `update()` on a weak mobile link and a precache that had just grown by 385 KB.
+     The symptom came back on v1.5.0 — on good wifi, after the icon work had *shrunk* the
+     precache to well below where it started — and the real cause turned out to be somewhere
+     nobody had looked: **the zone has a Cloudflare rule that challenges connections from
+     outside Poland, and the phone was abroad.** A Polish VPN makes the check succeed; without
+     it, it fails every time. The reason it „could not be reproduced from a desktop on a good
+     link" was that the desktop was in Poland.
+
+     **The app and the challenge cannot see each other, and that is structural.**
+     `navigateFallback` answers every navigation from the precache — that is what makes the app
+     open instantly and work with no link at all. So the one request capable of *displaying* a
+     challenge, the navigation, never leaves the device. The user never sees a question, never
+     answers one, and never gets the `cf_clearance` cookie. What does reach the network is
+     `registration.update()`, which is handed an HTML interstitial where a worker script should
+     be, fails on status and content type, and rejects. Refreshing changes nothing, because the
+     refresh is served from the cache too. Clearing site data works, because it removes the
+     worker and lets the next navigation reach the edge — until the cookie expires, which is
+     why it kept coming back.
+
+     Two consequences worth stating plainly. **Narrowing the rule to navigations would not
+     help** — those are exactly the requests the worker answers locally. And **the old message
+     was worse than useless**: „spróbuj przy lepszym połączeniu" is advice that cannot work when
+     the link is fine and the edge is refusing.
+
+     **The rule stays.** It is what keeps crawlers off the origin's egress, which is metered.
+     The fix is in the app instead, and it is two small things:
+
+     - **`/polaczenie` is denylisted out of the navigation route.** The worker does not claim
+       it, so opening it is a real navigation to the origin, whatever stands in front of the
+       origin finally gets to ask its question where a person can answer it, and the server
+       resolves the path to the app like any other deep link. One 2.7 KB document buys back the
+       cookie. `e2e/pwa.spec.ts` asserts *who answered* — precache for an ordinary deep link,
+       network for this one — because that is the difference a future Workbox upgrade could
+       silently undo.
+
+       **That test was wrong on its first attempt, in a way worth keeping a note about.** It
+       measured the load that *arrived* at each path, and a cross-document navigation lands in
+       a brand-new client whose control is a race: `registerType: 'prompt'` calls no
+       `clients.claim()`, so the server can answer a fresh client's first load whatever the
+       routes say. It passed locally and failed in CI on the control half — the ordinary deep
+       link — which is the honest signal that the assertion was about timing, not routing. It
+       now waits for control and reloads, so each measurement is one the worker was definitely
+       offered; verified stable across both the `vite preview` run and the container run.
+     - **A failed check now says which failure it was.** `checkForUpdate` probes the worker
+       script — the request that just failed, two kilobytes, served from no cache — and reports
+       `blocked` when the origin answers with something that is not JavaScript. The screen then
+       explains that the app is running from the device and only the *download* is being
+       stopped, and offers the link above.
+
+     **What was checked and found healthy**, before the location was known: a fresh Chromium
+     with a Pixel user agent installs v1.5.0 cleanly (16 precache entries, `update()` resolves);
+     all twenty precache URLs answer 200 with their `__WB_REVISION__` query; `sw.js` is served
+     `no-cache` and `cf-cache-status: DYNAMIC`. Nothing on the server needed fixing.
+
+     Noted for the transfer question that motivates the rule: the hashed bundle already answers
+     `cf-cache-status: HIT` and the icons `REVALIDATED`, so the bytes that matter are already
+     served from the edge rather than the origin. Only `/` and `/sw.js` are `DYNAMIC`, and
+     together they are about five kilobytes.
+
+### 2026-09-04 — Phase 12 planned: scanning a package instead of typing it
+
+239. **Gemini may transcribe a nutrition table, and PLAN.md now says so.** The Gemini section
+     has forbidden nutrition numbers from the model since the first draft — „repeatability
+     beats plausibility; the same meal must always compute identically". Phase 12's stage A
+     asks Gemini to read the four macros off a photograph, which is that rule's subject matter,
+     so it is an amendment and not an oversight.
+
+     The rule protects one thing: a meal's macros must not depend on what a model guessed
+     today. That is untouched here, because **nothing in this phase computes anything.** The
+     numbers are printed on the package by law, the model transcribes them, the user reads and
+     corrects them in the form, and the save produces an ordinary `custom:*` row whose values
+     are then fixed forever. Every meal using it computes deterministically, and re-scanning
+     the same package tomorrow cannot change a recipe that already exists. What stays forbidden
+     is a model *inventing* a value that lands in a calculation without a person seeing it —
+     which is exactly why the scan writes a proposal into an unsaved draft and never persists
+     anything itself.
+
+     The Gemini section of PLAN.md carries the exception explicitly, with its boundary, rather
+     than being left to contradict Phase 12.
+
+240. **Stage A (photo + Gemini) is built first; stage B (barcode + Open Food Facts) is deferred
+     behind a trigger, not a date.** A covers every package, because every product has a
+     printed table and not every product is in a database. It also costs nothing structurally:
+     no new dependency, no new host, and `connect-src` already permits
+     `generativelanguage.googleapis.com`, so **the CSP is not widened at all.** B's only
+     advantage is that it spends no Gemini request — and whether those are scarce in daily use
+     is unknown today. Building it now would be paying a WebAssembly decoder, a camera
+     permission and two policy widenings for a saving nobody has measured. The trigger is
+     written into PLAN.md: a daily budget actually hit while adding ingredients, a round trip
+     too slow at the shelf, or a class of packages the photo path cannot read.
+
+241. **The camera is reached with `<input capture>`, not `getUserMedia`.** The system camera
+     already does framing, focus and confirmation better than anything we would write, and it
+     asks nothing of `Permissions-Policy: camera=()`, which governs `getUserMedia`. That last
+     point is a *prediction* and is listed as an acceptance criterion to be checked under
+     `npm run docker:up` — `npm run dev` applies neither the CSP nor the permissions policy,
+     which is the standing reason this class of claim is never verified there. A live preview,
+     and therefore `camera=(self)`, is stage B's cost, not stage A's.
+
+242. **A scan may never fill a field with `0`.** `IngredientDraft` models the macros as
+     `number | null` because „nie wpisano" and „zero" are different facts (decision 178), and a
+     scan that mapped an unreadable row to `0` would recreate that exact bug with a photograph
+     as its alibi. The reader in `gemini/scan.ts` enforces it on the way out of the model:
+     anything that is not a finite non-negative number becomes `null`, the field stays empty,
+     and `draftProblem` keeps the save button disabled with the sentence it already prints.
+     This is also what makes the user's original ask work as asked — fewer fields to type, no
+     fields quietly invented.
+
+243. **Local OCR (tesseract.js) is rejected, and here is the measurement so it is not
+     re-proposed.** ~4.75 MB for the WASM core plus ~4.77 MB for `pol.traineddata` — about
+     10 MB of assets to fetch and cache in an app whose whole precache is measured in hundreds
+     of kilobytes — in exchange for a weaker read of a tabular layout than either planned path,
+     plus a label parser of our own to maintain. Working offline without a key is its only
+     advantage and does not pay for that.
+
+244. **What was measured about Open Food Facts while planning, so stage B does not start with
+     research.** `GET https://world.openfoodfacts.org/api/v2/product/<ean>.json` answers
+     `access-control-allow-origin: *`, so it is callable straight from the browser with no key
+     and no proxy — the CORS claim PLAN.md's „Nutrition data" section has carried untested
+     since before 1.0 is now confirmed. Fields map onto `Macros` one-to-one (`energy-kcal_100g`,
+     `proteins_100g`, `carbohydrates_100g`, `fat_100g`), verified on a real Polish product
+     (Masło extra, Mlekovita, 5900512300108). Coverage is about **37 200** products tagged
+     `countries_tags=poland` — enough for supermarket staples, not enough to be the only path.
+     Limits are 15 read requests per minute per IP; the requested `User-Agent` header cannot be
+     set by a browser, so identification goes in `app_name` / `app_version` parameters. And
+     `BarcodeDetector` exists in Chromium but in **neither Safari/iOS nor Firefox**, which is
+     what makes a WebAssembly decoder unavoidable rather than a preference.
+
+### 2026-09-04 — Phase 12 built (stage A)
+
+245. **Three modules, not one: `gemini/scan.ts`, `gemini/scan-run.ts` and `lib/image.ts`.**
+     PLAN.md named only `gemini/scan.ts`. Splitting follows the split the import already has
+     and the reason is the same: `scan.ts` is the prompt, the schema and the pure reader, with
+     unit tests and no network; `scan-run.ts` is everything with a side effect — the offline
+     check, the vault unlock, the key, the profile, the counter and the one `generateContent`
+     call — and it exists as a module rather than as code in two screens because
+     `CustomIngredientForm` is used from two places and both hand it the *same* function
+     (PLAN.md task 1). `image.ts` is the canvas downscale, separate because it is the one part
+     that cannot be unit-tested in a Node environment; its arithmetic (`fitWithin`) is pulled
+     out and tested, and the canvas half is covered end to end instead. No new dependency:
+     `<input type="file" capture>`, `createImageBitmap` and `canvas.toBlob` are the platform.
+
+246. **A scan fills only what the user has not typed, and the name starts protected when it
+     arrives non-empty.** PLAN.md task 5 asks that a hand-edited field survive a later scan;
+     the form tracks the fields typed into and `applyScannedLabel` skips them. The name is the
+     one field that starts protected without being typed into *in this form*: in the recipe
+     editor it is what the user typed into the autocomplete, and in „Składniki" it is the row
+     they chose to edit — their own words either way, and overwriting them with a brand name
+     off a wrapper would be the form arguing with the user. The macros do not start protected,
+     because re-reading the package is exactly what scanning during an edit is for. A field the
+     scan could not read is left as it was — never blanked, never zeroed.
+
+247. **The scan reports through `onusage` before the answer is parsed, so an unreadable answer
+     still counts.** Same rule as decision 127, and it is now a test rather than a claim: a 200
+     that carries something other than JSON increments the counter, a 429 does not. What made
+     it free to get right is that `client.ts` already reported usage before its own emptiness
+     check — the scan only had to call it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3262,3 +3432,19 @@ one of which broke the feature outright.
 28. **Duplicate of open question 18 — closed.** Same subject, same conclusion; the Background
     Sync half is answered by decision 151, which rests on the worker having no way to obtain a
     token rather than on `runtimeCaching` alone. See 18.
+
+29. **Two of Phase 12's acceptance criteria need a phone and a live key, and neither exists on
+    this machine.** What is unverified is narrow and named: (a) that „Zeskanuj opakowanie"
+    opens the *system camera* on a phone rather than a file picker, and (b) that the real model
+    obeys the two label rules the prompt is built around — the „w 100 g" column over „na
+    porcję", and kcal over kJ. Everything either side of that is checked: the file input, the
+    downscale, the request, the reader, the counter, the three refusals and the production CSP
+    all run end to end in `e2e/scan.spec.ts`, including against the Caddy container.
+
+    The camera half is a `<input type="file" accept="image/*" capture="environment">`, which is
+    platform behaviour rather than app code (decision 241), and the container run confirms the
+    part that *could* have gone wrong: `Permissions-Policy: camera=()` is served and the page
+    reports no violation. The label half is a prompt-quality question of the same kind as open
+    question 21 — it is answered by using it on a real package, not by a test. **To close this,
+    scan two packages on the phone: one whose label prints a per-portion column beside the
+    per-100 g one, and one that leads with kilojoules.**

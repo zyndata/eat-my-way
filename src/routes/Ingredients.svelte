@@ -16,6 +16,7 @@
     type IngredientDraft
   } from '../lib/custom-ingredients';
   import { ingredientIndex } from '../lib/ingredients';
+  import { scanPackage } from '../lib/gemini/scan-run';
   import { scheduleSync, syncState } from '../lib/sync/state.svelte';
   import { todayDate } from '../lib/dates';
   import { pluralPl } from '../lib/text';
@@ -405,6 +406,7 @@
       heading=""
       framed={false}
       submitLabel={sheet.submitLabel}
+      onscan={scanPackage}
       onsave={(ingredient) => void saveIngredient(ingredient)}
       oncancel={() => (sheet = null)}
     />
