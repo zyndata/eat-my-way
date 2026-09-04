@@ -2932,6 +2932,49 @@ one of which broke the feature outright.
      hide a real one. The fix is not in this repo: JavaScript Detections / Bot Fight Mode has to
      be turned off for this hostname in the Cloudflare dashboard.
 
+### 2026-09-04 — the icon becomes a vector
+
+237. **`public/icons/` is drawn from SVG now, not resampled from a PNG.** A new brand lockup
+     arrived as a folder of files. Only one of them had any content: **all five supplied PNGs
+     were entirely transparent** — 0,0,0,0 in every pixel, at every size — so the choice of
+     source made itself. `eat-my-way-lockup.svg` is the artwork: the sprig in `#FBF8F3` on the
+     brand teal, with „EAT MY WAY" set in three lines beside it.
+
+     Two files are committed rather than one, because **one image cannot serve every size.**
+     `data/icon-source.svg` is the lockup and carries the 192, the 512, the maskable and the
+     Apple icon. `data/icon-mark.svg` is the sprig alone, scaled to fill the frame, and carries
+     `favicon-32.png`. Decision 233 already knew why: at 32 px a wordmark is four pixels tall
+     and reads as texture. It answered that by cropping tighter into one image; a second source
+     answers it properly, and costs 720 bytes of markup.
+
+     **The generator lost two thirds of itself.** `scripts/build-icons.mjs` had a PNG decoder,
+     a box-filter resampler and an encoder, all written to avoid an image library. The SVG
+     makes the question go away: the renderer is the Chromium `@playwright/test` already
+     installs for the e2e suite, it draws each icon **at its final size**, and the screenshot it
+     returns is the PNG. Nothing is resampled, so nothing is soft; the rounded corner is a CSS
+     `border-radius` antialiased by the same rasteriser that drew the mark, rather than a
+     distance field subtracted afterwards. The ground colour is still read from the source —
+     from the background `<rect>`'s fill now instead of the top-left pixel — so the two still
+     cannot drift.
+
+     The cost is that `npm run build:icons` now wants the Playwright browsers. That is
+     acceptable on exactly the grounds decision 233 used for committing the output: the
+     production image is built from `dist/` in CI, which never runs this script.
+
+     **The set is 45 KB where it was 424 KB** — flat colour and type compress as drawings do,
+     and decision 233's „price of a photographic mark" is simply not owed by a vector one. That
+     lands directly on decision 236: the precache growing by 385 KB was the difference that
+     best explained an `update()` rejecting on a phone, and that growth is now given back with
+     16 KB to spare.
+
+     **`favicon.svg` ships as itself**, copied from `icon-mark.svg` by the same script so the
+     served file cannot drift from its source, and linked from `index.html` ahead of the PNGs.
+     `img-src 'self'` already allows it; no CSP change.
+
+     **The accent needed no revisiting.** Decision 234 took `--color-accent` from the old
+     icon's teal and rounded it to `#529888`; the new artwork's ground **is** `#529888`. The
+     interface and the mark agree by arithmetic rather than by luck.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

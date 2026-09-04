@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Eat My Way">
+  <rect width="512" height="512" fill="#529888" />
+  <g transform="translate(158 254) scale(0.74)" fill="#FBF8F3">
+    <rect x="-11" y="-10" width="22" height="164" rx="11" />
+    <ellipse cx="0" cy="-128" rx="21" ry="29" />
+    <ellipse cx="-31" cy="-78" rx="23" ry="31" />
+    <ellipse cx="31" cy="-78" rx="23" ry="31" />
+    <ellipse cx="-35" cy="-26" rx="25" ry="33" />
+    <ellipse cx="35" cy="-26" rx="25" ry="33" />
+    <ellipse cx="-52" cy="78" rx="17" ry="44" transform="rotate(-38 -52 78)" />
+    <ellipse cx="52" cy="78" rx="17" ry="44" transform="rotate(38 52 78)" />
+  </g>
+  <g font-family="Archivo, Helvetica, Arial, sans-serif" font-weight="700" font-size="66" letter-spacing="2" fill="#FBF8F3">
+    <text x="266" y="212">EAT</text>
+    <text x="266" y="282">MY</text>
+    <text x="266" y="352">WAY</text>
+  </g>
+</svg>
