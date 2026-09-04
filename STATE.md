@@ -3305,7 +3305,8 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
 264. **Phase 13 plans in batches, because that is how people cook.** Reported from real use on
      2026-09-04, before the phase was built: a pot is cooked once and eaten twice, and a weekly
      plan that assumes seven days of fresh cooking is a plan nobody follows. `MealSlot` gains
-     `batchDays`, and PLAN.md gains a „Gotowanie na dwa dni" section.
+     `batchDays`, and PLAN.md gains a „Gotowanie na zapas" section (named „Gotowanie na dwa
+     dni" until decision 270 raised the run length to three).
 
 265. **The mechanism is not new — the planner plans in terms of the one that exists.** „Gotuję
      na 2 dni" already sets `cookingScale` on the cooking day and appends a one-portion copy to
@@ -3317,9 +3318,10 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
 
 266. **The setting is a per-slot column, not a global switch.** Dinner and lunch get
      batch-cooked and breakfast does not, so a single global toggle would have to lie about one
-     of them. `batchDays` is `1` or `2` per slot, the default template ships with lunch at `2`,
-     and it is an aim rather than an obligation: when no batch can be placed the plan still
-     comes back and the sheet names the slot it could not batch.
+     of them. `batchDays` is per slot, the default template ships with lunch at `2`, and it is
+     an aim rather than an obligation: when no batch can be placed the plan still comes back
+     and the sheet names the slot it could not batch. (Decision 270 keeps the column and adds
+     a per-weekday override beside it.)
 
 267. **Batching and the freshness rule would fight, so the freshness cost is counted per
      batch.** A batch is one decision made once, dated on the first day; the same recipe
@@ -3327,7 +3329,7 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      second day as a second use would make the solver oscillate between the two rules and
      produce a different plan every time it was asked.
 
-268. **`cookingScale = batchDays × portionsEaten`, and it is not simply `2`.** The checkbox can
+268. **`cookingScale = runLength × portionsEaten`, and it is not simply `2`.** The checkbox can
      hard-code 2 because a person is looking at that meal; the planner sets `portionsEaten`
      itself (decision 260), so a 1.25-portion dinner cooked for two days needs 2.5 portions in
      the pot. Getting this wrong is silent — it surfaces only as a shopping list that under-buys
@@ -3368,6 +3370,36 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      products that happen to be in the database, never as a replacement, and this is the
      concrete reason why. Both arrive as a proposal the user checks before saving, so neither
      can write a number nobody looked at.
+
+### 2026-09-04 — Phase 13: how long a cook lasts
+
+270. **A cook lasts one, two or three days, and the length is a per-weekday thing as much as a
+     per-slot one.** Asked on 2026-09-04, with the reason that makes it more than a bigger
+     number: Sunday is not Wednesday. On a free afternoon someone cooks a pot that covers the
+     first half of the week; on a working Wednesday they do not cook at all. So decision 266's
+     per-slot column stays, and `MealPlanTemplate.cookDays` is added beside it — weekday (0 =
+     Monday, as `weekdayIndex` already numbers them) to run length, overriding the slot's own.
+     Setting a weekday to `1` is the same feature read backwards: do not start a long cook that
+     day.
+
+271. **Three is the ceiling, and it is a food-safety statement rather than a UI limit.** Cooked
+     food keeps about three to four days in a fridge, and this app models no freezer — a portion
+     is either planned on a day or it is not. Written into PLAN.md so that raising the cap later
+     is a decision about food, not about a slider.
+
+272. **Three layers decide a run's length, each answering a different question, and the sheet's
+     layer never writes back.** The slot says what is normal, the weekday says when there is
+     time, and the control on the proposal says what happens this week. The last one is
+     deliberately a one-off: „this Sunday I also have Monday off" is not a rule about Sundays,
+     and a planner that learns rules from a single override becomes unpredictable.
+
+273. **Two consequences of long runs that the solver has to carry.** Runs in different slots are
+     *staggered* — a three-day lunch and a three-day dinner starting on the same Sunday give
+     three days that are identical twice over, which is worse than either setting asked for. And
+     every day inside a run has that slot's macros fixed, so enough long runs leave a week with
+     too few knobs and the per-day band of decision 259 becomes unsatisfiable; that failure
+     names itself („zbyt wiele dni gotowanych na zapas"), because it is the one cause a user
+     cannot guess from a plan that simply missed.
 
 ## Open questions
 

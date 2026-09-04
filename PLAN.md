@@ -1284,48 +1284,77 @@ person would actually cook and eat.
    **including days planned ahead**, so a proposal also avoids colliding with what is already
    on the calendar for tomorrow. Within one day, the same recipe twice is forbidden outright.
 
-   **The cost is counted per batch, not per meal** — see „Gotowanie na dwa dni" below. Eating
+   **The cost is counted per run, not per meal** — see „Gotowanie na zapas" below. Eating
    the same stew on Monday and Tuesday out of one pot is a deliberate decision made once; the
    same stew reappearing on Thursday is the thing this rule exists to prevent. Without that
    distinction the freshness rule and the batch rule fight each other, and the solver oscillates.
 
-### Gotowanie na dwa dni
+### Gotowanie na zapas
 
 Nobody cooks four fresh meals a day, seven days a week. In real use a pot of something is
-cooked once and eaten twice, and a weekly plan that ignores that is a weekly plan nobody
-follows. **The app already models this exactly**: „Gotuję na 2 dni" on the meal screen sets
-`cookingScale = 2` on the day it is cooked and appends a one-portion copy to the next day
-(`cookAlsoOn`), the shopping list counts `cookingScale` and never `portionsEaten`, so the
+cooked once and eaten for two or three days, and a weekly plan that ignores that is a weekly
+plan nobody follows. **The app already models this exactly**: „Gotuję na 2 dni" on the meal
+screen sets `cookingScale` on the day it is cooked and appends a one-portion copy to the next
+day (`cookAlsoOn`), the shopping list counts `cookingScale` and never `portionsEaten`, so the
 ingredients are bought once, and the meal screen recognises the copy by `recipeId`. The planner
 does not invent a mechanism here; it *plans in terms of the one that exists*, and what it writes
 is indistinguishable from what the checkbox writes.
 
-**The setting is a column in the template, not a global switch.** `batchDays` per slot: `1` is
-cooked fresh, `2` means the planner aims to cook that slot for two days. Per slot because that
-is how it is actually true — dinner and lunch get batch-cooked, breakfast does not — and a
-global toggle would have to lie about one of them. The default template ships with
-`Obiad: 2` and everything else `1`. It is an **aim, not an obligation**: when a batch cannot be
-placed the plan still comes back, and the sheet says which slot could not be batched and why.
+**A run is one, two or three days, and three is the ceiling for a reason.** Cooked food keeps
+about three to four days in a fridge, and this app models no freezer — a portion is either
+planned on a day or it is not. So `batchDays` is capped at 3, and the cap is a food-safety
+statement rather than a UI limit.
 
-Three consequences, each of which changes the solver rather than the UI:
+**How long a run is gets decided in three places, each answering a different question.**
 
-- **A batch is one move, not two identical ones.** The recipe and the portion count are chosen
-  once for the whole batch, and the days share them — one pot, one plate. So batches are placed
-  **first**, on consecutive days inside the range being planned, and the single-day slots are
-  filled around them; those flexible slots are what absorbs the difference between two days
-  whose targets differ because of the weekly balance. A batch never starts on the last day of
-  the range, because its second day would fall outside what the user is looking at.
+1. **The slot says what is normal.** `batchDays` per slot: `1` is cooked fresh, `2` or `3` is
+   how many days a cook in that slot usually covers. Per slot because that is how it is
+   actually true — dinner and lunch get cooked ahead, breakfast does not — and a global switch
+   would have to lie about one of them. The default template ships with `Obiad: 2`.
 
-- **`cookingScale = batchDays × portionsEaten`, and this is not the same as `2`.** The checkbox
+2. **The weekday says when there is time.** Sunday is not Wednesday: on a free afternoon
+   someone cooks a big pot that covers the first half of the week, and on a working Wednesday
+   they do not cook at all. `MealPlanTemplate.cookDays` maps a weekday (0 = Monday, as
+   `weekdayIndex` already numbers them) to the run length for that day, overriding the slot's
+   own number. „Niedziela: 3 dni" is one entry in that map, and it is the entry this feature
+   was asked for. A weekday set to `1` is the other half of the same idea: *do not* start a
+   long cook on Wednesday.
+
+3. **The sheet says what happens this week.** Every proposed run carries a 1/2/3 control in the
+   proposal, and changing it re-solves the days it touches while honouring every lock. This is
+   a one-off: it changes the plan on screen and never writes back into the template, because
+   „this Sunday I also have Monday off" is not a rule about Sundays.
+
+Consequences, each of which changes the solver rather than the UI:
+
+- **A run is one move, not two or three identical ones.** The recipe and the portion count are
+  chosen once for the whole run, and its days share them — one pot, one plate. So runs are
+  placed **first**, on consecutive days inside the range being planned, and the single-day slots
+  are filled around them; those flexible slots absorb the difference between days whose targets
+  differ because of the weekly balance. A run never overruns the end of the range, because the
+  days it would spill onto are not the days the user is looking at.
+
+- **`cookingScale = runLength × portionsEaten`, and this is not the same as `2`.** The checkbox
   can hard-code 2 because it is used on a meal a person is looking at; the planner sets
-  `portionsEaten` itself, so a 1.25-portion dinner cooked for two days needs 2.5 portions in the
-  pot. Getting this wrong is silent and only shows up as a shopping list that under-buys — the
-  invariant is written here so it is tested rather than discovered.
+  `portionsEaten` itself, so a 1.25-portion dinner cooked for three days needs 3.75 portions in
+  the pot. Getting this wrong is silent and only shows up as a shopping list that under-buys —
+  the invariant is written here so it is tested rather than discovered.
 
-- **Batching makes „za mało przepisów" less likely, not more.** Seven dinners from a library of
-  ten recipes is a stretch; four cooks covering seven dinners is comfortable. The failure
-  message therefore mentions batching as a way out („włącz gotowanie na 2 dni dla obiadu"),
-  because for a small library it is the most effective one.
+- **Runs in different slots are staggered.** A three-day lunch and a three-day dinner starting
+  on the same Sunday produce three consecutive days that are identical twice over, which is a
+  worse plan than either constraint asked for. Two runs may not start on the same day unless
+  nothing else fits, and the cost function says so rather than the UI forbidding it.
+
+- **Long runs cost the solver its freedom, and the failure has to name that.** Every day inside
+  a run has that slot's macros fixed, so with lunch and dinner both on three-day runs a week has
+  very few knobs left and the per-day band can become unsatisfiable. When that is why no plan
+  fits, the message says it in those terms („zbyt wiele dni gotowanych na zapas") rather than
+  reporting a generic miss — it is the one failure whose cause the user cannot otherwise guess.
+
+- **Cooking ahead makes „za mało przepisów" less likely, not more.** Seven dinners from a
+  library of ten recipes is a stretch; three cooks covering seven dinners is comfortable. The
+  failure message therefore offers longer runs as a way out („ugotuj obiad na 3 dni"), because
+  for a small library it is the most effective one.
 
 ### The template
 
@@ -1338,6 +1367,13 @@ typed mini-language. One row per meal:
 | Obiad | `mięsne`, `wege` | 40% | 2 dni |
 | Podwieczorek | `przekąska` | 10% | 1 dzień |
 | Kolacja | `lekkie` | 25% | 1 dzień |
+
+…and, beneath it, the weekdays that say something different from „normalnie":
+
+| Dzień | Gotuję na |
+|-------|-----------|
+| Niedziela | 3 dni |
+| Środa | 1 dzień |
 
 Tags within a row are alternatives — "any of these" — which is the semantics originally asked
 for as `tag1, tag2; tag3; tag4`. It is stored that way and shown as rows, because a delimiter
@@ -1357,10 +1393,14 @@ interface MealSlot {
   label: string;       // "Śniadanie" — the user's own wording, Polish
   tagKeys: string[];   // ANY of these; empty = any recipe
   share: number;       // share of the day's goal; normalized across slots
-  batchDays: number;   // 1 = cooked fresh; 2 = the planner aims to cook this slot for two days
+  batchDays: number;   // 1 = cooked fresh; 2 or 3 = days one cook in this slot usually covers
 }
 
-interface MealPlanTemplate { slots: MealSlot[] }
+interface MealPlanTemplate {
+  slots: MealSlot[];
+  /** Weekday (0 = Monday) → run length for a cook started that day; overrides the slot's own. */
+  cookDays?: Record<number, number>;
+}
 
 interface Profile { /* … */ mealPlan?: MealPlanTemplate }
 ```
@@ -1412,15 +1452,20 @@ settings screen.
    rewritten. The function returns the corrected target and the sentence the UI prints
    („W tym tygodniu masz zapas 640 kcal — rozłożony na 3 dni").
 
-3. **Batch cooking, planned as batches.** A slot with `batchDays: 2` is filled by choosing one
-   recipe and one portion count for a **pair of consecutive days**, and written the way
-   `cookAlsoOn` writes it: `cookingScale = batchDays × portionsEaten` on the day it is cooked,
-   and a `cookingScale: 1` copy carrying the same `macroSnapshot` on the next day. Batches are
-   placed before single days, and they count as **one** use for the freshness cost, dated on the
-   first day. A batch is one unit in the sheet too — a single card spanning two days, locked and
-   rerolled as one thing. Where a batch cannot be placed — no candidate, or the slot would start
-   on the last day of the range — the slot falls back to a single day and the sheet says which
-   slot that was.
+3. **Cooking ahead, planned as runs of one to three days.** A slot whose run length is more
+   than 1 is filled by choosing one recipe and one portion count for a **block of consecutive
+   days**, written the way `cookAlsoOn` writes it: `cookingScale = runLength × portionsEaten` on
+   the day it is cooked, and `cookingScale: 1` copies carrying the same `macroSnapshot` on the
+   days after. The length comes from `cookDays[weekday]` when that weekday says something, and
+   from the slot's `batchDays` otherwise — that resolution is one pure function with its own
+   test, because it is the rule the user will predict the plan by.
+
+   Runs are placed before single days, count as **one** use for the freshness cost dated on the
+   cooking day, and are staggered so that two of them rarely start together. A run is one unit
+   in the sheet too — a single card spanning its days, locked and rerolled as one thing, with a
+   1/2/3 control that re-solves the days it touches without disturbing any lock. Where a run
+   cannot be placed — no candidate, or it would overrun the end of the range — it shortens, down
+   to a single day, and the sheet says which slot that happened to.
 
 4. **Filling a day that is already half planned — the primary path, not a special case.**
    Existing meals are fixed input: their macros come off the target (`remainingMacros`), their
@@ -1445,9 +1490,9 @@ settings screen.
    left to right, carrying the running balance forward, then makes one repair pass over the
    worst day. Each day can be unticked before applying; a day that already has meals is
    **appended to, never replaced**, unless the user explicitly picks „zastąp" — the same choice
-   `copyMealsInto` already models as `CopyMode`. Unticking a day that carries the second half of
-   a batch unties the batch: the cooking day drops back to what it alone eats, because a pot
-   cooked for two days with nobody eating the second half is a shopping list that over-buys.
+   `copyMealsInto` already models as `CopyMode`. Unticking a day that a run covers shortens the
+   run: the cooking day drops back to what the remaining days actually eat, because a pot cooked
+   for three days with only two of them eaten is a shopping list that over-buys.
    Applying writes day by day through the existing repository operations, so `goalSnapshot`
    capture, tag counts and sync all behave exactly as they do for a meal added by hand. The
    payoff lands for free: a generated week feeds straight into the shopping list that already
@@ -1463,18 +1508,22 @@ settings screen.
      the tags with one tap.
 
 9. **The template editor in Settings.** A „Planer posiłków" section: reorderable rows, each with
-   a name, a `TagInput`, a share and „Gotuję na" (1 or 2 days); add and remove a row; a reset to
-   the default template, which ships with the lunch slot set to two days.
+   a name, a `TagInput`, a share and „Gotuję na" (1–3 days); add and remove a row; a reset to
+   the default template, which ships with the lunch slot set to two days. Below the slots, the
+   seven weekdays, each either „normalnie" or its own run length — that table is `cookDays`, and
+   it is where „w niedzielę gotuję na 3 dni" is said.
    Saved into `profile.mealPlan`, which syncs with `profile.json` on the existing path.
 
 10. **Tests.** `planner.test.ts` against a seeded generator: the weights, the portion steps, the
    repetition decay, the weekly correction and its clamp, the per-day band, each failure mode,
-   and the two exclusions. Batching gets its own set: the
-   `cookingScale = batchDays × portionsEaten` invariant, a batch counting as one use and not
-   two, no batch starting on the last day of the range, and the fallback to a single day when
-   none can be placed. `e2e/planner.spec.ts` for the sheet: plan an empty day, fill a
-   half-planned one, lock and reroll a single slot, apply a week, and the „za mało przepisów"
-   message. No network is involved anywhere in this phase — the planner never talks to Gemini.
+   and the two exclusions. Cooking ahead gets its own set: the resolution order
+   (`cookDays[weekday]` over the slot's `batchDays`), the
+   `cookingScale = runLength × portionsEaten` invariant at every length, a run counting as one
+   use rather than two or three, no run overrunning the end of the range, the stagger, and the
+   shortening fallback when a full-length run cannot be placed. `e2e/planner.spec.ts` for the
+   sheet: plan an empty day, fill a half-planned one, lock and reroll a single slot, change a
+   run's length, apply a week, and the „za mało przepisów" message. No network is involved
+   anywhere in this phase — the planner never talks to Gemini.
 
 ### Acceptance criteria
 
@@ -1486,10 +1535,17 @@ settings screen.
       single day** falls outside ±15% of its own.
 - [ ] In a generated week, a slot set to „2 dni" produces pairs of consecutive days eating the
       same recipe out of one pot: `cookingScale` on the cooking day equals
-      `batchDays × portionsEaten`, the next day carries a `cookingScale: 1` copy, and the week's
-      shopping list buys those ingredients once.
-- [ ] A batched recipe counts as one use, not two: it is not penalised for its own second day,
-      and it is still avoided for the following fortnight.
+      `runLength × portionsEaten`, the following day carries a `cookingScale: 1` copy, and the
+      week's shopping list buys those ingredients once.
+- [ ] With „Niedziela: 3 dni" in `cookDays`, a cook started on Sunday covers Sunday, Monday and
+      Tuesday, at a cooking scale of three times the portions eaten — while the same slot on
+      other weekdays keeps the length its own row asks for.
+- [ ] A weekday set to „1 dzień" never starts a long cook, whatever the slot says.
+- [ ] Changing a run to 1, 2 or 3 days in the proposal re-solves the days it touches, leaves
+      every locked slot alone, and changes nothing in the saved template.
+- [ ] A run counts as one use, not two or three: it is not penalised for its own later days, and
+      it is still avoided for the following fortnight.
+- [ ] Two runs do not start on the same day while any arrangement exists in which they do not.
 - [ ] A meal screen opened on a batch written by the planner shows „Gotuję na 2 dni" already
       ticked, and unticking it behaves as it does for a batch made by hand.
 - [ ] A day planned on its own inside a week that is already over or under budget gets a
@@ -1503,6 +1559,8 @@ settings screen.
       0 kcal are never proposed, and the sheet says how many recipes it skipped.
 - [ ] When nothing fits, the message names which of the three cases it is, and the
       out-of-tolerance case still shows the best plan found with its difference from the goal.
+      A week made unsatisfiable by too many long runs says that in those terms, rather than
+      reporting a generic miss.
 - [ ] Nothing is written to IndexedDB until „Zastosuj"; applying goes through the existing day
       operations, so `goalSnapshot`, `macroSnapshot`, tag counts and sync are unchanged.
 - [ ] The solver is deterministic under a seeded generator, and `planner.ts` imports nothing
