@@ -153,17 +153,33 @@ test('settings names the version and can say that it is the newest', async ({ de
 test('the connection check is answered by the server, not the worker', async ({ device }) => {
   await waitForServiceWorker(device);
 
-  const unknown = await device.goto('/sciezka-ktorej-nie-ma');
+  const unknown = await controlledGoto(device, '/sciezka-ktorej-nie-ma');
   expect(unknown?.status()).toBe(200);
   expect(
     unknown?.fromServiceWorker(),
     'an ordinary deep link is served from the precache'
   ).toBe(true);
 
-  const check = await device.goto('/polaczenie');
+  const check = await controlledGoto(device, '/polaczenie');
   expect(check?.status()).toBe(200);
   expect(
     check?.fromServiceWorker(),
     'the connection check must reach the network, or it checks nothing'
   ).toBe(false);
 });
+
+/**
+ * Navigate somewhere and measure the load that follows, not the one that got there.
+ *
+ * A cross-document navigation lands in a brand-new client, and whether the worker has claimed
+ * it yet is a race — `registerType: 'prompt'` means nothing calls `clients.claim()`, so the
+ * first load of a fresh client can be answered by the server whatever the routes say. Asserting
+ * on that load tests the race rather than the routing; it passed here and failed in CI. Waiting
+ * for control and reloading makes each measurement one the worker was definitely offered, which
+ * is the only condition under which „who answered" means anything.
+ */
+async function controlledGoto(page: Page, path: string) {
+  await page.goto(path);
+  await waitForServiceWorker(page);
+  return await page.reload();
+}

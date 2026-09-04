@@ -3012,6 +3012,15 @@ one of which broke the feature outright.
        cookie. `e2e/pwa.spec.ts` asserts *who answered* — precache for an ordinary deep link,
        network for this one — because that is the difference a future Workbox upgrade could
        silently undo.
+
+       **That test was wrong on its first attempt, in a way worth keeping a note about.** It
+       measured the load that *arrived* at each path, and a cross-document navigation lands in
+       a brand-new client whose control is a race: `registerType: 'prompt'` calls no
+       `clients.claim()`, so the server can answer a fresh client's first load whatever the
+       routes say. It passed locally and failed in CI on the control half — the ordinary deep
+       link — which is the honest signal that the assertion was about timing, not routing. It
+       now waits for control and reloads, so each measurement is one the worker was definitely
+       offered; verified stable across both the `vite preview` run and the container run.
      - **A failed check now says which failure it was.** `checkForUpdate` probes the worker
        script — the request that just failed, two kilobytes, served from no cache — and reports
        `blocked` when the origin answers with something that is not JavaScript. The screen then
