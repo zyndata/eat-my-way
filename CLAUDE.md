@@ -24,8 +24,16 @@ https://eatmyway.gorny.dev. No application backend.
   green local run is evidence, not a substitute. After pushing, wait for the run
   (`gh run watch <id> --exit-status`) and report what it said. Never call work done while a run
   is pending or red.
-- **End-of-phase ritual:** update STATE.md → regenerate CHANGELOG.md (`npm run changelog`) →
-  commit → push → plain-language summary → go/no-go statement for the next phase.
+- **End-of-phase ritual:** update STATE.md → **re-read README.md against what the phase
+  changed** → regenerate CHANGELOG.md (`npm run changelog`) → commit → push → plain-language
+  summary → go/no-go statement for the next phase.
+- **The README is part of the phase, not an afterthought.** It is the only document a stranger
+  reads, and nothing in CI can tell that it has started lying. Before closing a phase, check the
+  three things that go stale: the status blockquote (which phases are done), any claim about
+  what the app does or refuses to do — a reversed decision makes the README *wrong*, not merely
+  thin — and the screenshots. Re-take those with `npm run screenshots` against a built app
+  (`npm run docker:up`, or `BASE_URL=… npx vite preview`) whenever a screen in them changed:
+  navigation, colours, or the screens themselves.
 - **Code and comments in English. All user-facing UI text in Polish.**
 - **Minimal dependencies** — every package must justify itself; this app holds user credentials.
 
