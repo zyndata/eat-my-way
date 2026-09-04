@@ -3339,6 +3339,36 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      comfortable. For a small library, turning batch cooking on is the most effective way out of
      the failure, so it is offered there alongside relaxing the tags.
 
+### 2026-09-04 — Phase 12 stage B: the trigger fired
+
+270. **The written trigger for the barcode stage has been observed, and this is the record
+     PLAN.md asks for.** Stage B was deferred behind three conditions, „each recorded in
+     STATE.md when observed". The second one — „the round trip is slow enough to be annoying at
+     the shop shelf" — is now met, reported from daily use and then measured: byte-identical
+     scans took anywhere from 2.7 s to 82 s, and three of eight attempts were refused outright
+     with `503 high demand` (decision 253). Neither of the other two has fired: the daily budget
+     has not been hit, and the photo path has not failed on any class of package — it has in
+     fact been perfect on every one tried (decision 254).
+
+     **What this authorises is a decision, not a build.** The costs stage B was deferred for are
+     unchanged and still real: a WebAssembly decoder as a new dependency, `getUserMedia` and
+     therefore `Permissions-Policy: camera=(self)` in the `Caddyfile`, and
+     `connect-src https://world.openfoodfacts.org`. Stage A cost none of the three, which was
+     the whole argument for its order.
+
+271. **Open Food Facts re-confirmed, and it is faster and *less faithful* — which reframes what
+     stage B is for.** The endpoint answered in **0.76 s** including handshake, still
+     `access-control-allow-origin: *`, fields still mapping one-to-one onto `Macros`. That is
+     about a hundred times quicker than the queue measured above. But for Mlekovita's Masło
+     extra it returns `746 kcal, 1 g protein, 1 g carbohydrate, 82 g fat`, where the package
+     itself prints 0.7 and 0.8 — volunteer data, rounded by whoever typed it in.
+
+     So the two paths are not fast-versus-slow. **The barcode is somebody's transcription of a
+     product; the photograph is this carton.** Stage B was always scoped as a shortcut for
+     products that happen to be in the database, never as a replacement, and this is the
+     concrete reason why. Both arrive as a proposal the user checks before saving, so neither
+     can write a number nobody looked at.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3665,3 +3695,18 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     in Settings accepts them and how much time they actually save. If they are refused the scan
     still works — it retries once without them — so what the visit measures is speed, not
     whether the feature runs. Worth timing the same package before and after.
+
+30. **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
+    fired (decision 270), but the number that decides whether a WebAssembly decoder earns its
+    place is coverage — on *these* shopping habits, not on the ~37 200 products tagged
+    `countries_tags=poland` in the abstract. A shortcut that works on eight products in ten is
+    worth a dependency; one that works on three is not.
+
+    **The method, so it is not re-invented:** collect 5–10 EANs from products actually added to
+    the library — typed off the barcode or photographed — and query
+    `https://world.openfoodfacts.org/api/v2/product/<ean>.json` for each, counting how many are
+    found *and* carry all four `*_100g` fields. Note also how far each one's values sit from
+    what is printed on the package, because decision 271 showed that gap is not always zero.
+
+    Waiting on the user, who will open a fresh conversation with the codes and label
+    photographs. Until then stage B stays unbuilt and PLAN.md's description of it stands.
