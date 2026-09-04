@@ -6,7 +6,7 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.6.0] - 2026-09-04
 
 ### Bug Fixes
 
@@ -34,6 +34,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Miscellaneous
 
 - Drop the debug probe committed by accident
+- Update CHANGELOG
 
 ### Tests
 
