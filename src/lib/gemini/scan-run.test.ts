@@ -19,6 +19,20 @@ function recorder(body: unknown, status = 200) {
   return { seen, fetchImpl };
 }
 
+/** A `fetch` that answers each call from `answers` in order. */
+function sequence(answers: { body: unknown; status: number }[]) {
+  const seen: { body: Record<string, unknown> }[] = [];
+  const fetchImpl = (async (_input: RequestInfo | URL, init: RequestInit = {}) => {
+    seen.push({ body: JSON.parse(String(init.body ?? '{}')) as Record<string, unknown> });
+    const next = answers[seen.length - 1] ?? answers[answers.length - 1];
+    return new Response(JSON.stringify(next?.body ?? {}), { status: next?.status ?? 200 });
+  }) as typeof fetch;
+  return { seen, fetchImpl };
+}
+
+const config = (call: { body: Record<string, unknown> }): Record<string, unknown> =>
+  call.body.generationConfig as Record<string, unknown>;
+
 const answer = (text: string): unknown => ({
   candidates: [{ content: { parts: [{ text }] } }],
   usageMetadata: { totalTokenCount: 512 }
@@ -45,6 +59,51 @@ describe('scanLabelImage', () => {
     const contents = at(seen).body.contents as { parts: Record<string, unknown>[] }[];
     expect(contents[0]?.parts?.[1]).toEqual({ inlineData: IMAGE });
     expect(spent).toEqual([{ requests: 1, tokens: 512 }]);
+  });
+
+  it('asks for minimal thinking and half-resolution media — the two things that make it fast', async () => {
+    const { seen, fetchImpl } = recorder(answer(JSON.stringify({ kcal: 100 })));
+
+    await scanLabelImage(IMAGE, { apiKey: 'k', model: 'm', fetchImpl });
+
+    expect(config(at(seen))).toMatchObject({
+      thinkingLevel: 'minimal',
+      mediaResolution: 'MEDIA_RESOLUTION_MEDIUM'
+    });
+  });
+
+  it('falls back to a plain call when a model refuses the tuning, rather than blaming the key', async () => {
+    const { seen, fetchImpl } = sequence([
+      { body: { error: { message: 'Unknown name "thinkingLevel"' } }, status: 400 },
+      { body: answer(JSON.stringify({ name: 'Masło', kcal: 735 })), status: 200 }
+    ]);
+
+    const label = await scanLabelImage(IMAGE, { apiKey: 'k', model: 'gemini-1.0-antyk', fetchImpl });
+
+    expect(label.kcal).toBe(735);
+    expect(seen).toHaveLength(2);
+    expect(config(seen[0]!)).toHaveProperty('thinkingLevel');
+    // The second attempt drops both, and nothing else about the request changes.
+    expect(config(seen[1]!)).not.toHaveProperty('thinkingLevel');
+    expect(config(seen[1]!)).not.toHaveProperty('mediaResolution');
+    expect(config(seen[1]!)).toMatchObject({ temperature: 0 });
+  });
+
+  it('retries exactly once, and only for a refusal', async () => {
+    const refused = { body: { error: { message: 'nope' } }, status: 400 };
+    const { seen, fetchImpl } = sequence([refused, refused]);
+
+    await expect(
+      scanLabelImage(IMAGE, { apiKey: 'k', model: 'm', fetchImpl })
+    ).rejects.toBeInstanceOf(GeminiError);
+    expect(seen).toHaveLength(2);
+
+    // An overloaded Gemini is not a tuning problem, so it is not retried here.
+    const overloaded = sequence([{ body: { error: { message: 'busy' } }, status: 503 }]);
+    await expect(
+      scanLabelImage(IMAGE, { apiKey: 'k', model: 'm', fetchImpl: overloaded.fetchImpl })
+    ).rejects.toBeInstanceOf(GeminiError);
+    expect(overloaded.seen).toHaveLength(1);
   });
 
   it('still counts the request when the answer cannot be parsed', async () => {

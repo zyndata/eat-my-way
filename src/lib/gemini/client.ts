@@ -70,6 +70,25 @@ export interface GeminiRequest {
   image?: { mimeType: string; data: string };
   /** When given, the answer is asked for as JSON in this shape. */
   schema?: ResponseSchema;
+  /**
+   * How much the model may think before answering. Sent as `thinkingLevel`.
+   *
+   * Left unset for the recipe import, where reasoning is the work. Set to `minimal` for the
+   * package scan, which is transcription: the numbers are printed on the label and there is
+   * nothing to reason about. It matters because the default is per model and not small —
+   * `gemini-3.8-flash` thinks at `medium` unless told otherwise, while `gemini-3.5-flash-lite`
+   * is already at `minimal` — and the model is whatever the user typed into Settings.
+   */
+  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
+  /**
+   * How many tokens one image may occupy. Sent as `mediaResolution`.
+   *
+   * `MEDIA_RESOLUTION_MEDIUM` is 560 tokens against the default's 1120, and Google's own
+   * guidance for document understanding is that quality „typically saturates at medium" and
+   * that going higher „rarely improves OCR results". Half the input tokens is half the latency
+   * that depends on them, and half the token count charged against the daily quota.
+   */
+  mediaResolution?: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH';
   /** Let the model retrieve the URLs mentioned in the prompt (server-side, decision 113). */
   urlContext?: boolean;
   /**
@@ -242,6 +261,10 @@ export async function generateText(request: GeminiRequest): Promise<string> {
     contents: [{ role: 'user', parts }],
     generationConfig: {
       ...DETERMINISTIC,
+      ...(request.thinkingLevel === undefined ? {} : { thinkingLevel: request.thinkingLevel }),
+      ...(request.mediaResolution === undefined
+        ? {}
+        : { mediaResolution: request.mediaResolution }),
       ...(request.schema === undefined
         ? {}
         : { responseMimeType: 'application/json', responseSchema: request.schema })

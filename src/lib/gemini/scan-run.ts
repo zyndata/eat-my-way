@@ -24,7 +24,37 @@ import { recordGeminiUsage } from './usage';
  * Throws `GeminiError` only. Every message on it is Polish, safe to show, and carries no key.
  */
 
-/** One `generateContent` call with a picture attached. */
+/** What the scan is doing right now, so a wait of several seconds does not look frozen. */
+export type ScanStage = 'preparing' | 'reading';
+
+/**
+ * The two settings that make this call as fast as it can honestly be, and why they are here
+ * rather than in `DETERMINISTIC` (which every call shares):
+ *
+ * - **`thinkingLevel: 'minimal'`** — reading a printed table is transcription, not reasoning.
+ *   The import is the opposite and keeps the model's own default.
+ * - **`mediaResolution: MEDIA_RESOLUTION_MEDIUM`** — 560 tokens per image instead of the
+ *   default 1120. Google's guidance for document understanding is that quality saturates at
+ *   medium and that going higher rarely improves OCR, which is exactly this case: a close-up
+ *   of a nutrition table, already downscaled to 1024 px by `image.ts`.
+ *
+ * Both are per-model API features, and the model is whatever the user typed into Settings —
+ * so `scanLabelImage` falls back to a plain call if they are refused (see below).
+ */
+const FAST_SCAN = {
+  thinkingLevel: 'minimal',
+  mediaResolution: 'MEDIA_RESOLUTION_MEDIUM'
+} as const;
+
+/**
+ * One `generateContent` call with a picture attached.
+ *
+ * If the tuned call comes back `rejected`, it is tried once more without the two tuning
+ * fields. A model old enough not to know them would otherwise turn „the scan is fast" into
+ * „the scan is broken", and the user would be told their API key was refused — which is what a
+ * 400 means everywhere else in this app and would be a lie here. The retry is bounded to
+ * exactly one attempt and happens only on that one error kind.
+ */
 export async function scanLabelImage(
   image: InlineImage,
   deps: {
@@ -35,19 +65,27 @@ export async function scanLabelImage(
     onusage?: (spent: { requests: number; tokens: number }) => void;
   }
 ): Promise<ScannedLabel> {
-  const answer = await generateJson<unknown>({
-    apiKey: deps.apiKey,
-    model: deps.model,
-    system: SCAN_SYSTEM,
-    prompt: SCAN_PROMPT,
-    image,
-    schema: LABEL_SCHEMA,
-    // Reported before the JSON is parsed, so a request Google answered is counted even when
-    // the answer turns out to be unreadable — the quota was spent either way.
-    onusage: (tokens) => deps.onusage?.({ requests: 1, tokens }),
-    ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
-  });
-  return readScannedLabel(answer);
+  const call = async (tuned: boolean): Promise<unknown> =>
+    generateJson<unknown>({
+      apiKey: deps.apiKey,
+      model: deps.model,
+      system: SCAN_SYSTEM,
+      prompt: SCAN_PROMPT,
+      image,
+      schema: LABEL_SCHEMA,
+      ...(tuned ? FAST_SCAN : {}),
+      // Reported before the JSON is parsed, so a request Google answered is counted even when
+      // the answer turns out to be unreadable — the quota was spent either way.
+      onusage: (tokens) => deps.onusage?.({ requests: 1, tokens }),
+      ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
+    });
+
+  try {
+    return readScannedLabel(await call(true));
+  } catch (caught) {
+    if (!(caught instanceof GeminiError) || caught.kind !== 'rejected') throw caught;
+    return readScannedLabel(await call(false));
+  }
 }
 
 /**
@@ -57,7 +95,12 @@ export async function scanLabelImage(
  */
 export async function scanPackage(
   file: Blob,
-  options: { repository?: Repository; fetchImpl?: typeof fetch } = {}
+  options: {
+    repository?: Repository;
+    fetchImpl?: typeof fetch;
+    /** Told what is happening, so the wait for the model is not a frozen button. */
+    onstage?: (stage: ScanStage) => void;
+  } = {}
 ): Promise<ScannedLabel> {
   if (isOffline()) {
     throw new GeminiError(
@@ -91,6 +134,7 @@ export async function scanPackage(
 
   let image: InlineImage;
   try {
+    options.onstage?.('preparing');
     image = await downscaleToJpeg(file);
   } catch (caught) {
     if (caught instanceof ImageReadError) {
@@ -105,6 +149,7 @@ export async function scanPackage(
   const repository = options.repository ?? defaultRepository;
   const profile = await repository.getProfile();
 
+  options.onstage?.('reading');
   return scanLabelImage(image, {
     apiKey,
     model: profile.geminiModel,

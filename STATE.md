@@ -3145,6 +3145,37 @@ one of which broke the feature outright.
      it free to get right is that `client.ts` already reported usage before its own emptiness
      check — the scan only had to call it.
 
+### 2026-09-04 — Phase 12 follow-up: the scan was slow in real use
+
+248. **The wait is the model call, not the browser — measured before anything was changed.**
+     The report from the phone was „pobieranie danych trwa dość długo". The browser half was
+     timed first, on a 12 MP photograph: decode 26 ms, resample 2 ms, JPEG 18 ms, base64 10 ms
+     — **55 ms total** on a desktop, so half a second on a phone an order of magnitude slower.
+     There is nothing to win there, and `image.ts` was left alone. Everything after it is one
+     HTTPS request and one model answer, so that is where the two changes went.
+
+249. **The scan asks for `thinkingLevel: 'minimal'` and `mediaResolution:
+     MEDIA_RESOLUTION_MEDIUM`; the import asks for neither.** Reading a printed table is
+     transcription, and the model's own default is not small — `gemini-3.8-flash` thinks at
+     `medium` unless told otherwise, and the model is whatever the user typed into Settings.
+     Media resolution halves the image's token cost (560 against the default 1120), and
+     Google's guidance for document understanding is that quality „typically saturates at
+     medium" while going higher „rarely improves OCR results" — a close-up of a nutrition
+     table, already downscaled to 1024 px, is exactly that case. Half the input tokens is also
+     half the token count charged against the daily quota. The recipe import keeps the model's
+     defaults: there, reasoning *is* the work.
+
+250. **A model that refuses the tuning gets one plain retry, rather than the user being told
+     their key was refused.** Both fields are per-model API features and the model name is free
+     text in Settings, so an old one could answer 400 — which this app maps to „Gemini nie
+     przyjął klucza API" everywhere else, and which would be a lie here. `scanLabelImage`
+     catches exactly `kind === 'rejected'`, retries once without the two fields, and lets
+     anything else through untouched; a 503 is still a single attempt. The cost of the guard is
+     one extra request in the one case where the request was going to fail anyway.
+
+     **Neither parameter can be verified from this machine** — that needs a live key, and it is
+     the same visit that closes open question 29.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3448,3 +3479,9 @@ one of which broke the feature outright.
     question 21 — it is answered by using it on a real package, not by a test. **To close this,
     scan two packages on the phone: one whose label prints a per-portion column beside the
     per-100 g one, and one that leads with kilojoules.**
+
+    **A third thing now rides on the same visit** (decisions 249 and 250): the tuned call asks
+    for `thinkingLevel` and `mediaResolution`, and only a live key can show whether the model
+    in Settings accepts them and how much time they actually save. If they are refused the scan
+    still works — it retries once without them — so what the visit measures is speed, not
+    whether the feature runs. Worth timing the same package before and after.
