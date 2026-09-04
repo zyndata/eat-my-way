@@ -101,31 +101,28 @@ describe('the Gemini client', () => {
     expect(contents[0]?.parts).toEqual([{ text: 'hi' }]);
   });
 
-  it('passes the thinking level and the media resolution when they are asked for', async () => {
+  it('passes the media resolution when it is asked for', async () => {
     const { seen, fetchImpl } = recorder(answer('ok'));
 
     await generateText({
       apiKey: 'k',
       model: 'm',
       prompt: 'hi',
-      thinkingLevel: 'minimal',
       mediaResolution: 'MEDIA_RESOLUTION_MEDIUM',
       fetchImpl
     });
 
     expect(at(seen).body.generationConfig).toMatchObject({
-      thinkingLevel: 'minimal',
       mediaResolution: 'MEDIA_RESOLUTION_MEDIUM'
     });
   });
 
-  it('sends neither when they are not asked for, so the import keeps the model’s defaults', async () => {
+  it('sends none when it is not asked for, so the import keeps the model’s defaults', async () => {
     const { seen, fetchImpl } = recorder(answer('ok'));
 
     await generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl });
 
     const config = at(seen).body.generationConfig as Record<string, unknown>;
-    expect(config.thinkingLevel).toBeUndefined();
     expect(config.mediaResolution).toBeUndefined();
   });
 

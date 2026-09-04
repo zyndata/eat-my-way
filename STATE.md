@@ -3165,6 +3165,12 @@ one of which broke the feature outright.
      half the token count charged against the daily quota. The recipe import keeps the model's
      defaults: there, reasoning *is* the work.
 
+     **Corrected the same evening, against a live key: the thinking half of this was wrong.**
+     `thinkingLevel` is not a field of `v1beta`'s `generationConfig` and answers
+     `400 Unknown name „thinkingLevel"`, so the app as committed would have paid a doubled
+     request on every single scan. It is gone. `mediaResolution` survives and was measured to
+     do exactly what it promised. See decisions 251 and 252.
+
 250. **A model that refuses the tuning gets one plain retry, rather than the user being told
      their key was refused.** Both fields are per-model API features and the model name is free
      text in Settings, so an old one could answer 400 — which this app maps to „Gemini nie
@@ -3175,6 +3181,54 @@ one of which broke the feature outright.
 
      **Neither parameter can be verified from this machine** — that needs a live key, and it is
      the same visit that closes open question 29.
+
+     **The guard earned itself within the hour.** The user supplied a key and a photograph, the
+     first live call came back 400, and the fallback is the only reason the feature would still
+     have worked. The lesson is not „the guard was clever" but „the parameter was never
+     verified" — the guard is what turned an unverified claim into a slow path instead of a
+     broken one. It stays, now guarding `mediaResolution` alone.
+
+### 2026-09-04 — Phase 12 follow-up, measured against a live key and a real package
+
+The evidence below comes from the user's own API key and a photographed Lidl cream carton
+(Estonian/Latvian/Hungarian/Romanian label, per 100 ml, energy printed as „1207 kJ / 293 kcal",
+sugars nested under carbohydrates, text rotated 90°, no product name on the photographed face).
+Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
+
+251. **`mediaResolution: MEDIA_RESOLUTION_MEDIUM` works, and buys tokens rather than seconds.**
+     Prompt tokens per scan: **1540** at the default, **1016** at medium, **742** at low — and
+     the four values read correctly at every one of them. Medium stays, because it is a third
+     off the daily quota for nothing, and because Google's own guidance puts the quality knee
+     there. Low was not taken: one label is not evidence that a denser one survives it. Sending
+     a smaller picture is pointless — 768 px and 1024 px both cost 1016 prompt tokens, since
+     the resolution setting, not our pixels, decides the token count. `image.ts` stays at 1024.
+
+252. **There is no working way to turn thinking down on this endpoint, and both candidates were
+     tried.** `thinkingLevel` → `400 Unknown name`. `thinkingConfig: { thinkingBudget: 0 }` →
+     accepted, and then ignored: `gemini-3.8-flash` reported **337 thought tokens** under it,
+     against 423 without. So the app sends no thinking parameter at all. Worth knowing that the
+     flash models do think on this task (337–722 thought tokens) while every flash-lite run
+     reported **zero** — which is an argument for lite on scans that has nothing to do with the
+     parameter that was supposed to deliver it.
+
+253. **The wait is Google's queue, not this app's request, and the honest fixes are a retry and
+     a sentence.** Byte-identical scans took **2.7 s, 6.6 s, 9.0 s, 23 s, 34 s, 40 s, 49 s,
+     63 s, 81 s**, and three of eight came back `503 „This model is currently experiencing high
+     demand"` — every one of which succeeded on a second attempt. Nothing in the payload
+     explains that spread: the request is ~1000 tokens and, on flash-lite, zero thinking. So:
+     the scan retries a 503 once after 1.2 s, and the button says „Gemini jest przeciążony —
+     ponawiam…" while it does. `gemini-3.8-flash` was faster than `gemini-3.5-flash-lite` in
+     every batch (median 41 s against 82 s in the last one), but it thinks, its daily quota is
+     the smaller one, and two batches are not a basis for changing anyone's model — so the
+     default is untouched and the finding is reported instead.
+
+254. **The prompt is right, and this is the evidence.** Every one of the twelve successful live
+     calls — across six models and three media resolutions — returned **4/4 correct values**
+     from a rotated, four-language label: kilojoules ignored in favour of 293 kcal, „millest
+     suhkrud" 3.2 g not folded into carbohydrates twice, saturated fat 19.7 g not mistaken for
+     a macro of its own, decimal commas resolved. And `name` came back **empty**, because the
+     product's name is not on the face that was photographed — the model declined to invent one,
+     which is the rule the whole feature rests on.
 
 ## Open questions
 
@@ -3464,7 +3518,21 @@ one of which broke the feature outright.
     Sync half is answered by decision 151, which rests on the worker having no way to obtain a
     token rather than on `runtimeCaching` alone. See 18.
 
-29. **Two of Phase 12's acceptance criteria need a phone and a live key, and neither exists on
+29. **Half-answered 2026-09-04, with a live key and a real package.** The label half is
+    **settled**: a photographed Lidl carton — four languages, none of them Polish, energy
+    printed as „1207 kJ / 293 kcal", a per-100 ml column, sugars nested under carbohydrates,
+    the whole table rotated 90° — was read 4/4 correctly by every model and every media
+    resolution tried, twelve live calls in all, and the model declined to invent the product
+    name that was not in the photograph (decision 254). That is both criteria PLAN.md left
+    unticked for the label, and more than they asked for.
+
+    **What is still open is only the camera**: that „Zeskanuj opakowanie" opens the phone's
+    system camera rather than a file picker. The user's own report („po zeskanowaniu etykiety…")
+    strongly implies it does, but it has not been stated outright, so it stays here until it is.
+
+    The original text of this question follows.
+
+    **Two of Phase 12's acceptance criteria need a phone and a live key, and neither exists on
     this machine.** What is unverified is narrow and named: (a) that „Zeskanuj opakowanie"
     opens the *system camera* on a phone rather than a file picker, and (b) that the real model
     obeys the two label rules the prompt is built around — the „w 100 g" column over „na

@@ -71,22 +71,17 @@ export interface GeminiRequest {
   /** When given, the answer is asked for as JSON in this shape. */
   schema?: ResponseSchema;
   /**
-   * How much the model may think before answering. Sent as `thinkingLevel`.
-   *
-   * Left unset for the recipe import, where reasoning is the work. Set to `minimal` for the
-   * package scan, which is transcription: the numbers are printed on the label and there is
-   * nothing to reason about. It matters because the default is per model and not small —
-   * `gemini-3.8-flash` thinks at `medium` unless told otherwise, while `gemini-3.5-flash-lite`
-   * is already at `minimal` — and the model is whatever the user typed into Settings.
-   */
-  thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high';
-  /**
    * How many tokens one image may occupy. Sent as `mediaResolution`.
    *
-   * `MEDIA_RESOLUTION_MEDIUM` is 560 tokens against the default's 1120, and Google's own
-   * guidance for document understanding is that quality „typically saturates at medium" and
-   * that going higher „rarely improves OCR results". Half the input tokens is half the latency
-   * that depends on them, and half the token count charged against the daily quota.
+   * `MEDIA_RESOLUTION_MEDIUM` was measured against a real package on 2026-09-04: the prompt
+   * goes from 1540 tokens to 1016, and the label still reads correctly. Google's guidance for
+   * document understanding says as much — quality „typically saturates at medium" and going
+   * higher „rarely improves OCR results". It buys tokens, not time (decision 251).
+   *
+   * There is deliberately **no thinking parameter here.** `thinkingLevel` does not exist in
+   * `v1beta` and answers 400; `thinkingConfig.thinkingBudget: 0` is accepted and then ignored —
+   * `gemini-3.8-flash` still spent 337 thought tokens under it. Both were measured, not
+   * assumed (decision 252).
    */
   mediaResolution?: 'MEDIA_RESOLUTION_LOW' | 'MEDIA_RESOLUTION_MEDIUM' | 'MEDIA_RESOLUTION_HIGH';
   /** Let the model retrieve the URLs mentioned in the prompt (server-side, decision 113). */
@@ -261,7 +256,6 @@ export async function generateText(request: GeminiRequest): Promise<string> {
     contents: [{ role: 'user', parts }],
     generationConfig: {
       ...DETERMINISTIC,
-      ...(request.thinkingLevel === undefined ? {} : { thinkingLevel: request.thinkingLevel }),
       ...(request.mediaResolution === undefined
         ? {}
         : { mediaResolution: request.mediaResolution }),

@@ -101,7 +101,9 @@
 
   const STAGES: Record<ScanStage, string> = {
     preparing: 'Przygotowuję zdjęcie…',
-    reading: 'Czytam etykietę…'
+    reading: 'Czytam etykietę…',
+    // Not a euphemism: the free tier answers „high demand" often, and the app retries once.
+    retrying: 'Gemini jest przeciążony — ponawiam…'
   };
 
   const SCAN_LABELS: Record<ScannedField, string> = {

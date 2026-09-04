@@ -24,36 +24,44 @@ import { recordGeminiUsage } from './usage';
  * Throws `GeminiError` only. Every message on it is Polish, safe to show, and carries no key.
  */
 
-/** What the scan is doing right now, so a wait of several seconds does not look frozen. */
-export type ScanStage = 'preparing' | 'reading';
+/** What the scan is doing right now, so a wait of many seconds does not look frozen. */
+export type ScanStage = 'preparing' | 'reading' | 'retrying';
 
 /**
- * The two settings that make this call as fast as it can honestly be, and why they are here
- * rather than in `DETERMINISTIC` (which every call shares):
+ * The one setting that is worth sending, measured against a real package on 2026-09-04 with a
+ * live key (decision 251): `MEDIA_RESOLUTION_MEDIUM` takes the prompt from 1540 tokens to 1016
+ * and the label still reads correctly, which is half the daily quota per scan. It buys tokens
+ * rather than seconds — see `SCAN_RETRY_MS` for where the seconds actually go.
  *
- * - **`thinkingLevel: 'minimal'`** — reading a printed table is transcription, not reasoning.
- *   The import is the opposite and keeps the model's own default.
- * - **`mediaResolution: MEDIA_RESOLUTION_MEDIUM`** — 560 tokens per image instead of the
- *   default 1120. Google's guidance for document understanding is that quality saturates at
- *   medium and that going higher rarely improves OCR, which is exactly this case: a close-up
- *   of a nutrition table, already downscaled to 1024 px by `image.ts`.
- *
- * Both are per-model API features, and the model is whatever the user typed into Settings —
- * so `scanLabelImage` falls back to a plain call if they are refused (see below).
+ * It is a per-model API feature and the model is free text in Settings, so `scanLabelImage`
+ * falls back to a plain call if it is refused.
  */
-const FAST_SCAN = {
-  thinkingLevel: 'minimal',
-  mediaResolution: 'MEDIA_RESOLUTION_MEDIUM'
-} as const;
+const FAST_SCAN = { mediaResolution: 'MEDIA_RESOLUTION_MEDIUM' } as const;
 
 /**
- * One `generateContent` call with a picture attached.
+ * How long to wait before the one automatic retry of an overloaded model.
  *
- * If the tuned call comes back `rejected`, it is tried once more without the two tuning
- * fields. A model old enough not to know them would otherwise turn „the scan is fast" into
- * „the scan is broken", and the user would be told their API key was refused — which is what a
- * 400 means everywhere else in this app and would be a lie here. The retry is bounded to
- * exactly one attempt and happens only on that one error kind.
+ * The free tier answers „This model is currently experiencing high demand" often enough to be
+ * the normal case rather than the exception: on the evening of 2026-09-04, three of eight
+ * byte-identical scans came back 503, and every one of them succeeded on the second attempt.
+ * A user who has already waited half a minute should not be sent back to press the button
+ * again for a condition the app can see and survive (decision 253).
+ */
+const SCAN_RETRY_MS = 1200;
+
+const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * One `generateContent` call with a picture attached, plus two bounded retries of different
+ * kinds — each for a failure that was actually observed against the live API, not imagined:
+ *
+ * - **`rejected` (400)** → try once without `FAST_SCAN`. A model that does not know the field
+ *   would otherwise tell the user their API key was refused, which is what a 400 means
+ *   everywhere else in this app and would be a lie here.
+ * - **`unavailable` (503)** → wait `SCAN_RETRY_MS` and try once more. This is the common one.
+ *
+ * Nothing else is retried: a quota error, a bad key and an unreadable answer all mean the same
+ * thing on the second attempt as on the first.
  */
 export async function scanLabelImage(
   image: InlineImage,
@@ -63,6 +71,8 @@ export async function scanLabelImage(
     fetchImpl?: typeof fetch;
     /** Called once per answered call, exactly as the import counts (decision 127). */
     onusage?: (spent: { requests: number; tokens: number }) => void;
+    /** Told when an overloaded model is being tried again, so the screen can say so. */
+    onstage?: (stage: ScanStage) => void;
   }
 ): Promise<ScannedLabel> {
   const call = async (tuned: boolean): Promise<unknown> =>
@@ -80,11 +90,20 @@ export async function scanLabelImage(
       ...(deps.fetchImpl === undefined ? {} : { fetchImpl: deps.fetchImpl })
     });
 
-  try {
-    return readScannedLabel(await call(true));
-  } catch (caught) {
-    if (!(caught instanceof GeminiError) || caught.kind !== 'rejected') throw caught;
-    return readScannedLabel(await call(false));
+  let tuned = true;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return readScannedLabel(await call(tuned));
+    } catch (caught) {
+      if (attempt > 0 || !(caught instanceof GeminiError)) throw caught;
+      if (caught.kind === 'rejected') {
+        tuned = false;
+        continue;
+      }
+      if (caught.kind !== 'unavailable') throw caught;
+      deps.onstage?.('retrying');
+      await delay(SCAN_RETRY_MS);
+    }
   }
 }
 
@@ -151,6 +170,7 @@ export async function scanPackage(
 
   options.onstage?.('reading');
   return scanLabelImage(image, {
+    ...(options.onstage === undefined ? {} : { onstage: options.onstage }),
     apiKey,
     model: profile.geminiModel,
     ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),

@@ -61,20 +61,21 @@ describe('scanLabelImage', () => {
     expect(spent).toEqual([{ requests: 1, tokens: 512 }]);
   });
 
-  it('asks for minimal thinking and half-resolution media — the two things that make it fast', async () => {
+  it('asks for half-resolution media, which is what halves the tokens a scan costs', async () => {
     const { seen, fetchImpl } = recorder(answer(JSON.stringify({ kcal: 100 })));
 
     await scanLabelImage(IMAGE, { apiKey: 'k', model: 'm', fetchImpl });
 
-    expect(config(at(seen))).toMatchObject({
-      thinkingLevel: 'minimal',
-      mediaResolution: 'MEDIA_RESOLUTION_MEDIUM'
-    });
+    expect(config(at(seen))).toMatchObject({ mediaResolution: 'MEDIA_RESOLUTION_MEDIUM' });
+    // Measured against the live API: `thinkingLevel` is not a v1beta field and answers 400,
+    // and `thinkingBudget: 0` is accepted and ignored. Neither is sent (decision 252).
+    expect(config(at(seen))).not.toHaveProperty('thinkingLevel');
+    expect(config(at(seen))).not.toHaveProperty('thinkingConfig');
   });
 
   it('falls back to a plain call when a model refuses the tuning, rather than blaming the key', async () => {
     const { seen, fetchImpl } = sequence([
-      { body: { error: { message: 'Unknown name "thinkingLevel"' } }, status: 400 },
+      { body: { error: { message: 'Unknown name "mediaResolution"' } }, status: 400 },
       { body: answer(JSON.stringify({ name: 'Masło', kcal: 735 })), status: 200 }
     ]);
 
@@ -82,14 +83,35 @@ describe('scanLabelImage', () => {
 
     expect(label.kcal).toBe(735);
     expect(seen).toHaveLength(2);
-    expect(config(seen[0]!)).toHaveProperty('thinkingLevel');
-    // The second attempt drops both, and nothing else about the request changes.
-    expect(config(seen[1]!)).not.toHaveProperty('thinkingLevel');
+    expect(config(seen[0]!)).toHaveProperty('mediaResolution');
+    // The second attempt drops it, and nothing else about the request changes.
     expect(config(seen[1]!)).not.toHaveProperty('mediaResolution');
     expect(config(seen[1]!)).toMatchObject({ temperature: 0 });
   });
 
-  it('retries exactly once, and only for a refusal', async () => {
+  it('waits and tries again when the model is overloaded — the free tier’s normal failure', async () => {
+    const { seen, fetchImpl } = sequence([
+      { body: { error: { message: 'This model is currently experiencing high demand.' } }, status: 503 },
+      { body: answer(JSON.stringify({ kcal: 293, protein: 2.5, carbs: 3.2, fat: 30 })), status: 200 }
+    ]);
+    const stages: string[] = [];
+
+    const label = await scanLabelImage(IMAGE, {
+      apiKey: 'k',
+      model: 'm',
+      fetchImpl,
+      onstage: (stage) => stages.push(stage)
+    });
+
+    expect(label.kcal).toBe(293);
+    expect(seen).toHaveLength(2);
+    // The screen is told, because the user is the one doing the waiting.
+    expect(stages).toEqual(['retrying']);
+    // The retry keeps the tuning: it was never the reason for a 503.
+    expect(config(seen[1]!)).toHaveProperty('mediaResolution');
+  });
+
+  it('retries exactly once, and only for the two failures it can do something about', async () => {
     const refused = { body: { error: { message: 'nope' } }, status: 400 };
     const { seen, fetchImpl } = sequence([refused, refused]);
 
@@ -98,12 +120,12 @@ describe('scanLabelImage', () => {
     ).rejects.toBeInstanceOf(GeminiError);
     expect(seen).toHaveLength(2);
 
-    // An overloaded Gemini is not a tuning problem, so it is not retried here.
-    const overloaded = sequence([{ body: { error: { message: 'busy' } }, status: 503 }]);
+    // A spent quota says the same thing on the second attempt as on the first.
+    const quota = sequence([{ body: { error: { message: 'out' } }, status: 429 }]);
     await expect(
-      scanLabelImage(IMAGE, { apiKey: 'k', model: 'm', fetchImpl: overloaded.fetchImpl })
+      scanLabelImage(IMAGE, { apiKey: 'k', model: 'm', fetchImpl: quota.fetchImpl })
     ).rejects.toBeInstanceOf(GeminiError);
-    expect(overloaded.seen).toHaveLength(1);
+    expect(quota.seen).toHaveLength(1);
   });
 
   it('still counts the request when the answer cannot be parsed', async () => {
