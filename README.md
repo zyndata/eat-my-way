@@ -8,10 +8,14 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: feature-complete for 1.0.** Phases 1–8 of [PLAN.md](PLAN.md) are done: the
-> calendar, the recipe library, the nutrition database, Drive sync, the encrypted vault, the
-> Gemini import, and the installable offline PWA. [STATE.md](STATE.md) is the record of what
-> was decided and what is still open; [PLAN.md](PLAN.md) Phase 9 is the post-1.0 comfort list.
+> **Status: released, and in daily use.** Phases 1–11 of [PLAN.md](PLAN.md) are done — the
+> calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
+> and the installable offline PWA for 1.0, then three phases that daily use asked for after it:
+> the comfort features (9), an ingredient library and a backup that finally holds everything
+> (10), and a round of fixes to what the app says (11). The live app is
+> https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
+> [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
+> record of what was decided and what is still open.
 
 ## What it looks like
 
@@ -30,8 +34,15 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   values.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
+- **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day
+  view scales it to how much you cooked and how much you actually ate, which are two different
+  numbers and only the second one counts towards the day. A meal turns into a shopping list, a
+  batch cooked today can be planned onto tomorrow with one checkbox, and anything the USDA
+  subset does not know you add once to your own ingredient library.
 - **Bring your own key.** The optional Gemini recipe import uses *your* API key, stored in a
-  vault encrypted with Argon2id + AES-GCM. The decrypted key never leaves your browser's memory.
+  vault that is encrypted with Argon2id + AES-GCM behind a master password by default; the
+  decrypted key never leaves your browser's memory. You may decline the password, and the app
+  then says plainly — on every screen that moves the vault — that the key is stored unencrypted.
 - **It works with the network off.** Installed as a PWA it opens, plans and edits in airplane
   mode. Only two things need a connection — syncing with Drive and importing a recipe — and both
   say so in plain Polish and pick themselves up when the network returns.
@@ -95,10 +106,14 @@ enter the master password when the vault is fetched. The calendar, the recipes, 
 ingredients and the Gemini key all come back from the app's private `appDataFolder`.
 
 **A new device, without Drive.** *Zapisz kopię* on the old device writes one JSON file with
-everything local in it; *Wczytaj kopię* on the new one reads it back and replaces what is
-there. The file deliberately does **not** contain the vault — re-enter the Gemini key
-afterwards, because a backup ends up in Downloads and in mail attachments, and an API key
-should not travel that way.
+everything local in it — the goals, the recipes, the tags, your own ingredients, every planned
+day, and the vault; *Wczytaj kopię* on the new one reads it back and replaces what is there.
+The vault travels exactly as the device holds it, so an encrypted vault is an Argon2id + AES-GCM
+blob and the master password is nowhere in the file — you re-enter it at the first import after
+the restore. If you chose a vault **without** a password, the Gemini key is in that file in the
+clear; the export screen says which of those two files it is about to write before it writes it.
+A backup ends up in Downloads and in mail attachments, so treat an unencrypted one as you would
+the key itself.
 
 **A forgotten master password.** It cannot be recovered: nothing anywhere stores it. *Nie
 pamiętam hasła* → *Załóż sejf od nowa* discards the vault and asks for the Gemini key again.
