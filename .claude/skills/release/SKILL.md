@@ -118,11 +118,37 @@ is a deliberate, named, rollback-able act.
 (or `git pull` on dev) to bring that commit into `dev` so history stays linear — and so the
 *other* machine picks it up on its next `git pull`.
 
+## When a release goes wrong
+
+Published tags are **protected by a repository ruleset** (`Protect release tags`, matching
+`refs/tags/v*`: deletion and force-update blocked, **no bypass actors** — being the repo owner does
+not exempt you). A failed release is therefore fixed *forward*, with a new patch version, never by
+re-pointing the tag that broke:
+
+```
+git tag -f v1.6.2 && git push -f origin v1.6.2   # rejected by the ruleset — do not work around it
+```
+
+This is deliberate, not friction. `CHANGELOG.md` and the GitHub Release are generated *from* the
+tag, and every rollback point on the server is a Docker image named after one. A moved tag leaves
+all three quietly disagreeing about what a version actually contains. So when a release fails:
+
+1. Commit the fix on `dev` as usual, then merge to `main` (Step 2b.4).
+2. Tag the **next patch** version (`v1.6.3`, never a reused `v1.6.2`) and push that.
+3. If the bad version already reached production, roll the server back to the previous image
+   (see **Rollback** in Notes) while the new tag builds — do not leave production broken while
+   waiting on the workflow.
+
+`main` carries the same protection (deletion + force-push blocked). Ordinary pushes are unaffected,
+including the release job's own `chore(release)` CHANGELOG commit-back.
+
 ## Notes
 
 - Production deploy is outward-facing and hard to reverse — only run Step 2b after the user
   has explicitly chosen it in Step 1.
-- Never push with `--no-verify`, never force-push `main`, and never delete or move a published tag.
+- Never push with `--no-verify`, never force-push `main`, and never delete or move a published
+  tag. The last two are enforced by repository rulesets, not just convention — see
+  **When a release goes wrong** above.
 - **Rollback:** on the server, re-run the previous image (each release builds a version-tagged
   image alongside `:latest`):
   ```
