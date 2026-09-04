@@ -9,6 +9,7 @@
   import type { Ingredient } from '../types';
   import type { DraftItem } from '../recipes';
   import CustomIngredientForm from './CustomIngredientForm.svelte';
+  import { scanPackage } from '../gemini/scan-run';
   import NavIcon from './NavIcon.svelte';
   import RecipeItemRow from './RecipeItemRow.svelte';
 
@@ -102,6 +103,7 @@
       {:else if customRowId === item.id}
         <CustomIngredientForm
           initialName={customName}
+          onscan={scanPackage}
           onsave={(ingredient) => oncustomsave(item.id, ingredient)}
           oncancel={oncustomcancel}
         />

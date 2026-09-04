@@ -18,8 +18,17 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 9     | Daily-use comfort           | done    | 2026-09-02 |
 | 10    | Składniki i pełna kopia     | done    | 2026-09-03 |
 | 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
+| 12    | Skanowanie opakowania       | done    | 2026-09-04 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 12 is built, in the shape it was planned: stage A only — a custom ingredient added by
+photographing the package's nutrition table instead of typing it, read by Gemini with the key
+the app already holds. Stage B (a barcode scan against Open Food Facts) stays deferred behind
+the written trigger in PLAN.md, and decision 239 records the one PLAN.md rule this bends. The
+CSP and the `Caddyfile` are untouched — the whole feature added no host, no permission and no
+dependency. Two of its eight acceptance criteria cannot be checked from this machine: they need
+a phone and a live key, and they are open question 29.
 
 Phases 10 and 11 are new: PLAN.md ended at Phase 9, and both were asked for from real use
 after the 1.0 release — see decisions 175 and 198. Phase 10 is the user's own data (an
@@ -3037,6 +3046,105 @@ one of which broke the feature outright.
      served from the edge rather than the origin. Only `/` and `/sw.js` are `DYNAMIC`, and
      together they are about five kilobytes.
 
+### 2026-09-04 — Phase 12 planned: scanning a package instead of typing it
+
+239. **Gemini may transcribe a nutrition table, and PLAN.md now says so.** The Gemini section
+     has forbidden nutrition numbers from the model since the first draft — „repeatability
+     beats plausibility; the same meal must always compute identically". Phase 12's stage A
+     asks Gemini to read the four macros off a photograph, which is that rule's subject matter,
+     so it is an amendment and not an oversight.
+
+     The rule protects one thing: a meal's macros must not depend on what a model guessed
+     today. That is untouched here, because **nothing in this phase computes anything.** The
+     numbers are printed on the package by law, the model transcribes them, the user reads and
+     corrects them in the form, and the save produces an ordinary `custom:*` row whose values
+     are then fixed forever. Every meal using it computes deterministically, and re-scanning
+     the same package tomorrow cannot change a recipe that already exists. What stays forbidden
+     is a model *inventing* a value that lands in a calculation without a person seeing it —
+     which is exactly why the scan writes a proposal into an unsaved draft and never persists
+     anything itself.
+
+     The Gemini section of PLAN.md carries the exception explicitly, with its boundary, rather
+     than being left to contradict Phase 12.
+
+240. **Stage A (photo + Gemini) is built first; stage B (barcode + Open Food Facts) is deferred
+     behind a trigger, not a date.** A covers every package, because every product has a
+     printed table and not every product is in a database. It also costs nothing structurally:
+     no new dependency, no new host, and `connect-src` already permits
+     `generativelanguage.googleapis.com`, so **the CSP is not widened at all.** B's only
+     advantage is that it spends no Gemini request — and whether those are scarce in daily use
+     is unknown today. Building it now would be paying a WebAssembly decoder, a camera
+     permission and two policy widenings for a saving nobody has measured. The trigger is
+     written into PLAN.md: a daily budget actually hit while adding ingredients, a round trip
+     too slow at the shelf, or a class of packages the photo path cannot read.
+
+241. **The camera is reached with `<input capture>`, not `getUserMedia`.** The system camera
+     already does framing, focus and confirmation better than anything we would write, and it
+     asks nothing of `Permissions-Policy: camera=()`, which governs `getUserMedia`. That last
+     point is a *prediction* and is listed as an acceptance criterion to be checked under
+     `npm run docker:up` — `npm run dev` applies neither the CSP nor the permissions policy,
+     which is the standing reason this class of claim is never verified there. A live preview,
+     and therefore `camera=(self)`, is stage B's cost, not stage A's.
+
+242. **A scan may never fill a field with `0`.** `IngredientDraft` models the macros as
+     `number | null` because „nie wpisano" and „zero" are different facts (decision 178), and a
+     scan that mapped an unreadable row to `0` would recreate that exact bug with a photograph
+     as its alibi. The reader in `gemini/scan.ts` enforces it on the way out of the model:
+     anything that is not a finite non-negative number becomes `null`, the field stays empty,
+     and `draftProblem` keeps the save button disabled with the sentence it already prints.
+     This is also what makes the user's original ask work as asked — fewer fields to type, no
+     fields quietly invented.
+
+243. **Local OCR (tesseract.js) is rejected, and here is the measurement so it is not
+     re-proposed.** ~4.75 MB for the WASM core plus ~4.77 MB for `pol.traineddata` — about
+     10 MB of assets to fetch and cache in an app whose whole precache is measured in hundreds
+     of kilobytes — in exchange for a weaker read of a tabular layout than either planned path,
+     plus a label parser of our own to maintain. Working offline without a key is its only
+     advantage and does not pay for that.
+
+244. **What was measured about Open Food Facts while planning, so stage B does not start with
+     research.** `GET https://world.openfoodfacts.org/api/v2/product/<ean>.json` answers
+     `access-control-allow-origin: *`, so it is callable straight from the browser with no key
+     and no proxy — the CORS claim PLAN.md's „Nutrition data" section has carried untested
+     since before 1.0 is now confirmed. Fields map onto `Macros` one-to-one (`energy-kcal_100g`,
+     `proteins_100g`, `carbohydrates_100g`, `fat_100g`), verified on a real Polish product
+     (Masło extra, Mlekovita, 5900512300108). Coverage is about **37 200** products tagged
+     `countries_tags=poland` — enough for supermarket staples, not enough to be the only path.
+     Limits are 15 read requests per minute per IP; the requested `User-Agent` header cannot be
+     set by a browser, so identification goes in `app_name` / `app_version` parameters. And
+     `BarcodeDetector` exists in Chromium but in **neither Safari/iOS nor Firefox**, which is
+     what makes a WebAssembly decoder unavoidable rather than a preference.
+
+### 2026-09-04 — Phase 12 built (stage A)
+
+245. **Three modules, not one: `gemini/scan.ts`, `gemini/scan-run.ts` and `lib/image.ts`.**
+     PLAN.md named only `gemini/scan.ts`. Splitting follows the split the import already has
+     and the reason is the same: `scan.ts` is the prompt, the schema and the pure reader, with
+     unit tests and no network; `scan-run.ts` is everything with a side effect — the offline
+     check, the vault unlock, the key, the profile, the counter and the one `generateContent`
+     call — and it exists as a module rather than as code in two screens because
+     `CustomIngredientForm` is used from two places and both hand it the *same* function
+     (PLAN.md task 1). `image.ts` is the canvas downscale, separate because it is the one part
+     that cannot be unit-tested in a Node environment; its arithmetic (`fitWithin`) is pulled
+     out and tested, and the canvas half is covered end to end instead. No new dependency:
+     `<input type="file" capture>`, `createImageBitmap` and `canvas.toBlob` are the platform.
+
+246. **A scan fills only what the user has not typed, and the name starts protected when it
+     arrives non-empty.** PLAN.md task 5 asks that a hand-edited field survive a later scan;
+     the form tracks the fields typed into and `applyScannedLabel` skips them. The name is the
+     one field that starts protected without being typed into *in this form*: in the recipe
+     editor it is what the user typed into the autocomplete, and in „Składniki" it is the row
+     they chose to edit — their own words either way, and overwriting them with a brand name
+     off a wrapper would be the form arguing with the user. The macros do not start protected,
+     because re-reading the package is exactly what scanning during an edit is for. A field the
+     scan could not read is left as it was — never blanked, never zeroed.
+
+247. **The scan reports through `onusage` before the answer is parsed, so an unreadable answer
+     still counts.** Same rule as decision 127, and it is now a test rather than a claim: a 200
+     that carries something other than JSON increments the counter, a 429 does not. What made
+     it free to get right is that `client.ts` already reported usage before its own emptiness
+     check — the scan only had to call it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3324,3 +3432,19 @@ one of which broke the feature outright.
 28. **Duplicate of open question 18 — closed.** Same subject, same conclusion; the Background
     Sync half is answered by decision 151, which rests on the worker having no way to obtain a
     token rather than on `runtimeCaching` alone. See 18.
+
+29. **Two of Phase 12's acceptance criteria need a phone and a live key, and neither exists on
+    this machine.** What is unverified is narrow and named: (a) that „Zeskanuj opakowanie"
+    opens the *system camera* on a phone rather than a file picker, and (b) that the real model
+    obeys the two label rules the prompt is built around — the „w 100 g" column over „na
+    porcję", and kcal over kJ. Everything either side of that is checked: the file input, the
+    downscale, the request, the reader, the counter, the three refusals and the production CSP
+    all run end to end in `e2e/scan.spec.ts`, including against the Caddy container.
+
+    The camera half is a `<input type="file" accept="image/*" capture="environment">`, which is
+    platform behaviour rather than app code (decision 241), and the container run confirms the
+    part that *could* have gone wrong: `Permissions-Policy: camera=()` is served and the page
+    reports no violation. The label half is a prompt-quality question of the same kind as open
+    question 21 — it is answered by using it on a real package, not by a test. **To close this,
+    scan two packages on the phone: one whose label prints a per-portion column beside the
+    per-100 g one, and one that leads with kilojoules.**

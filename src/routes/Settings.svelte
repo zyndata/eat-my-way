@@ -591,7 +591,8 @@
         Limit liczy się <strong>osobno dla każdego modelu</strong> i bardzo się między nimi różni
         — jeden model może mieć 20 zapytań na dobę, inny 500. Gdy jeden się wyczerpie, wybierz
         wyżej inny i pracuj dalej. Jeden import to
-        {REQUESTS_PER_IMPORT.paste} zapytania (wklejony tekst) albo {REQUESTS_PER_IMPORT.link} (link).
+        {REQUESTS_PER_IMPORT.paste} zapytania (wklejony tekst) albo {REQUESTS_PER_IMPORT.link} (link),
+        a zeskanowanie opakowania — {REQUESTS_PER_IMPORT.scan} zapytanie.
       </p>
       <p class="pt-1 text-xs text-(--color-ink-muted)">
         To licznik tej aplikacji, nie odczyt z Google: zapytania wysłane skądinąd na ten sam

@@ -8,11 +8,12 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–11 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–12 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then three phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then four phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
-> (10), and a round of fixes to what the app says (11). The live app is
+> (10), a round of fixes to what the app says (11), and adding an ingredient by photographing
+> the package instead of typing it (12). The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
 > record of what was decided and what is still open.
@@ -29,9 +30,10 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   source of truth; Google Drive's private `appDataFolder` is only a sync layer, so the data is
   visible to this app and to nobody else — not even to a server of mine, because there isn't one.
 - **The numbers are repeatable.** Nutrition comes from a bundled subset of the USDA FoodData
-  Central database, computed locally. The same meal always produces the same calories. AI is
-  used *only* to parse a pasted recipe into structured ingredients — never to invent nutrition
-  values.
+  Central database, computed locally. The same meal always produces the same calories. AI never
+  invents a nutrition value: it parses a pasted recipe into structured ingredients, and it can
+  transcribe the table printed on a package you photograph — a reading you check and correct in
+  the form before it is saved, after which the ingredient's values never change again.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
 - **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day
@@ -39,13 +41,15 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   numbers and only the second one counts towards the day. A meal turns into a shopping list, a
   batch cooked today can be planned onto tomorrow with one checkbox, and anything the USDA
   subset does not know you add once to your own ingredient library.
-- **Bring your own key.** The optional Gemini recipe import uses *your* API key, stored in a
+- **Bring your own key.** The optional Gemini features — the recipe import and the package
+  scan — use *your* API key, stored in a
   vault that is encrypted with Argon2id + AES-GCM behind a master password by default; the
   decrypted key never leaves your browser's memory. You may decline the password, and the app
   then says plainly — on every screen that moves the vault — that the key is stored unencrypted.
 - **It works with the network off.** Installed as a PWA it opens, plans and edits in airplane
-  mode. Only two things need a connection — syncing with Drive and importing a recipe — and both
-  say so in plain Polish and pick themselves up when the network returns.
+  mode. Only the things that talk to Google need a connection — syncing with Drive, importing a
+  recipe and scanning a package — and each says so in plain Polish, leaves the rest of the
+  screen working, and picks itself up when the network returns.
 
 ## Stack
 
@@ -56,7 +60,7 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 | Local storage | Dexie over IndexedDB |
 | Crypto | hash-wasm (Argon2id, in a Web Worker) + WebCrypto (AES-GCM) |
 | Sync | Google Drive `appDataFolder` behind a `StorageBackend` interface |
-| AI | Gemini (BYO key) — recipe parsing only |
+| AI | Gemini (BYO key) — recipe parsing, and reading a photographed nutrition table |
 | Serving | Caddy in Docker, static files only |
 | Deploy | GitHub Actions → build in CI → rsync + versioned `docker build` on the server |
 

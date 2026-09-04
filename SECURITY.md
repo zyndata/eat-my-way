@@ -35,6 +35,10 @@ tags, custom ingredients and planned days — and **deliberately not the vault**
 ends up in Downloads, in mail attachments and in other people's cloud drives; an API key does
 not travel that way. An export that contained the key, in any form, would be a vulnerability.
 
+„Zeskanuj opakowanie" sends one photograph to Google's Gemini API, with the user's own key,
+only when the button is pressed. It is downscaled in the browser first, it is used for that one
+request, and it is stored nowhere — not in IndexedDB, not in the export, not on Drive.
+
 The service worker precaches the application bundle and the bundled USDA ingredient data, and
 nothing else: it declares no `runtimeCaching`, so no OAuth popup, token response, Drive
 document or Gemini request is routed through it, and none can land in a cache. A change that
