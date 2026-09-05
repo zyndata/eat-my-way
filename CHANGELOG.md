@@ -6,6 +6,20 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+
+- Plan phase 13 — the meal planner
+- **phase-13:** Plan in batches — cooking once for two days
+- Record that phase 12's barcode trigger has fired
+- **phase-13:** A cook lasts one, two or three days
+- Record that release tags are ruleset-protected
+
+### Features
+
+- Phase 13 — planer posiłków
+
 ## [1.6.1] - 2026-09-04
 
 ### Bug Fixes

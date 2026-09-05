@@ -208,6 +208,12 @@ git checkout dev && git merge main              # pick up the CHANGELOG commit
 Watch it: `gh run list --workflow=deploy.yml --limit 3`, then `gh run watch <id> --exit-status`.
 The workflow's final step asserts that https://eatmyway.gorny.dev/ returns 200.
 
+**Published tags are immutable.** A repository ruleset (`Protect release tags`, on `refs/tags/v*`)
+blocks deleting or force-updating a tag, with no bypass for the owner; `main` is protected the same
+way. A failed release is fixed forward with the next patch version — `git push -f origin v0.1.0`
+will be rejected, and working around it would leave `CHANGELOG.md`, the GitHub Release and the
+version-tagged Docker image below disagreeing about what that version contains.
+
 ## The first live sign-in (run once, then record it)
 
 Every Google request in the test suite is answered locally (STATE.md decision 107), so the client

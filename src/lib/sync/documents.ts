@@ -1,4 +1,14 @@
-import type { Day, DeviceUsage, GeminiUsage, Ingredient, Profile, Recipe, Tag } from '../types';
+import type {
+  Day,
+  DeviceUsage,
+  GeminiUsage,
+  Ingredient,
+  MealPlanTemplate,
+  MealSlot,
+  Profile,
+  Recipe,
+  Tag
+} from '../types';
 
 /**
  * The `appDataFolder` file layout from PLAN.md, and the JSON that goes inside each file.
@@ -190,6 +200,52 @@ export function geminiUsageByModel(
     .sort((a, b) => b.usage.requests - a.usage.requests || a.model.localeCompare(b.model));
 }
 
+/**
+ * The Phase 13 meal-plan template, validated field by field.
+ *
+ * PLAN.md says `mealPlan` costs nothing because "the reader keeps the fields it does not
+ * know" — which is true of `readRecipesDocument`, where whole recipe objects pass through,
+ * and *not* true here: `readProfileDocument` has always enumerated the profile's fields, so a
+ * field nobody reads is a field that is silently dropped on the next sync. Hence this reader
+ * (STATE.md decision 274). What the claim really buys is still bought: no schema version, no
+ * migration, and an older build ignoring the key rather than breaking on it.
+ *
+ * A malformed template degrades to `undefined` — the built-in default — rather than to a
+ * half-built one, for the same reason every other reader here is forgiving in one direction
+ * only: sync must never turn a damaged file into damaged local data.
+ */
+export function readMealPlan(value: unknown): MealPlanTemplate | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const doc = value as Partial<MealPlanTemplate>;
+  if (!Array.isArray(doc.slots)) return undefined;
+
+  const slots: MealSlot[] = [];
+  for (const row of doc.slots as Partial<MealSlot>[]) {
+    if (typeof row !== 'object' || row === null) continue;
+    if (typeof row.id !== 'string' || row.id === '') continue;
+    if (typeof row.label !== 'string') continue;
+    slots.push({
+      id: row.id,
+      label: row.label,
+      tagKeys: Array.isArray(row.tagKeys) ? row.tagKeys.filter((key) => typeof key === 'string') : [],
+      share: typeof row.share === 'number' && Number.isFinite(row.share) ? row.share : 0,
+      batchDays:
+        typeof row.batchDays === 'number' && Number.isFinite(row.batchDays) ? row.batchDays : 1
+    });
+  }
+  if (slots.length === 0) return undefined;
+
+  const cookDays: Record<number, number> = {};
+  for (const [weekday, length] of Object.entries(doc.cookDays ?? {})) {
+    const day = Number(weekday);
+    if (!Number.isInteger(day) || day < 0 || day > 6) continue;
+    if (typeof length !== 'number' || !Number.isFinite(length)) continue;
+    cookDays[day] = length;
+  }
+
+  return Object.keys(cookDays).length === 0 ? { slots } : { slots, cookDays };
+}
+
 /** `profile.json`. Unknown or missing fields fall back to what the caller already had. */
 export function readProfileDocument(value: unknown, fallback: Profile): Profile {
   if (typeof value !== 'object' || value === null) return fallback;
@@ -207,6 +263,10 @@ export function readProfileDocument(value: unknown, fallback: Profile): Profile 
     ...(() => {
       const usage = readGeminiUsage(doc.geminiUsage);
       return usage === undefined ? {} : { geminiUsage: usage };
+    })(),
+    ...(() => {
+      const plan = readMealPlan(doc.mealPlan) ?? fallback.mealPlan;
+      return plan === undefined ? {} : { mealPlan: plan };
     })()
   };
 }

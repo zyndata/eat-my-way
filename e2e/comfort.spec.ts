@@ -19,9 +19,16 @@ test('a browser with no install prompt and no iOS share sheet is told nothing at
   // Headless Chromium fires no `beforeinstallprompt` and is not iOS, so this is exactly the
   // case that was reported: the section used to end with „look in your browser's menu", which
   // is not an instruction and read as a broken feature (STATE.md decision 189).
-  await expect(device.getByRole('heading', { name: 'Aplikacja na urządzeniu' })).toHaveCount(0);
+  //
+  // What must be absent is the *install copy*. The section's heading is not a reliable proxy
+  // for it: the offline note lives under the same heading and is deliberately not install
+  // advice, so once the service worker finishes precaching the heading appears legitimately —
+  // which is why asserting on it was a race the suite eventually lost (STATE.md decision 286).
+  await expect(device.getByText('Możesz dodać Eat My Way')).toHaveCount(0);
   await expect(device.getByRole('button', { name: 'Zainstaluj aplikację' })).toHaveCount(0);
   await expect(device.getByText('Ta przeglądarka nie daje przycisku instalacji')).toHaveCount(0);
+  await expect(device.getByText('Do ekranu początkowego')).toHaveCount(0);
+  await expect(device.getByText('Dodaj do ekranu głównego')).toHaveCount(0);
 });
 
 test('the iOS share-sheet route is still offered, because it is one someone can follow', async ({

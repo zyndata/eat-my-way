@@ -6,6 +6,7 @@
   import InstallSection from '../lib/components/InstallSection.svelte';
   import UpdateSection from '../lib/components/UpdateSection.svelte';
   import TagSection from '../lib/components/TagSection.svelte';
+  import MealPlanSection from '../lib/components/MealPlanSection.svelte';
   import Spinner from '../lib/components/Spinner.svelte';
   import type { Macros, Profile } from '../lib/types';
   import { repository } from '../lib/repository';
@@ -694,6 +695,8 @@
       </p>
     {/if}
   </section>
+
+  <MealPlanSection />
 
   <TagSection />
 

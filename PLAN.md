@@ -179,12 +179,22 @@ interface Day {
   goalSnapshot?: Macros;   // captured when first meal is added to the day
 }
 
+interface MealSlot {
+  id: string;
+  label: string;           // "Śniadanie" — the user's own wording
+  tagKeys: string[];       // ANY of these; empty = any recipe
+  share: number;           // share of the day's goal; normalized across slots
+}
+
+interface MealPlanTemplate { slots: MealSlot[] }
+
 interface Profile {
   goals: Macros;
   geminiModel: string;
   encryptVault: boolean;
   locale: 'pl';
   googleSub?: string;
+  mealPlan?: MealPlanTemplate;  // the planner's day template (Phase 13); absent = the default
 }
 ```
 
@@ -1224,3 +1234,337 @@ app whose entire precache is currently measured in hundreds of kilobytes — and
 weaker read of a tabular layout than either path above, plus a table parser of our own to
 maintain. Offline operation without a key is its only advantage, and it is not worth that
 price. Recorded so it is not re-proposed.
+
+## Phase 13 — Planer posiłków
+
+Planning a day is the one part of this app that is still entirely manual. The calendar, the
+recipe library and the goals are all in place, and the user still has to sit down, remember
+what they ate last week, pick four recipes and check by hand whether the four add up to the
+numbers in Settings. On a normal weekday that does not happen — the day ends up with two meals
+entered in a hurry, or with none.
+
+This phase makes the app answer the question it already has all the data for: **given my
+goals, my recipes and what I have already eaten, what should the rest of the day look like?**
+The user presses one button and gets a *proposal* — never a silent write — which they can
+reroll, lock slot by slot, and accept.
+
+**It is a selection problem, not a filter.** Recipes have fixed per-portion macros, so no
+subset of a few dozen of them lands on a kcal target by itself. The knob that makes it solvable
+is already in the data model: `portionsEaten` scales macros without touching the recipe. The
+planner therefore chooses **a recipe and a portion count** per slot, and the portion count is
+restricted to 0.5–2.0 in steps of 0.25 — outside that range the answer stops being something a
+person would actually cook and eat.
+
+### The three rules the solver obeys
+
+1. **Calories first, the rest second.** kcal is the target; protein, carbohydrate and fat are
+   tie-breakers between plans that already fit on calories, weighted well below it. This is a
+   deliberate reversal of the symmetric "±X% on all four" design, and it is the user's call
+   (STATE.md decision on 2026-09-04): a plan that hits the calorie target and is 12 g off on
+   fat is a good plan; one that balances all four and misses by 400 kcal is not.
+
+2. **The week is the unit of accounting, the day is the unit of sanity.** What must be close to
+   the goal is the **weekly average**, not every individual day — that is how eating actually
+   works, and it is what makes the solver succeed instead of shrugging. So: the weekly mean is
+   the objective, and each day carries a **hard band of ±15%** around its own goal, so that
+   "the average is fine" can never be bought with a 3000 kcal day beside a 1000 kcal one.
+
+   A day planned on its own is not exempt from this. Its target is the daily goal **corrected by
+   the balance of the week it falls in**: what the already-planned days of that week (Monday
+   first — `weekStart`, decision 74) came to against what they should have, spread over the
+   days of the week still unplanned, and clamped to ±10% of the daily goal so one heavy Sunday
+   cannot starve the following Tuesday. The sheet says so in one line, in Polish, rather than
+   silently moving the target.
+
+3. **Freshness beats a perfect fit.** A plan that nails the numbers by proposing the same three
+   dinners as last week is a worse answer than one that is 40 kcal off. Repetition is a cost,
+   not a constraint: a recipe planned yesterday is very expensive, one planned ten days ago is
+   nearly free, and one never planned is free. The data for it needs no new query —
+   `recipeUsage(today)` already returns `lastPlannedDate` per recipe over a one-year window
+   **including days planned ahead**, so a proposal also avoids colliding with what is already
+   on the calendar for tomorrow. Within one day, the same recipe twice is forbidden outright.
+
+   **The cost is counted per run, not per meal** — see „Gotowanie na zapas" below. Eating
+   the same stew on Monday and Tuesday out of one pot is a deliberate decision made once; the
+   same stew reappearing on Thursday is the thing this rule exists to prevent. Without that
+   distinction the freshness rule and the batch rule fight each other, and the solver oscillates.
+
+### Gotowanie na zapas
+
+Nobody cooks four fresh meals a day, seven days a week. In real use a pot of something is
+cooked once and eaten for two or three days, and a weekly plan that ignores that is a weekly
+plan nobody follows. **The app already models this exactly**: „Gotuję na 2 dni" on the meal
+screen sets `cookingScale` on the day it is cooked and appends a one-portion copy to the next
+day (`cookAlsoOn`), the shopping list counts `cookingScale` and never `portionsEaten`, so the
+ingredients are bought once, and the meal screen recognises the copy by `recipeId`. The planner
+does not invent a mechanism here; it *plans in terms of the one that exists*, and what it writes
+is indistinguishable from what the checkbox writes.
+
+**A run is one, two or three days, and three is the ceiling for a reason.** Cooked food keeps
+about three to four days in a fridge, and this app models no freezer — a portion is either
+planned on a day or it is not. So `batchDays` is capped at 3, and the cap is a food-safety
+statement rather than a UI limit.
+
+**How long a run is gets decided in three places, each answering a different question.**
+
+1. **The slot says what is normal.** `batchDays` per slot: `1` is cooked fresh, `2` or `3` is
+   how many days a cook in that slot usually covers. Per slot because that is how it is
+   actually true — dinner and lunch get cooked ahead, breakfast does not — and a global switch
+   would have to lie about one of them. The default template ships with `Obiad: 2`.
+
+2. **The weekday says when there is time.** Sunday is not Wednesday: on a free afternoon
+   someone cooks a big pot that covers the first half of the week, and on a working Wednesday
+   they do not cook at all. `MealPlanTemplate.cookDays` maps a weekday (0 = Monday, as
+   `weekdayIndex` already numbers them) to the run length for that day, overriding the slot's
+   own number. „Niedziela: 3 dni" is one entry in that map, and it is the entry this feature
+   was asked for. A weekday set to `1` is the other half of the same idea: *do not* start a
+   long cook on Wednesday.
+
+3. **The sheet says what happens this week.** Every proposed run carries a 1/2/3 control in the
+   proposal, and changing it re-solves the days it touches while honouring every lock. This is
+   a one-off: it changes the plan on screen and never writes back into the template, because
+   „this Sunday I also have Monday off" is not a rule about Sundays.
+
+Consequences, each of which changes the solver rather than the UI:
+
+- **A run is one move, not two or three identical ones.** The recipe and the portion count are
+  chosen once for the whole run, and its days share them — one pot, one plate. So runs are
+  placed **first**, on consecutive days inside the range being planned, and the single-day slots
+  are filled around them; those flexible slots absorb the difference between days whose targets
+  differ because of the weekly balance. A run never overruns the end of the range, because the
+  days it would spill onto are not the days the user is looking at.
+
+- **`cookingScale = runLength × portionsEaten`, and this is not the same as `2`.** The checkbox
+  can hard-code 2 because it is used on a meal a person is looking at; the planner sets
+  `portionsEaten` itself, so a 1.25-portion dinner cooked for three days needs 3.75 portions in
+  the pot. Getting this wrong is silent and only shows up as a shopping list that under-buys —
+  the invariant is written here so it is tested rather than discovered.
+
+- **Runs in different slots are staggered.** A three-day lunch and a three-day dinner starting
+  on the same Sunday produce three consecutive days that are identical twice over, which is a
+  worse plan than either constraint asked for. Two runs may not start on the same day unless
+  nothing else fits, and the cost function says so rather than the UI forbidding it.
+
+- **Long runs cost the solver its freedom, and the failure has to name that.** Every day inside
+  a run has that slot's macros fixed, so with lunch and dinner both on three-day runs a week has
+  very few knobs left and the per-day band can become unsatisfiable. When that is why no plan
+  fits, the message says it in those terms („zbyt wiele dni gotowanych na zapas") rather than
+  reporting a generic miss — it is the one failure whose cause the user cannot otherwise guess.
+
+- **Cooking ahead makes „za mało przepisów" less likely, not more.** Seven dinners from a
+  library of ten recipes is a stretch; three cooks covering seven dinners is comfortable. The
+  failure message therefore offers longer runs as a way out („ugotuj obiad na 3 dni"), because
+  for a small library it is the most effective one.
+
+### The template
+
+The rules the planner follows are a **day template**, edited in Settings as rows — not as a
+typed mini-language. One row per meal:
+
+| Slot | Tagi | Udział | Gotuję na |
+|------|------|--------|-----------|
+| Śniadanie | `owsianka`, `szybkie` | 25% | 1 dzień |
+| Obiad | `mięsne`, `wege` | 40% | 2 dni |
+| Podwieczorek | `przekąska` | 10% | 1 dzień |
+| Kolacja | `lekkie` | 25% | 1 dzień |
+
+…and, beneath it, the weekdays that say something different from „normalnie":
+
+| Dzień | Gotuję na |
+|-------|-----------|
+| Niedziela | 3 dni |
+| Środa | 1 dzień |
+
+Tags within a row are alternatives — "any of these" — which is the semantics originally asked
+for as `tag1, tag2; tag3; tag4`. It is stored that way and shown as rows, because a delimiter
+that changes meaning between comma and semicolon is invisible in a text field and the app
+already owns `TagInput.svelte` with tag autocompletion. A row with no tags means "any recipe".
+
+**The share column is not decoration.** Without it the solver is free to put 1200 kcal into
+breakfast and 300 into dinner and still claim the day is correct. Shares default to an even
+split, are normalized rather than validated (three rows of 30% mean 33.3% each), and are a soft
+cost, not a constraint.
+
+### Data model
+
+```ts
+interface MealSlot {
+  id: string;
+  label: string;       // "Śniadanie" — the user's own wording, Polish
+  tagKeys: string[];   // ANY of these; empty = any recipe
+  share: number;       // share of the day's goal; normalized across slots
+  batchDays: number;   // 1 = cooked fresh; 2 or 3 = days one cook in this slot usually covers
+}
+
+interface MealPlanTemplate {
+  slots: MealSlot[];
+  /** Weekday (0 = Monday) → run length for a cook started that day; overrides the slot's own. */
+  cookDays?: Record<number, number>;
+}
+
+interface Profile { /* … */ mealPlan?: MealPlanTemplate }
+```
+
+`mealPlan` is **optional**, for the same reason `sourceUrl` and `Ingredient.updatedAt` are: it
+costs no schema version, no migration and nothing in the Drive format, because
+`readProfileDocument` keeps the fields it does not know. A profile without it gets the built-in
+default template (four slots, 25/40/10/25) the first time the planner is opened.
+
+Nothing is added to `PlannedMeal`. A meal does not know which slot it came from, and giving it
+one would be a schema change, a sync concern and a migration in exchange for a label — the
+sheet maps existing meals to slots **by position** and lets the user move them before
+generating. That mapping is a UI concern that lives and dies inside one sheet.
+
+**Excluded from planning, with no new field:** a recipe tagged `nie-planuj`. Exclusion is a
+property the tag system already expresses, and it needs no column, no migration and no
+settings screen.
+
+### Tasks
+
+1. **`src/lib/planner.ts` — the whole solver, pure.** No I/O, no clock, no database, in the
+   shape `day.ts`, `goals.ts` and `calendar.ts` already established. It takes candidate recipes
+   with their per-portion macros, a template, a per-day target, a usage map and a random source;
+   it returns a proposal or a typed failure. Every rule above is a function with a unit test.
+
+   **Randomness is injected, exactly as `IdFactory` is** (`ids.ts`): the tests pass a seeded
+   generator and assert exact output, the UI passes `Math.random` and gets a different answer
+   on every „Losuj ponownie". A solver that cannot be pinned in a test is a solver nobody can
+   change later.
+
+   The search is a randomized greedy with restarts: a few hundred draws, each filling every
+   slot with a candidate sampled with probability weighted by fit, then choosing the portion
+   step that best closes the remaining gap; the cheapest complete draw wins. A few hundred
+   recipes cost single-digit milliseconds, which is the whole reason no LP solver, no
+   dependency and no worker is involved.
+
+   The cost function, in order of weight and each with its reason:
+
+   - **kcal distance from the day target** — the objective (rule 1).
+   - **protein, then carbohydrate and fat** — tie-breakers, an order of magnitude lower.
+   - **repetition** — days since `lastPlannedDate`, decaying to zero over two weeks (rule 3).
+   - **portion scaling away from 1.0** — 1.0 is free, 1.75 is not; a plan of whole portions is
+     a better plan than one that is arithmetically identical and asks for three odd fractions.
+   - **slot share** — how far each slot lands from its share of the day.
+
+2. **Weekly balance, in `planner.ts` beside the day solver.** `weekDates(date)` gives the seven
+   days; `dayGoals(day, profileGoals)` decides what each is judged against, so a day with a
+   frozen `goalSnapshot` is scored against the goals it was planned under and history is not
+   rewritten. The function returns the corrected target and the sentence the UI prints
+   („W tym tygodniu masz zapas 640 kcal — rozłożony na 3 dni").
+
+3. **Cooking ahead, planned as runs of one to three days.** A slot whose run length is more
+   than 1 is filled by choosing one recipe and one portion count for a **block of consecutive
+   days**, written the way `cookAlsoOn` writes it: `cookingScale = runLength × portionsEaten` on
+   the day it is cooked, and `cookingScale: 1` copies carrying the same `macroSnapshot` on the
+   days after. The length comes from `cookDays[weekday]` when that weekday says something, and
+   from the slot's `batchDays` otherwise — that resolution is one pure function with its own
+   test, because it is the rule the user will predict the plan by.
+
+   Runs are placed before single days, count as **one** use for the freshness cost dated on the
+   cooking day, and are staggered so that two of them rarely start together. A run is one unit
+   in the sheet too — a single card spanning its days, locked and rerolled as one thing, with a
+   1/2/3 control that re-solves the days it touches without disturbing any lock. Where a run
+   cannot be placed — no candidate, or it would overrun the end of the range — it shortens, down
+   to a single day, and the sheet says which slot that happened to.
+
+4. **Filling a day that is already half planned — the primary path, not a special case.**
+   Existing meals are fixed input: their macros come off the target (`remainingMacros`), their
+   slots are taken, and the solver fills what is left. „Zaplanuj dzień" and „Uzupełnij dzień"
+   are the same code and the same button; only the label changes with whether the day is empty.
+
+5. **Candidate filtering, and the two exclusions that would otherwise poison the search.**
+   Recipes tagged `nie-planuj` are out. So are recipes whose items are incomplete
+   (`isRecipeItemComplete`) or whose per-portion macros come to zero kcal — **a 0 kcal recipe is
+   a perfect filler for any gap and would be proposed constantly**, which is the kind of thing
+   that is obvious only after it happens. The sheet reports how many recipes were skipped and
+   why, so the exclusion is visible rather than mysterious.
+
+6. **`PlannerSheet.svelte` — the proposal, and the reason anyone will use this twice.** A
+   `BottomSheet` listing the slots with the proposed recipe, its portion count and its macros,
+   a bar against the day target, and the weekly line above it. Three controls:
+   „Losuj ponownie" for the whole day, a **lock** per slot, and a **reroll of one slot** that
+   respects every lock. Locking the dinner and rerolling the rest is the interaction that turns
+   a black box into a tool. „Zastosuj" is the only thing that writes.
+
+7. **Week mode in the same sheet.** „Zaplanuj tydzień" on the calendar generates the seven days
+   left to right, carrying the running balance forward, then makes one repair pass over the
+   worst day. Each day can be unticked before applying; a day that already has meals is
+   **appended to, never replaced**, unless the user explicitly picks „zastąp" — the same choice
+   `copyMealsInto` already models as `CopyMode`. Unticking a day that a run covers shortens the
+   run: the cooking day drops back to what the remaining days actually eat, because a pot cooked
+   for three days with only two of them eaten is a shopping list that over-buys.
+   Applying writes day by day through the existing repository operations, so `goalSnapshot`
+   capture, tag counts and sync all behave exactly as they do for a meal added by hand. The
+   payoff lands for free: a generated week feeds straight into the shopping list that already
+   exists.
+
+8. **„Za mało przepisów" is three different sentences.** A dead end that says only
+   „nie da się" is the worst thing this feature could do. The failure is typed and named:
+
+   - no recipe carries a slot's tags → name the slot and the tags;
+   - the library is too small outright → say how many usable recipes there are;
+   - nothing fits the tolerance → **show the best plan found anyway**, with the difference
+     spelled out („najbliżej: +230 kcal, −18 g białka"), and let the user accept it or relax
+     the tags with one tap.
+
+9. **The template editor in Settings.** A „Planer posiłków" section: reorderable rows, each with
+   a name, a `TagInput`, a share and „Gotuję na" (1–3 days); add and remove a row; a reset to
+   the default template, which ships with the lunch slot set to two days. Below the slots, the
+   seven weekdays, each either „normalnie" or its own run length — that table is `cookDays`, and
+   it is where „w niedzielę gotuję na 3 dni" is said.
+   Saved into `profile.mealPlan`, which syncs with `profile.json` on the existing path.
+
+10. **Tests.** `planner.test.ts` against a seeded generator: the weights, the portion steps, the
+   repetition decay, the weekly correction and its clamp, the per-day band, each failure mode,
+   and the two exclusions. Cooking ahead gets its own set: the resolution order
+   (`cookDays[weekday]` over the slot's `batchDays`), the
+   `cookingScale = runLength × portionsEaten` invariant at every length, a run counting as one
+   use rather than two or three, no run overrunning the end of the range, the stagger, and the
+   shortening fallback when a full-length run cannot be placed. `e2e/planner.spec.ts` for the
+   sheet: plan an empty day, fill a half-planned one, lock and reroll a single slot, change a
+   run's length, apply a week, and the „za mało przepisów" message. No network is involved
+   anywhere in this phase — the planner never talks to Gemini.
+
+### Acceptance criteria
+
+- [ ] On a day with no meals, „Zaplanuj dzień" proposes one meal per template slot, respecting
+      each slot's tags, and applying them lands the day's kcal within ±15% of its goal.
+- [ ] On a day that already has two meals, „Uzupełnij dzień" leaves those two untouched and
+      fills only the remaining slots, against the goal minus what is already there.
+- [ ] Over a generated week, the **average** daily kcal is within ±5% of the goal, and **no
+      single day** falls outside ±15% of its own.
+- [ ] In a generated week, a slot set to „2 dni" produces pairs of consecutive days eating the
+      same recipe out of one pot: `cookingScale` on the cooking day equals
+      `runLength × portionsEaten`, the following day carries a `cookingScale: 1` copy, and the
+      week's shopping list buys those ingredients once.
+- [ ] With „Niedziela: 3 dni" in `cookDays`, a cook started on Sunday covers Sunday, Monday and
+      Tuesday, at a cooking scale of three times the portions eaten — while the same slot on
+      other weekdays keeps the length its own row asks for.
+- [ ] A weekday set to „1 dzień" never starts a long cook, whatever the slot says.
+- [ ] Changing a run to 1, 2 or 3 days in the proposal re-solves the days it touches, leaves
+      every locked slot alone, and changes nothing in the saved template.
+- [ ] A run counts as one use, not two or three: it is not penalised for its own later days, and
+      it is still avoided for the following fortnight.
+- [ ] Two runs do not start on the same day while any arrangement exists in which they do not.
+- [ ] A meal screen opened on a batch written by the planner shows „Gotuję na 2 dni" already
+      ticked, and unticking it behaves as it does for a batch made by hand.
+- [ ] A day planned on its own inside a week that is already over or under budget gets a
+      corrected target, the correction is clamped to ±10% of the daily goal, and the sheet
+      states in Polish what it did.
+- [ ] „Losuj ponownie" gives a different plan; a locked slot survives every reroll; rerolling
+      one slot changes only that slot.
+- [ ] No recipe appears twice in one proposed day, and a recipe planned in the last few days is
+      not proposed while an equally good unused one exists.
+- [ ] A recipe tagged `nie-planuj`, one with an incomplete ingredient, and one computing to
+      0 kcal are never proposed, and the sheet says how many recipes it skipped.
+- [ ] When nothing fits, the message names which of the three cases it is, and the
+      out-of-tolerance case still shows the best plan found with its difference from the goal.
+      A week made unsatisfiable by too many long runs says that in those terms, rather than
+      reporting a generic miss.
+- [ ] Nothing is written to IndexedDB until „Zastosuj"; applying goes through the existing day
+      operations, so `goalSnapshot`, `macroSnapshot`, tag counts and sync are unchanged.
+- [ ] The solver is deterministic under a seeded generator, and `planner.ts` imports nothing
+      that touches the database, the network or the clock.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.

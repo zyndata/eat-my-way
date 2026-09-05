@@ -50,17 +50,36 @@ await page.waitForFunction(() => document.body.textContent?.includes('Nowy przep
 // An empty library is a screen worth showing — it is what a new user actually meets.
 await shot('library-empty');
 
-// One recipe, so the rest of the walk has something to plan.
-await page.goto(`${BASE_URL}/#/recipes/new/edit`);
-await page.getByLabel('Nazwa').fill('Owsianka z jajkiem');
-await page.getByRole('button', { name: 'Dodaj składnik' }).click();
-await page.getByLabel('Składnik 1').fill('jajko');
-await page.getByRole('option').first().click();
-await page.getByLabel('Ilość').first().fill('120');
-await shot('recipe-editor');
-await page.getByRole('button', { name: 'Zapisz przepis' }).click();
+/** One recipe with one ingredient row. The first one is also the editor screenshot. */
+async function writeRecipe(name, ingredient, amount, { screenshot = false } = {}) {
+  await page.goto(`${BASE_URL}/#/recipes/new/edit`);
+  await page.getByRole('heading', { name: 'Nowy przepis' }).waitFor({ state: 'visible' });
+  await page.getByLabel('Nazwa').fill(name);
+  await page.getByRole('button', { name: 'Dodaj składnik' }).click();
+  await page.getByLabel('Składnik 1').fill(ingredient);
+  await page.getByRole('option').first().click();
+  await page.getByLabel('Ilość').first().fill(amount);
+  if (screenshot) await shot('recipe-editor');
+  await page.getByRole('button', { name: 'Zapisz przepis' }).click();
+  await page.getByRole('heading', { name: 'Przepisy' }).waitFor({ state: 'visible' });
+}
 
+// A handful of recipes, so the planner has something to choose between — one is not a
+// library, and a library of four small ones cannot reach a 2000 kcal day.
+await writeRecipe('Owsianka z bananem', 'płatki owsiane', '130', { screenshot: true });
+await writeRecipe('Kurczak z ryżem', 'ryż biały', '200');
+await writeRecipe('Makaron z pesto', 'makaron pszenny', '150');
+await writeRecipe('Kanapki z serem', 'ser żółty gouda', '110');
+await writeRecipe('Sałatka z tuńczykiem', 'tuńczyk', '180');
+await writeRecipe('Jogurt z bananem', 'banan', '150');
+
+// The planner's proposal, which is the one screen that explains what this app is for.
 await page.goto(`${BASE_URL}/#/`);
+await page.getByRole('button', { name: 'Zaplanuj dzień', exact: true }).click();
+await page.getByRole('button', { name: 'Losuj ponownie' }).waitFor({ state: 'visible' });
+await shot('planner');
+await page.getByRole('button', { name: 'Zamknij' }).click();
+
 await page.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
 await page.getByRole('button', { name: /Owsianka/ }).click();
 await shot('day');
