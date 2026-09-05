@@ -108,10 +108,22 @@ interface ErrorDetail {
   retryDelay?: string;
 }
 
+/**
+ * What Google reports about each URL the `url_context` tool tried to open. Four statuses, and
+ * they are the difference between „nie udało się" and a sentence the user can act on: a page
+ * behind a login is a paste away from working, a page whose host refuses Google's fetcher is
+ * not going to start working on a retry.
+ */
+interface UrlMetadata {
+  retrievedUrl?: string;
+  urlRetrievalStatus?: string;
+}
+
 interface GeminiResponse {
   candidates?: {
     content?: { parts?: { text?: string }[] };
     finishReason?: string;
+    urlContextMetadata?: { urlMetadata?: UrlMetadata[] };
   }[];
   promptFeedback?: { blockReason?: string };
   error?: { message?: string; status?: string; details?: ErrorDetail[] };
@@ -149,6 +161,45 @@ function readQuota(details: readonly ErrorDetail[] | undefined): {
   }
 
   return { perDay, ...(limit === undefined ? {} : { limit }), ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }) };
+}
+
+/**
+ * Why the page never reached the model, when Google says so.
+ *
+ * `undefined` means „nothing to complain about": either the response carried no retrieval
+ * metadata at all — an older model, or a call that used no tool — or at least one URL came
+ * back successfully, in which case the model had a page to read and any failure after that is
+ * a different failure. Only a run where *every* attempted URL failed is reported here.
+ *
+ * The status string is matched by suffix rather than compared whole: Google has renamed the
+ * prefix once already, and a new status this code has never heard of should land on the
+ * general sentence instead of being read as a success.
+ */
+function retrievalFailure(body: GeminiResponse): GeminiError | undefined {
+  const rows = body.candidates?.[0]?.urlContextMetadata?.urlMetadata ?? [];
+  if (rows.length === 0) return undefined;
+
+  const statuses = rows.map((row) => (row.urlRetrievalStatus ?? '').toUpperCase());
+  if (statuses.some((status) => status.endsWith('SUCCESS'))) return undefined;
+
+  const paste = 'Otwórz ją w przeglądarce, skopiuj treść przepisu i wklej ją tutaj zamiast linku.';
+
+  if (statuses.some((status) => status.endsWith('PAYWALL'))) {
+    return new GeminiError(
+      'bad-response',
+      `Ta strona jest za logowaniem albo płatnym dostępem, więc Gemini jej nie otworzył. ${paste}`
+    );
+  }
+  if (statuses.some((status) => status.endsWith('UNSAFE'))) {
+    return new GeminiError(
+      'bad-response',
+      `Google uznał tę stronę za niebezpieczną i jej nie otworzył. ${paste}`
+    );
+  }
+  return new GeminiError(
+    'bad-response',
+    `Gemini nie zdołał pobrać tej strony — serwis mógł odrzucić robota Google albo nie odpowiedzieć na czas. ${paste}`
+  );
 }
 
 /** Concatenate the text parts of the first candidate. Non-text parts are ignored. */
@@ -307,6 +358,12 @@ export async function generateText(request: GeminiRequest): Promise<string> {
 
   // Reported before the emptiness check below: Google answered, so the quota was spent.
   request.onusage?.(parsed.usageMetadata?.totalTokenCount ?? 0);
+
+  // Before the text is read: a model that could not open the page still answers *something*,
+  // and that something is what used to reach the user as „nie udało się otworzyć tej strony
+  // ani znaleźć na niej przepisu" — one sentence for four different causes.
+  const retrieval = retrievalFailure(parsed);
+  if (retrieval !== undefined) throw retrieval;
 
   const text = candidateText(parsed);
   if (text.trim() === '') {
