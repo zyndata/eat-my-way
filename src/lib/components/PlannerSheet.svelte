@@ -42,7 +42,10 @@
 
   const LOCK = 'M7 11V8a5 5 0 0 1 10 0v3M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z';
   const UNLOCK = 'M8 11V8a5 5 0 0 1 9.5-2M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z';
-  const DICE = 'M4.5 4.5h15v15h-15zM9 9h.01M15 15h.01M12 12h.01';
+  // Was a die, which at 16 px is a square with three specks in it — next to a padlock that
+  // reads as an unchecked checkbox. Pips cannot be made to survive that size, so the glyph
+  // says the action instead of the metaphor: the same circular arrow „Losuj ponownie" earns.
+  const REROLL = 'M20 12a8 8 0 1 1-2.3-5.6M20 4v4h-4';
 
   let {
     open = false,
@@ -396,6 +399,7 @@
                                 ? 'bg-(--color-accent) text-(--color-accent-ink)'
                                 : ''}"
                               aria-label="Gotuj na {length} dni"
+                              title="Gotuj na {length} dni"
                               aria-pressed={run.dates.length === length}
                               onclick={() => setRunLength(run, length)}
                             >
@@ -410,6 +414,9 @@
                           ? 'text-(--color-accent)'
                           : 'text-(--color-ink-muted)'}"
                         aria-label="{locks.includes(run.id) ? 'Odblokuj' : 'Zablokuj'} {run.recipeName}"
+                        title={locks.includes(run.id)
+                          ? 'Odblokuj — kolejne losowanie może to zmienić'
+                          : 'Zablokuj — kolejne losowanie tego nie ruszy'}
                         aria-pressed={locks.includes(run.id)}
                         onclick={() => toggleLock(run.id)}
                       >
@@ -419,9 +426,10 @@
                         type="button"
                         class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
                         aria-label="Przelosuj {slotLabel(run.slotId)}"
+                        title="Przelosuj tylko ten posiłek — reszta zostaje"
                         onclick={() => solve(run.id)}
                       >
-                        <NavIcon path={DICE} class="size-4" />
+                        <NavIcon path={REROLL} class="size-4" />
                       </button>
                     </div>
                   {/if}
