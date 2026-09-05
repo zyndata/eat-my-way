@@ -67,6 +67,8 @@
   let loading = $state(true);
   let applying = $state(false);
   let error = $state('');
+  /** Why a click did less than it looked like it would. Cleared by the next solve. */
+  let note = $state('');
 
   let goals = $state<Macros>({ kcal: 0, protein: 0, carbs: 0, fat: 0 });
   let template = $state<MealPlanTemplate>(templateOf(undefined));
@@ -164,9 +166,17 @@
   /**
    * One solve. `only` rerolls a single cook by locking every other one, which is exactly what
    * „przelosuj ten posiłek" has to mean if the rest of the plan is to stay put.
+   *
+   * Rerolling one run also **bars the recipe it currently holds**. The search returns the
+   * cheapest complete draw, so with everything else locked it answers the same recipe every
+   * time: the first click changed the row, every click after it did nothing and said nothing.
+   * When barring it leaves the slot with nothing to offer, the row keeps what it had and the
+   * sheet says so, rather than dropping the whole proposal for a click that asked for very
+   * little (decision 288).
    */
   function solve(only?: string): void {
     error = '';
+    note = '';
     const rows = replace ? dayRows.filter((row) => !dates.includes(row.date)) : dayRows;
     balance = weekBalance(dates, dayRows, goals);
 
@@ -175,14 +185,28 @@
         ? (proposal?.runs ?? []).filter((run) => locks.includes(run.id))
         : (proposal?.runs ?? []).filter((run) => run.id !== only);
 
-    const result = planRange({
+    const rerolled = only === undefined ? undefined : proposal?.runs.find((run) => run.id === only);
+
+    const request = {
       days: planDayInputs(dates, rows, goals, template, balance, slotOverrides),
       template,
       candidates: candidatesRef.list,
       locked: kept,
       runLengths,
       random: Math.random
-    });
+    };
+
+    let result =
+      rerolled === undefined
+        ? planRange(request)
+        : planRange({ ...request, avoid: [rerolled.recipeId] });
+
+    if (!result.ok && rerolled !== undefined) {
+      // Nothing else fits this slot. Solve again without the bar so the row keeps a meal, and
+      // say why it did not change — an unexplained no-op is what this whole branch is for.
+      result = planRange(request);
+      note = `Nie ma innego przepisu na „${slotLabel(rerolled.slotId)}" — zostaje ten sam.`;
+    }
 
     if (result.ok) {
       proposal = result.proposal;
@@ -462,6 +486,10 @@
 
     {#if error !== ''}
       <p class="pt-3 text-sm text-(--color-danger)">{error}</p>
+    {/if}
+
+    {#if note !== ''}
+      <p class="pt-3 text-sm text-(--color-ink-muted)" role="status" aria-live="polite">{note}</p>
     {/if}
 
     <div class="flex flex-wrap justify-end gap-2 pt-4">

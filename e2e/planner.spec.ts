@@ -166,6 +166,16 @@ test('a slot can be locked and the rest rerolled, and one slot rerolled on its o
   await sheet.getByRole('button', { name: 'Przelosuj Kolacja' }).click();
   const after = await Promise.all([0, 1, 2, 3].map(nameOf));
   expect(after.slice(0, 3)).toEqual(before.slice(0, 3));
+
+  // And it keeps rerolling: the search would otherwise answer the same recipe every time,
+  // so the second click looked like a dead button (decision 288).
+  let previous = await nameOf(3);
+  for (let click = 0; click < 3; click += 1) {
+    await sheet.getByRole('button', { name: 'Przelosuj Kolacja' }).click();
+    const next = await nameOf(3);
+    expect(next).not.toBe(previous);
+    previous = next;
+  }
 });
 
 test('a week is planned, applied, and its batch reads as a batch on the meal screen', async ({

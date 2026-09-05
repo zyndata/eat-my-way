@@ -801,6 +801,85 @@ describe('locks', () => {
     }
   });
 
+  it('rerolls one run into a different recipe, click after click', () => {
+    // The search returns the *cheapest* complete draw, so re-solving one run with everything
+    // else locked answers the same recipe every time. `avoid` is what makes the second click
+    // of „przelosuj" do something (decision 288): five clicks, five changes.
+    const days = inputs([MONDAY]);
+    let runs = (() => {
+      const first = planRange({
+        days,
+        template: FOUR_SLOTS,
+        candidates: library(),
+        random: seededRandom(1)
+      });
+      expect(first.ok).toBe(true);
+      return first.ok ? first.proposal.runs : [];
+    })();
+
+    const target = runs.find((run) => run.slotId === 'sniadanie')?.id as string;
+    const seen: string[] = [];
+
+    for (const seed of [2, 3, 4, 5, 6]) {
+      const current = runs.find((run) => run.id === target) as PlanRun;
+      const again = planRange({
+        days,
+        template: FOUR_SLOTS,
+        candidates: library(),
+        locked: runs.filter((run) => run.id !== target),
+        avoid: [current.recipeId],
+        random: seededRandom(seed)
+      });
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      const next = again.proposal.runs.find((run) => run.id === target) as PlanRun;
+      expect(next.recipeId).not.toBe(current.recipeId);
+      seen.push(next.recipeId);
+      runs = again.proposal.runs;
+    }
+
+    expect(seen).toHaveLength(5);
+  });
+
+  it('leaves a locked run alone even when its recipe is the one being avoided', () => {
+    // `avoid` speaks to the pools the search draws from; a locked run never comes out of one.
+    const first = planRange({
+      days: inputs([MONDAY]),
+      template: FOUR_SLOTS,
+      candidates: library(),
+      random: seededRandom(1)
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const locked = first.proposal.runs.find((run) => run.slotId === 'obiad') as PlanRun;
+
+    const again = planRange({
+      days: inputs([MONDAY]),
+      template: FOUR_SLOTS,
+      candidates: library(),
+      locked: [locked],
+      avoid: [locked.recipeId],
+      random: seededRandom(9)
+    });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.proposal.runs.find((run) => run.slotId === 'obiad')).toEqual(locked);
+  });
+
+  it('fails rather than substituting when the only recipe for a slot is avoided', () => {
+    // What the sheet's fallback is for: one recipe, barred, so there is nothing to draw. The
+    // solver says so instead of quietly reusing it, and the sheet re-solves without the bar.
+    const one: MealPlanTemplate = { slots: [slot('obiad', 1)] };
+    const result = planRange({
+      days: inputs([MONDAY], macros(600, 40, 60, 20)),
+      template: one,
+      candidates: [candidate('only', 600)],
+      avoid: ['only'],
+      random: seededRandom(4)
+    });
+    expect(result.ok).toBe(false);
+  });
+
   it('re-solves the days a run’s new length touches and leaves every lock alone', () => {
     const template: MealPlanTemplate = {
       slots: [slot('sniadanie', 0.3), slot('obiad', 0.45, 1), slot('kolacja', 0.25)]

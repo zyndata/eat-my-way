@@ -387,6 +387,16 @@ export interface PlanRequest {
   locked?: readonly PlanRun[];
   /** The sheet's 1/2/3 control, keyed by run id. One-off; never written to the template. */
   runLengths?: Readonly<Record<string, number>>;
+  /**
+   * Recipes the search may not draw, for this solve only. Locked runs are unaffected — they
+   * are kept verbatim and never come out of a pool.
+   *
+   * This exists because the search is deterministic where it matters: it returns the *cheapest*
+   * complete draw, so re-solving one run with everything else locked answers the same recipe
+   * every time. Without this, the second click of „przelosuj" changed nothing and said nothing
+   * (STATE.md decision 288). The sheet passes the recipe currently in the row it is rerolling.
+   */
+  avoid?: readonly string[];
   random: RandomSource;
   /** Draws per solve. Lower only in a test that wants the search to be cheap. */
   restarts?: number;
@@ -605,8 +615,14 @@ class Solver {
         return [day.date, new Map(free.map((slot, index) => [slot.id, shares[index] as number]))];
       })
     );
+    const avoided = new Set(request.avoid ?? []);
     this.pools = new Map(
-      this.slots.map((slot) => [slot.id, candidatesForSlot(request.candidates, slot)])
+      this.slots.map((slot) => [
+        slot.id,
+        candidatesForSlot(request.candidates, slot).filter(
+          (candidate) => !avoided.has(candidate.recipeId)
+        )
+      ])
     );
   }
 
