@@ -3502,6 +3502,48 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      protein, carbohydrate and fat are drawn on every other screen. The tie-breakers are visible;
      they are just aggregated at the level the decision is made.
 
+### 2026-09-05 — Phase 13 follow-up: three things found by using it
+
+288. **The second click of „przelosuj" did nothing, and said nothing.** The search returns the
+     *cheapest* complete draw, so re-solving one run with every other run locked answers the
+     same recipe every time: the first click changed the row, and every click after it
+     recomputed its way back to the same answer. Nothing was broken, nothing was reported, and
+     the button looked dead. Measured before it was changed — five clicks on one row gave
+     `r6 → r3 → r3 → r3 → r3 → r3`.
+
+     `PlanRequest.avoid` is the fix: recipe ids the search may not draw for this solve only.
+     The sheet passes the recipe the row currently holds, so a click always lands somewhere
+     else, and repeated clicks walk the pool instead of standing still. Locked runs are
+     untouched by it — they are kept verbatim and never come out of a pool. When barring the
+     current recipe leaves the slot with nothing at all, the sheet solves again without the
+     bar and says „Nie ma innego przepisu na «X» — zostaje ten sam", because a click that
+     cannot do anything must still explain itself. It is `avoid`, not „exclude the last N":
+     one recipe is what the complaint is about, and a history would need a policy for when it
+     expires.
+
+289. **A page Gemini could not open now says which failure it was.** Every retrieval failure —
+     a host that refuses Google's fetcher, a login wall, a page Google judges unsafe, a
+     timeout — arrived as the same sentence, because the client never read
+     `urlContextMetadata` and only saw the model answering `BRAK_PRZEPISU`. The status is in
+     the response, per URL, and Google distinguishes SUCCESS / PAYWALL / UNSAFE / ERROR.
+     `retrievalFailure` reports only a run where *every* attempted URL failed, matches the
+     status by suffix so a renamed prefix or a new status lands on the general sentence rather
+     than being read as success, and is checked **after** `onusage`: Google answered, so the
+     quota was spent whatever the answer said.
+
+     What prompted it: `kwestiasmaku.com` resets the connection for any client identifying as
+     `Google-Extended` — verified with curl against a recipe page, the homepage and a category
+     page, while `Googlebot` and an ordinary browser UA are served normally. The app could not
+     have told the user that, and still cannot name the host's rule, but „nie zdołał pobrać tej
+     strony" is a different instruction from „nie ma na niej przepisu".
+
+290. **The macro row is two lines, not one.** „Węglowodany" and „249/250" need about 124 px at
+     `text-xs`, and a third of a 400 px screen is 114, so the middle column overflowed and
+     printed over „Tłuszcz" — a flex item does not shrink below its content and a grid track is
+     `auto`-sized, so neither gave way. Truncating the label was tried first and left „Węglo…",
+     which is not a word. Stacking the number under the label fits at every width the app
+     supports, keeps the three bars on one baseline, and costs one line of height per day card.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
