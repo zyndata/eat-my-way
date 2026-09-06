@@ -3544,6 +3544,57 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      which is not a word. Stacking the number under the label fits at every width the app
      supports, keeps the three bars on one baseline, and costs one line of height per day card.
 
+### 2026-09-06 — Barcode versus label photograph, measured on fourteen packages
+
+291. **The label scan read fourteen packages out of fourteen, without a single wrong number.**
+     Fifty-six values out of fifty-six matched the print, on the app's own path: `SCAN_SYSTEM`
+     read out of `scan.ts` rather than retyped, downscale to 1024 px at JPEG 0.8,
+     `MEDIA_RESOLUTION_MEDIUM`, `temperature: 0`, `gemini-3.5-flash-lite` — the profile default.
+     Median 1.7 s per scan, ~1065 tokens. Four of the fourteen were harder than anything the
+     prompt was written against and none of them cost a value: **Almette** prints „w 100 g"
+     beside „w porcji (15 g)" and the scan took 250 kcal, not 38 (rule 1, on a real two-column
+     label at last); **halloumi** has no table at all, its values run inside a prose paragraph;
+     **Pilos UHT cream** carries an Estonian/Latvian/Hungarian table with no Polish in it; and
+     all fourteen lead with kilojoules, all fourteen came back in kcal. The two criteria
+     PLAN.md left unticked for Phase 12 are now not merely ticked but over-evidenced.
+
+     The one error in the set was a *name*: „Makaron **Welski**" for „Wiejski", off a decorative
+     handwritten face. The macros for that pack were exact. Separately, the Pilos cottage cheese
+     came back `name: null` because the front of the tub was outside the frame — the refusal
+     rule working, as in decision 254, rather than a failure.
+
+292. **Open Food Facts covers this household — 13 of 14, all four fields present — and that
+     turned out not to be the number that decides anything.** Coverage cleared open question 30's
+     „eight in ten" bar with room to spare (93%), and the one miss was a small-producer pasta
+     (Pol-Mak). But only **9 of the 13 hits agreed with the package in hand on all four values**
+     — 42 of 52 numbers, 81%. The four disagreements are not database sloppiness, and three
+     of them share one cause: **a barcode does not identify what the user is holding.**
+
+     - *Tuńczyk Nixe* (`4056489254676`, EAN-13): the entry is the **German** pack, „Thunfisch
+       Filets in Sonnenblumenöl", declaring the undrained contents at 165 kcal. The Polish pack
+       declares „po odsączeniu" at 139. **19% apart, both correct**, one barcode. The entry was
+       modified 2026-09-01, so this is not staleness.
+     - *Halloumi* (`20775995`, EAN-8): the entry is „Mild & Salty", created 2018; the pack is the
+       dried-mint variant. 302 vs 317 kcal.
+     - *Jogurt grecki* (`20761776`, EAN-8): the entry is the **Hungarian** „Krémes görögjoghurt".
+       121 vs 125 kcal, carbs 4 vs 5.
+     - *Filet z piersi kurczaka*: 129 vs 130 kcal — rounding, and the only harmless one.
+
+     **Four of the fourteen codes are EAN-8 with a 20–29 prefix**, which is restricted
+     circulation: store-internal, not globally unique by design. Lidl reuses them across
+     national variants and, over eight years, across product variants. On a Lidl-heavy shopping
+     list — which is what this household's list is — that is the common case, not the edge.
+
+293. **Stage B will not be built, and this is a deliberate deviation from PLAN.md.** PLAN.md
+     gates the WebAssembly decoder on coverage, and coverage passed. It is being declined on a
+     dimension PLAN.md did not anticipate and decision 271 only suspected: **agreement with the
+     package**. Scanning the label is 56/56; the barcode path is 42/52 and fails hardest on the
+     shop this household actually uses. It also costs a decoder in the bundle of an app whose
+     CLAUDE.md requires every dependency to justify itself, and it saves no photograph — the
+     user must frame something either way, and a small barcode is not an easier target than a
+     large table. PLAN.md's stage B description is superseded by this entry; the scan is the
+     only route from a package to a `custom:*` row.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3871,7 +3922,20 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     still works — it retries once without them — so what the visit measures is speed, not
     whether the feature runs. Worth timing the same package before and after.
 
-30. **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
+30. **Does Open Food Facts cover what this household actually buys? Answered 2026-09-06 on
+    fourteen packages — and the question turned out to be the wrong one. Closed.**
+
+    Coverage is **13 of 14** (93%), every hit carrying all four `*_100g` fields, so the „eight
+    in ten" bar this question set is cleared. But agreement with the print is **9 of 13**, and the
+    gap decision 271 suspected is structural rather than incidental: a barcode is shared across
+    national variants that declare different values, and four of these fourteen codes are EAN-8
+    restricted-circulation numbers that Lidl reuses. The measurement, the four disagreements and
+    the verdict are decisions 291–293. **Stage B is declined**, deliberately against PLAN.md's
+    coverage criterion, and the label scan — 56 values out of 56 — stays the only path.
+
+    The original text of this question follows.
+
+    **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
     fired (decision 270), but the number that decides whether a WebAssembly decoder earns its
     place is coverage — on *these* shopping habits, not on the ~37 200 products tagged
     `countries_tags=poland` in the abstract. A shortcut that works on eight products in ten is

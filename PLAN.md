@@ -125,7 +125,8 @@ days/2026-09.json    # one file per month: { "2026-09-03": Day, ... }
 - Open Food Facts as a later second source for branded Polish products (has CORS — confirmed,
   `access-control-allow-origin: *`). Scoped and scheduled in Phase 12, stage B: a barcode scan
   that fills one custom ingredient, deferred behind a written trigger, and never a bulk import
-  into the curated USDA bundle.
+  into the curated USDA bundle. **Declined 2026-09-06** — measured and rejected on agreement
+  with the package, not coverage; see STATE.md decisions 291–293.
 
 ## Data model
 
@@ -1053,8 +1054,9 @@ phone that would type them has a camera pointed at the table. This phase makes t
 it — the user photographs the nutrition table, the fields fill themselves, and what could not
 be read stays empty.
 
-**The phase ships in two stages, and the second one may never be built.** Stage A reads the
-printed table with the Gemini key the app already holds; stage B adds a barcode scan against
+**The phase ships in two stages, and the second one was never built** (declined 2026-09-06,
+decisions 291–293). Stage A reads the printed table with the Gemini key the app already holds;
+stage B would have added a barcode scan against
 Open Food Facts as a free shortcut for packaged products. A is first because it covers every
 package — every product has a table, not every product is in a database — and because it needs
 no new dependency, no new host in the CSP and no camera permission. B is deferred behind a
@@ -1188,7 +1190,13 @@ Gemini section is amended to say so, rather than left to contradict this phase.
       is recorded in STATE.md first.
 - [x] All UI text in Polish; code and comments in English.
 
-### Stage B — the barcode (deferred, with a written trigger)
+### Stage B — the barcode (declined 2026-09-06, superseded)
+
+> **This section is history.** Stage B was measured on fourteen packages and declined: Open Food
+> Facts covers this household (13 of 14) but agrees with the print on only 9 of 13, because a
+> barcode does not identify the national or store variant the user is holding — while the label
+> scan read 56 values out of 56. See STATE.md decisions 291–293 and open question 30. **Do not
+> build what the rest of this section describes without reopening that decision first.**
 
 Not built in this phase. It is written down here so that the decision to build it is a decision
 about evidence rather than a fresh design session.
