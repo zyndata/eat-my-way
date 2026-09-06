@@ -11,6 +11,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Documentation
 
 - Record that the beacon loads on the live site
+- Record the edge cache rule and how the beacon gets here
+
+### Miscellaneous
+
+- Regenerate the changelog
 
 ## [1.9.0] - 2026-09-06
 
