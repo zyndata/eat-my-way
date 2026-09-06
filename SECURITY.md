@@ -60,7 +60,10 @@ Security-relevant problems are most likely to look like:
   `script-src 'wasm-unsafe-eval'`, which is *not* `unsafe-eval`: it permits WebAssembly
   compilation and nothing else, and exists because the vault's Argon2id (hash-wasm, in a Web
   Worker) is WebAssembly. `script-src` and `frame-src` also allow
-  `https://accounts.google.com` for Google Identity Services;
+  `https://accounts.google.com` for Google Identity Services, and `script-src` allows
+  `https://static.cloudflareinsights.com` for the Cloudflare Web Analytics beacon the edge
+  injects into the document — a page-view count, which reports to `/cdn-cgi/rum` on this same
+  origin and reads nothing the app stores;
 - **OAuth handling** that requests a broader scope than `drive.appdata`, leaks a token, or
   silently binds one Google account's data to another account's `sub`;
 - **untrusted input treated as markup or code**: recipe text pasted by the user, JSON returned

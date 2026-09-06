@@ -3663,6 +3663,43 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      one. The banner also states the consequence, which was never on screen: accepting merges
      this device's data into that account's Drive, and „Rozłącz" changes nothing locally.
 
+### 2026-09-06 — counting the visits
+
+297. **The app now has analytics, and it cost one token in `script-src`.** The question was how
+     many people open the site, from which country and on what kind of device, without adding a
+     backend the architecture does not have. Cloudflare already proxies every name in the
+     `gorny.dev` zone (decisions 14 and 21), so two answers were already on the shelf:
+
+     - **Zone analytics** (Analytics → Traffic) needs nothing at all, but it counts *requests to
+       the edge* — and this is a PWA whose service worker answers every navigation from the
+       precache (`navigateFallback`, decision 238). A returning user generates no request, so
+       server-side numbers see first visits and little else. It also has no device breakdown.
+     - **Web Analytics / RUM**, enabled globally on the zone, injects
+       `https://static.cloudflareinsights.com/beacon.min.js` into the document at the edge. It
+       is measured in the browser, so it counts an app *opening*, including from cache, which is
+       the number actually wanted. Cookie-less, no identifier, and it reads nothing the app
+       stores.
+
+     RUM is on, and the `Caddyfile` widens `script-src` by that one host. **The host, not the
+     exact file**: the injected `src` carries a cache-busting path segment after
+     `beacon.min.js`, and a CSP source expression with a path matches the path exactly.
+     `connect-src` is untouched — automatic injection posts to `/cdn-cgi/rum` on this same
+     origin, which Cloudflare answers itself and `'self'` already covers. Manual embedding is
+     the variant that would have needed `cloudflareinsights.com` there, and that is a second
+     reason to prefer the injected one.
+
+     This does not reverse **decision 218**, which left Cloudflare's bot-detection *inline*
+     script blocked. That one is inline, unversioned and unnamed by the policy; this is a named
+     host serving one file with an SRI hash, and it buys a number the project wants. `README.md`
+     and `SECURITY.md` both say it is there — „no backend" stays true, „nothing is measured"
+     never was a promise, and it should not become a quiet lie.
+
+     **Verified locally only in the negative sense the container allows**: no edge sits in front
+     of `localhost:8080`, so nothing is injected there and the e2e run proves only that the
+     policy still parses and the app still reports zero violations. That the beacon actually
+     loads is a production check, on the live site, after the release.
+
+
 
 ## Open questions
 

@@ -30,6 +30,8 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 - **Your data stays yours.** There is no application backend. IndexedDB in your browser is the
   source of truth; Google Drive's private `appDataFolder` is only a sync layer, so the data is
   visible to this app and to nobody else — not even to a server of mine, because there isn't one.
+  The one measurement that exists is Cloudflare Web Analytics, injected at the edge: a
+  cookie-less page-view count with no identifier, which reads nothing the app stores.
 - **The numbers are repeatable.** Nutrition comes from a bundled subset of the USDA FoodData
   Central database, computed locally. The same meal always produces the same calories. AI never
   invents a nutrition value: it parses a pasted recipe into structured ingredients, and it can
