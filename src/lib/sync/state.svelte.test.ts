@@ -373,6 +373,39 @@ describe('a different Google account', () => {
     expect(state.syncState.message).toContain('inne');
   });
 
+  it('names the account the local data came from, so the screen can say which is which', async () => {
+    const state = await load();
+    h.meta.set('driveAccountLabel', 'stare.konto@example.com');
+    const other = { id: 'sub-2', label: 'nowe.konto@example.com' };
+    h.engine.sync.mockResolvedValue({ status: 'foreign-account', account: other, storedSub: 'sub-1' });
+
+    await state.connectDrive();
+
+    expect(state.syncState.foreignAccount?.storedLabel).toBe('stare.konto@example.com');
+  });
+
+  it('accepts the other account after a disconnect, which is how the switch is actually made', async () => {
+    // „Rozłącz", then connect the other account, then „Używaj tego konta". The disconnect
+    // withdraws permission to talk to Google in the background, so an acceptance sent as a
+    // background sync was refused before it reached the engine and the warning simply came
+    // back — the account could never be switched from the settings screen (decision 296).
+    const state = await connected();
+    state.disconnectDrive();
+
+    const other = { id: 'sub-2', label: 'nowe.konto@example.com' };
+    h.engine.sync.mockResolvedValue({ status: 'foreign-account', account: other, storedSub: 'sub-1' });
+    await state.connectDrive();
+    expect(state.syncState.foreignAccount).not.toBeNull();
+
+    h.engine.sync.mockResolvedValue(ok({ account: other }));
+    await state.useDifferentAccount();
+
+    expect(h.engine.sync.mock.calls.at(-1)?.[0]).toMatchObject({ acceptAccount: true, interactive: true });
+    expect(state.syncState.connected).toBe(true);
+    expect(state.syncState.account).toEqual(other);
+    expect(state.syncState.foreignAccount).toBeNull();
+  });
+
   it('carries the explicit acceptance through to the engine and clears the warning', async () => {
     const state = await connected();
     const other = { id: 'sub-2' };

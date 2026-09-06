@@ -27,7 +27,9 @@
       </p>
     {:else if syncState.foreignAccount !== null}
       <p class="text-xs text-(--color-warn)">
-        Połączone inne konto Google.
+        Połączone inne konto Google{syncState.foreignAccount.account.label
+          ? ` (${syncState.foreignAccount.account.label})`
+          : ''}.
         <a class="underline" href="#/settings">Rozstrzygnij w Ustawieniach</a>
       </p>
     {:else}

@@ -3637,6 +3637,33 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      „Skopiuj z innego dnia" as its third button, which put a rare action next to the ones that
      matter on the screen a new user meets. The menu keeps both copy directions.
 
+296. **Switching to another Google account was impossible from the settings screen, and the
+     warning never said which account it meant.** Reported from use: „jak zaloguję się jednym
+     kontem a potem chcę zalogować się innym […] niezależnie co robię nie mogę podłączyć nowego
+     konta. Dodatkowo nie wiem którego konta dotyczy button »Używaj tego konta«."
+
+     Both halves were real. The **switch** is a three-step act — „Rozłącz", „Połącz Dysk
+     Google" (the only path that opens Google's account chooser, because `prompt: 'consent'`
+     runs there), then „Używaj tego konta" on the mismatch warning. `disconnectDrive` clears
+     `silentAllowed`, the flag that decides whether this device may talk to Google without
+     being asked, and `useDifferentAccount` sent its acceptance as a *background* sync — so
+     `syncNow` refused it before the engine ever saw `acceptAccount`, returned „never connected
+     on this device", and the next attempt produced the same warning. The loop the user
+     described. It is now interactive, which is what it always was: a click. A valid token is
+     still returned before anything interactive happens, so accepting the account the popup has
+     just handed back opens no second window; only a lapsed session prompts, and from a click
+     that is correct.
+
+     The **naming** half: `foreignAccount` carried the new account's e-mail all along and the
+     banner showed neither it nor the old one. It now names both — the new one from
+     `about.get`, the previous one from `driveAccountLabel`, which every successful sync
+     writes — and the button reads „Używaj konta ktos@example.com". Where Drive returns no
+     address (decision 89: the appdata scope exposes no identity beyond what `about.get`
+     chooses to give) the wording falls back to the old, vaguer sentence rather than inventing
+     one. The banner also states the consequence, which was never on screen: accepting merges
+     this device's data into that account's Drive, and „Rozłącz" changes nothing locally.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

@@ -257,6 +257,13 @@
     keyFieldFilled = false;
   }
 
+  /** Both sides of the „inne konto" question, named wherever the app knows the address. */
+  const foreignLabel = $derived(syncState.foreignAccount?.account.label);
+  const previousLabel = $derived(syncState.foreignAccount?.storedLabel);
+  const useAccountLabel = $derived(
+    foreignLabel === undefined ? 'Używaj tego konta' : `Używaj konta ${foreignLabel}`
+  );
+
   const inputClass =
     'mt-1 w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)';
   const buttonClass =
@@ -291,13 +298,28 @@
       {#if syncState.foreignAccount !== null}
         <div class="mt-3 rounded-lg border border-(--color-warn-border) bg-(--color-warn-surface) p-3 text-sm">
           <p class="font-medium">To jest inne konto Google niż poprzednio.</p>
+          <!-- Oba konta z nazwy: „to konto" nie mówi, o które z dwóch chodzi. Gdy Dysk nie
+               poda adresu (zwraca go tylko czasem — decyzja 89), zostaje opis bez adresu. -->
           <p class="pt-1 text-(--color-ink-muted)">
-            Dane na tym urządzeniu pochodzą z innego konta. Nie tworzymy po cichu nowego profilu —
-            zdecyduj sam.
+            {#if foreignLabel !== undefined}
+              Zalogowano na koncie <span class="font-medium text-(--color-ink)">{foreignLabel}</span>.
+            {:else}
+              Zalogowano na innym koncie Google.
+            {/if}
+            {#if previousLabel !== undefined}
+              Dane na tym urządzeniu pochodzą z konta
+              <span class="font-medium text-(--color-ink)">{previousLabel}</span>.
+            {:else}
+              Dane na tym urządzeniu pochodzą z innego konta.
+            {/if}
+          </p>
+          <p class="pt-1 text-(--color-ink-muted)">
+            „{useAccountLabel}" scali dane z tego urządzenia z Dyskiem tego konta. „Rozłącz"
+            niczego nie zmienia — pozwala połączyć inne konto.
           </p>
           <div class="flex flex-wrap gap-2 pt-3">
             <button type="button" class={buttonClass} onclick={() => void useDifferentAccount()}>
-              Używaj tego konta
+              {useAccountLabel}
             </button>
             <button type="button" class={secondaryClass} onclick={disconnectDrive}>
               Rozłącz

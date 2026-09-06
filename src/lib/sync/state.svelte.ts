@@ -41,8 +41,12 @@ export const syncState = $state<{
   message: string;
   /** Set while the conflict dialog is open; `null` otherwise. */
   conflicts: DayConflict[] | null;
-  /** Set when the connected account is not the one the local data belongs to. */
-  foreignAccount: { account: AccountInfo; storedSub: string } | null;
+  /**
+   * Set when the connected account is not the one the local data belongs to. `storedLabel` is
+   * the e-mail of *that* account when the device has one on record, so the screen can name
+   * both sides of the choice instead of asking about „this account".
+   */
+  foreignAccount: { account: AccountInfo; storedSub: string; storedLabel?: string } | null;
   /** Drive replaced the local vault on the last sync; the user should know. */
   vaultAdopted: boolean;
   /**
@@ -213,7 +217,13 @@ export async function syncNow(options: { interactive?: boolean; acceptAccount?: 
       // A vault that arrived from Drive has to be re-read before anything asks for a secret.
       if (outcome.pulled) await loadVault();
     } else if (outcome.status === 'foreign-account') {
-      syncState.foreignAccount = { account: outcome.account, storedSub: outcome.storedSub };
+      // Written by every successful sync, so it names the account the local data came from.
+      const storedLabel = await repository.getMeta('driveAccountLabel');
+      syncState.foreignAccount = {
+        account: outcome.account,
+        storedSub: outcome.storedSub,
+        ...(storedLabel === undefined ? {} : { storedLabel })
+      };
       syncState.phase = 'idle';
     } else if (outcome.status === 'cancelled') {
       syncState.phase = 'idle';
@@ -246,10 +256,19 @@ export async function connectDrive(): Promise<SyncOutcome> {
   return syncNow({ interactive: true });
 }
 
-/** Continue on an account that is not the stored one, after the user said so explicitly. */
+/**
+ * Continue on an account that is not the stored one, after the user said so explicitly.
+ *
+ * Interactive, because this runs from a click and the click is often the *second* half of
+ * „Rozłącz, then connect the other account": `disconnectDrive` clears `silentAllowed`, so a
+ * background sync from here was refused before it reached the engine and the warning simply
+ * came back on the next attempt — the account could never be switched from this screen
+ * (STATE.md decision 296). A token already in hand is reused, so the usual path — accept the
+ * account the popup has just returned — still opens no second window.
+ */
 export async function useDifferentAccount(): Promise<SyncOutcome> {
   syncState.foreignAccount = null;
-  return syncNow({ interactive: false, acceptAccount: true });
+  return syncNow({ interactive: true, acceptAccount: true });
 }
 
 /**
