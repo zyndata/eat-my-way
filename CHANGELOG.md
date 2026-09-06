@@ -6,7 +6,7 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.8.0] - 2026-09-06
 
 ### Bug Fixes
 
@@ -31,6 +31,8 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - **scripts:** Seed a test library of 20 recipes into a backup file
 - Regenerate the changelog
+- Regenerate the changelog
+- Merge dev — movable planner week and the week button
 
 ## [1.7.0] - 2026-09-05
 
