@@ -15,6 +15,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 - **import:** Say which failure stopped the page from being read
 - **day:** Stack each macro's numbers under its label so they stop colliding
 - **planner:** Make the second click of a reroll do something
+- **day:** Put „Zaplanuj tydzień" beside „Zaplanuj dzień"
 
 ### Documentation
 
@@ -29,6 +30,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Miscellaneous
 
 - **scripts:** Seed a test library of 20 recipes into a backup file
+- Regenerate the changelog
 
 ## [1.7.0] - 2026-09-05
 
