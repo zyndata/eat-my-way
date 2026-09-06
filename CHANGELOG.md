@@ -19,6 +19,12 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Documentation
 
 - Record decisions 288-290 — reroll, retrieval status, macro layout
+- Decline stage B — a barcode does not identify the package
+- Record decisions 294-295 and re-take the calendar screenshot
+
+### Features
+
+- **planner:** Plan a week that starts on the day you choose
 
 ### Miscellaneous
 
