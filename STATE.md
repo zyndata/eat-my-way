@@ -3595,6 +3595,43 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      large table. PLAN.md's stage B description is superseded by this entry; the scan is the
      only route from a package to a `custom:*` row.
 
+### 2026-09-06 — the week you plan is the week you choose
+
+294. **A planned week starts on a day the user picks, not on the Monday of whatever day is in
+     view.** Reported from use, on a Sunday: „nie wiem jak ustawić pierwszy dzień tygodnia do
+     zaplanowania". There was no way, because `plannerWeek` was `weekDates` — the
+     Monday-to-Sunday block decision 74 draws the calendar with. On Sunday 6 September that
+     block is 31 August to 6 September: six days already eaten and one day left. The sheet
+     would have proposed a week the user had lived through.
+
+     Two halves fix it. **The default no longer opens behind today**: `plannerWeekStart` is the
+     Monday of the week in view, clamped forward to today when that Monday is already spent, so
+     Sunday proposes Sunday-to-Saturday and Wednesday proposes Wednesday-onwards. A day in the
+     *past* still plans from its own Monday — looking backwards is a deliberate act, and filling
+     in last Thursday is a thing this app can do. **And the first day is a control**, in the
+     sheet where the range is visible: „Pierwszy dzień", a native date field with a ±1 day step
+     either side. Seven days from there, whatever weekday that is. The heading, the day cards,
+     the balance and the write all follow it, because they all read one derived `range` rather
+     than the prop the caller passed.
+
+     The window stays seven days. „Zaplanuj tydzień" that plans five or ten is a different
+     feature and needs a different name; nothing in use has asked for it. `rangeFrom` in
+     `calendar.ts` counts days from an arbitrary start and `weekDates` is now written in terms
+     of it, so the Monday-first week and the movable one cannot drift apart.
+
+295. **„Zaplanuj tydzień" left the ⋮ menu and became a pill under the week strip.** Also
+     reported from use, and the sharper half of the complaint: the app's headline feature was
+     one of seven rows in an overflow menu, indistinguishable from „Wyczyść dzień". It now sits
+     directly under the strip that draws the week it plans, beside the month toggle, which is
+     the only place on the screen where a week is already the subject. The two pills carry
+     different glyphs — a calendar for the planner, a grid for the month it opens — so they do
+     not read as one control drawn twice.
+
+     What moved the other way: **copying a day is now only in the menu**. The empty-day hint had
+     „Skopiuj z innego dnia" as its third button, which put a rare action next to the two that
+     matter on the screen a new user meets. The menu keeps both copy directions; the hint keeps
+     „Zaplanuj dzień" and „Dodaj posiłek", and the week is one row above it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

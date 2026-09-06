@@ -38,9 +38,11 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 - **It plans the day for you, and never behind your back.** „Zaplanuj dzień" or „Zaplanuj
   tydzień" proposes a meal per slot of your own day template — a recipe *and* a portion count,
   chosen to land on your calorie goal, to avoid what you ate last week, and to cook one pot for
-  two or three days where you said you cook that way. It is a proposal: reroll it, lock the
-  slots you like, change how long a pot lasts, then „Zastosuj". Nothing is written until you do,
-  and no AI is involved — it is arithmetic, done in your browser, offline.
+  two or three days where you said you cook that way. A week is seven days from whichever day
+  you name, not a fixed Monday, and it never opens on days that have already been. It is a
+  proposal: reroll it, lock the slots you like, change how long a pot lasts, then „Zastosuj".
+  Nothing is written until you do, and no AI is involved — it is arithmetic, done in your
+  browser, offline.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
 - **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day
