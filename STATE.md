@@ -3619,18 +3619,23 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      `calendar.ts` counts days from an arbitrary start and `weekDates` is now written in terms
      of it, so the Monday-first week and the movable one cannot drift apart.
 
-295. **„Zaplanuj tydzień" left the ⋮ menu and became a pill under the week strip.** Also
+295. **„Zaplanuj tydzień" is a button beside „Zaplanuj dzień", not a row in the ⋮ menu.** Also
      reported from use, and the sharper half of the complaint: the app's headline feature was
-     one of seven rows in an overflow menu, indistinguishable from „Wyczyść dzień". It now sits
-     directly under the strip that draws the week it plans, beside the month toggle, which is
-     the only place on the screen where a week is already the subject. The two pills carry
-     different glyphs — a calendar for the planner, a grid for the month it opens — so they do
-     not read as one control drawn twice.
+     one of seven rows in an overflow menu, indistinguishable from „Wyczyść dzień". It now
+     stands in the empty-day hint next to „Zaplanuj dzień" — the two are the same kind of act
+     at two scales, and that card is what a day with nothing on it actually offers. Outlined in
+     the accent rather than filled, because two solid buttons in one row shout over each other.
+
+     It was tried first as a pill under the week strip, beside „Pokaż miesiąc", on the argument
+     that the strip is where a week is already the subject. The user rejected it: next to a
+     view toggle it reads as another way to *look* at the calendar, not as the thing that fills
+     it in. **The ⋮ menu keeps a „Zaplanuj tydzień" row anyway** — the hint disappears the
+     moment a day has one meal, and a planned Tuesday is exactly when „zaplanuj mi resztę
+     tygodnia" gets asked.
 
      What moved the other way: **copying a day is now only in the menu**. The empty-day hint had
-     „Skopiuj z innego dnia" as its third button, which put a rare action next to the two that
-     matter on the screen a new user meets. The menu keeps both copy directions; the hint keeps
-     „Zaplanuj dzień" and „Dodaj posiłek", and the week is one row above it.
+     „Skopiuj z innego dnia" as its third button, which put a rare action next to the ones that
+     matter on the screen a new user meets. The menu keeps both copy directions.
 
 ## Open questions
 

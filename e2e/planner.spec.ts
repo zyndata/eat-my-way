@@ -185,7 +185,7 @@ test('a week is planned, applied, and its batch reads as a batch on the meal scr
   await connectWith(device, drive);
   await device.goto('#/');
 
-  // „Zaplanuj tydzień" has its own pill under the week strip — no menu to open (decision 294).
+  // „Zaplanuj tydzień" stands beside „Zaplanuj dzień" on an empty day — no menu to open.
   await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
 
   const sheet = device.getByRole('dialog');
@@ -202,6 +202,12 @@ test('a week is planned, applied, and its batch reads as a batch on the meal scr
   await expect(
     device.getByRole('list', { name: 'Posiłki dnia' }).getByRole('listitem')
   ).not.toHaveCount(0);
+
+  // The empty-day hint that carried the button is gone with the meals in place, so the ⋮ menu
+  // has to keep the week reachable — otherwise the feature disappears once a day is planned.
+  await device.getByLabel('Menu dnia').click();
+  await expect(device.getByRole('button', { name: 'Zaplanuj tydzień' })).toBeVisible();
+  await device.getByLabel('Menu dnia').click();
 
   // A batch written by the planner is the same thing the checkbox writes: the meal screen
   // recognises tomorrow's copy and shows the box ticked (PLAN.md „Gotowanie na zapas").
@@ -322,7 +328,7 @@ test('a run’s length is changed in the proposal without touching the template'
   await connectWith(device, drive);
   await device.goto('#/');
 
-  // „Zaplanuj tydzień" has its own pill under the week strip — no menu to open (decision 294).
+  // „Zaplanuj tydzień" stands beside „Zaplanuj dzień" on an empty day — no menu to open.
   await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
 
   const sheet = device.getByRole('dialog');

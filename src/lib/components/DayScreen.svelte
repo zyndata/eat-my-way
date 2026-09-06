@@ -34,9 +34,6 @@
   const PLUS = 'M12 5v14M5 12h14';
   const CALENDAR =
     'M7 3v3M17 3v3M3.5 9.5h17M5 6h14a1.5 1.5 0 0 1 1.5 1.5v12A1.5 1.5 0 0 1 19 21H5a1.5 1.5 0 0 1-1.5-1.5v-12A1.5 1.5 0 0 1 5 6Z';
-  // The month toggle draws the grid it opens, so the two pills under the strip are not the
-  // same glyph twice.
-  const GRID = 'M4 4h16v16H4zM4 9.5h16M4 15h16M9.5 4v16M15 4v16';
 
   let { date, today }: { date: string; today: string } = $props();
 
@@ -233,18 +230,7 @@
 {:else}
   <WeekStrip summaries={week} selected={date} {today} />
 
-  <!-- „Zaplanuj tydzień" sits under the strip that draws the week rather than inside the ⋮
-       menu: it is the reason the planner exists, and a menu is where a feature goes to be
-       forgotten. Copying a day stayed in the menu, which is where an occasional action belongs. -->
-  <div class="flex flex-wrap items-center justify-center gap-2 pt-1">
-    <button
-      type="button"
-      class="flex items-center gap-1.5 rounded-full border border-(--color-border) px-3 py-1 text-xs font-medium"
-      onclick={() => openPlanner('week')}
-    >
-      <NavIcon path={CALENDAR} class="size-4" />
-      Zaplanuj tydzień
-    </button>
+  <div class="flex justify-center pt-1">
     <button
       type="button"
       class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-(--color-ink-muted)"
@@ -254,7 +240,7 @@
         monthShown = !monthShown;
       }}
     >
-      <NavIcon path={GRID} class="size-4" />
+      <NavIcon path={CALENDAR} class="size-4" />
       {monthShown ? 'Ukryj miesiąc' : 'Pokaż miesiąc'}
     </button>
   </div>
@@ -312,6 +298,16 @@
             onclick={() => openPlanner('day')}
           >
             {day.meals.length === 0 ? 'Zaplanuj dzień' : 'Uzupełnij dzień'}
+          </button>
+          <!-- The buttons in the empty-day hint are the primary way in, but the hint is gone
+               the moment the day has a meal, and „Zaplanuj tydzień" must stay reachable from a
+               day that is already planned. -->
+          <button
+            type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openPlanner('week')}
+          >
+            Zaplanuj tydzień
           </button>
           <button
             type="button"
@@ -380,6 +376,16 @@
             onclick={() => openPlanner('day')}
           >
             Zaplanuj dzień
+          </button>
+          <!-- Outlined in the accent rather than filled: it is the same weight of action as
+               „Zaplanuj dzień" and belongs beside it, but two solid buttons in one row shout
+               over each other and neither reads as the first thing to press. -->
+          <button
+            type="button"
+            class="rounded-lg border border-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent)"
+            onclick={() => openPlanner('week')}
+          >
+            Zaplanuj tydzień
           </button>
           <button
             type="button"
