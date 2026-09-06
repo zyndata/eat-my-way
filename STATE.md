@@ -3697,7 +3697,18 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      **Verified locally only in the negative sense the container allows**: no edge sits in front
      of `localhost:8080`, so nothing is injected there and the e2e run proves only that the
      policy still parses and the app still reports zero violations. That the beacon actually
-     loads is a production check, on the live site, after the release.
+     loads was checked on the live site after v1.9.0, and it does: the document carries
+     `static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495`
+     — the cache-busting segment this decision predicted, which is why the host and not the file
+     is what `script-src` names — and a real browser fetches it with no violation against it. The
+     one violation the live console still reports is `inline`, which is decision 218's
+     bot-detection script and stays blocked.
+
+     Two things the edge does that a `curl` will not show: the beacon is injected only for a
+     request that asks for `text/html` (a bare `curl` gets the document without it), and the RUM
+     POST to `/cdn-cgi/rum` was not observable from a headless run at all — `sendBeacon` on
+     unload is invisible to the automation harness. The dashboard, a few hours later, is the
+     only proof that the count is arriving.
 
 
 
