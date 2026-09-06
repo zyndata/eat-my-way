@@ -40,7 +40,12 @@ Cloudflare → origin hop. Two consequences that are easy to trip over:
   curl -I --resolve eatmyway.gorny.dev:443:127.0.0.1 https://eatmyway.gorny.dev/
   ```
 
-Four Cloudflare rules make this workable, and all four matter:
+Five Cloudflare rules make this workable, and all five matter. **Both cache rules are scoped to
+`http.host eq "eatmyway.gorny.dev"`**, and must stay that way: the zone also carries
+szok.gorny.dev and Home Assistant, and a cache rule matched on a path alone applies to the whole
+zone. Home Assistant is the one that makes this more than tidiness — it answers per-user,
+authenticated requests, and an `Eligible for cache` rule that reached one of its paths could hand
+one session's response to somebody else.
 
 - **WAF custom rule `Deploy health check`** — skips every protection for requests carrying the
   `X-Deploy-Check` header with the `DEPLOY_CHECK_TOKEN` value, so the workflow's final assertion
@@ -51,10 +56,32 @@ Four Cloudflare rules make this workable, and all four matter:
 - **Cache rule `PWA shell - bypass cache`** — bypasses the edge cache for `/`, `/index.html`,
   `/sw.js` and `/manifest.webmanifest`. Cloudflare caches `.js` by default, which would put the
   service worker — the file that governs the app's own caching — into a second, independent
-  cache layer. Hashed assets under `/assets/` are safe to cache and are left alone.
+  cache layer.
+- **Cache rule `Static assets - cache everything`** — marks `/assets/*` eligible for cache, with
+  the edge and browser TTLs taken from the origin's own `Cache-Control`. Leaving those files
+  alone was not enough, and the reason is a trap worth knowing: **Cloudflare decides what to
+  cache by file extension**, and `.json` is not on its list. `ingredients-<hash>.json` — 234 kB,
+  the bundled USDA subset — therefore answered `cf-cache-status: DYNAMIC` and was pulled from the
+  origin by every first visit and every visit after a release, *despite* Caddy marking it
+  `max-age=31536000, immutable`. The rule fixes only the eligibility; the year-long TTL was
+  always in the header. Safe because every name under `/assets/` is content-hashed.
 - **A geo challenge** on connections from outside Poland, which is what keeps crawlers off the
   origin's metered egress. It stays — but it interacts with the app in a way that is worth
   knowing before debugging the next update report.
+
+### Web Analytics is injected here, not built here
+
+Web Analytics (RUM) is enabled on the whole `gorny.dev` zone, so Cloudflare appends the beacon
+`<script>` to this document **at the edge**. Nothing in `dist/` contains it and no token lives in
+the repository; the only thing the app owns is the `script-src` entry in the `Caddyfile` that
+lets it run (STATE.md decision 297). Two things surprise people debugging it:
+
+- The beacon is injected only for a request that asks for `text/html`. A bare `curl` gets the
+  document **without** it, which looks exactly like the feature being broken. Send
+  `Accept: text/html` before concluding anything.
+- Its own POST goes to `/cdn-cgi/rum` on this origin, answered by Cloudflare and never reaching
+  the VM, so `connect-src 'self'` already covers it — and no request for it appears in the
+  server's logs.
 
 ### The geo challenge and the service worker
 

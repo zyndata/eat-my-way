@@ -3711,6 +3711,32 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      only proof that the count is arriving.
 
 
+298. **`ingredients.json` was never cached at the edge, and a `Cache-Control` header was never
+     going to fix it.** Measured on the live site while looking at what the app costs in egress:
+     every asset under `/assets/` carries `public, max-age=31536000, immutable` from the
+     `Caddyfile`, and yet `ingredients-<hash>.json` — 234 kB, the bundled USDA subset and the
+     second-largest file the app ships — answered `cf-cache-status: DYNAMIC`, while the sibling
+     `.js` and `.css` answered `HIT`. **Cloudflare decides eligibility by file extension before
+     it looks at the header, and `.json` is not on its list.** So that file was fetched from the
+     VM on every first visit and on every visit after a release.
+
+     Fixed at the edge, not in the app: a cache rule `Static assets - cache everything` marks
+     `/assets/*` eligible, with edge and browser TTLs taken from the origin's own header — the
+     year was always in the header, only the eligibility was missing. Verified `MISS` then `HIT`,
+     with `/`, `/sw.js` and `/manifest.webmanifest` still `DYNAMIC`, so the shell bypass rule
+     (decision 21) is untouched. Both rules are scoped to `http.host eq "eatmyway.gorny.dev"`,
+     because the zone also carries szok.gorny.dev and Home Assistant and a path-only cache rule
+     is zone-wide.
+
+     **The saving is not the point, and the record should say so.** A first load is ~300 kB
+     compressed and every later one is zero — the service worker answers from precache — so
+     against GCP's 200 GB of free monthly egress the money involved is nil. What this buys is a
+     first load that does not cross Europe to a small VM, and one fewer piece of infrastructure
+     quietly not doing what its header says. Tiered Cache was looked at in the same pass and
+     **not** kept: Cloudflare now bundles Smart Tiered Cache with the paid Smart Shield, and at
+     this traffic it is not worth a subscription.
+
+
 
 ## Open questions
 
