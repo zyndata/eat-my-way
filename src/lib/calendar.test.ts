@@ -9,6 +9,7 @@ import {
   monthStart,
   monthWeeks,
   nextWeekDates,
+  rangeFrom,
   remainingGoals,
   summarizeDates,
   summarizeDay,
@@ -49,6 +50,22 @@ describe('weekStart / weekDates', () => {
       '2026-09-05',
       '2026-09-06'
     ]);
+  });
+});
+
+describe('rangeFrom', () => {
+  it('counts consecutive days from a day that need not be a Monday', () => {
+    // 2026-09-06 is a Sunday: the planner's movable week can start on it.
+    expect(rangeFrom('2026-09-06')).toEqual([
+      '2026-09-06',
+      '2026-09-07',
+      '2026-09-08',
+      '2026-09-09',
+      '2026-09-10',
+      '2026-09-11',
+      '2026-09-12'
+    ]);
+    expect(rangeFrom('2026-09-30', 3)).toEqual(['2026-09-30', '2026-10-01', '2026-10-02']);
   });
 });
 

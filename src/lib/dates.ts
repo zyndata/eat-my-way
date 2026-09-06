@@ -79,6 +79,7 @@ const longFormat = new Intl.DateTimeFormat(LOCALE, {
   month: 'long'
 });
 const weekdayShortFormat = new Intl.DateTimeFormat(LOCALE, { weekday: 'short' });
+const weekdayLongFormat = new Intl.DateTimeFormat(LOCALE, { weekday: 'long' });
 const monthYearFormat = new Intl.DateTimeFormat(LOCALE, { month: 'long', year: 'numeric' });
 const dayMonthFormat = new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'long' });
 
@@ -95,6 +96,11 @@ export function formatDayMonth(key: string): string {
 /** „pon" — the week strip's column header. */
 export function formatWeekdayShort(key: string): string {
   return weekdayShortFormat.format(parseDateKey(key)).replace('.', '');
+}
+
+/** „poniedziałek" — the weekday on its own, where the date is already spelled out beside it. */
+export function formatWeekdayLong(key: string): string {
+  return weekdayLongFormat.format(parseDateKey(key));
 }
 
 /** „wrzesień 2026" */

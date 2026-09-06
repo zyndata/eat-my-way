@@ -6,6 +6,32 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Bug Fixes
+
+- **planner:** A legible reroll icon, and tooltips on the row controls
+- **import:** Show the spinner the label scan already shows
+- **import:** Say which failure stopped the page from being read
+- **day:** Stack each macro's numbers under its label so they stop colliding
+- **planner:** Make the second click of a reroll do something
+- **day:** Put „Zaplanuj tydzień" beside „Zaplanuj dzień"
+
+### Documentation
+
+- Record decisions 288-290 — reroll, retrieval status, macro layout
+- Decline stage B — a barcode does not identify the package
+- Record decisions 294-295 and re-take the calendar screenshot
+
+### Features
+
+- **planner:** Plan a week that starts on the day you choose
+
+### Miscellaneous
+
+- **scripts:** Seed a test library of 20 recipes into a backup file
+- Regenerate the changelog
+
 ## [1.7.0] - 2026-09-05
 
 ### Documentation

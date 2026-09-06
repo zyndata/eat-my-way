@@ -5,6 +5,7 @@
   import { formatDayLong, formatDayMonth, isDateKey, relativeDayLabel } from '../dates';
   import { emptyDay } from '../day';
   import { dayTotals } from '../macros';
+  import { plannerWeek } from '../planner';
   import { repository } from '../repository';
   import { scheduleSync, syncState } from '../sync/state.svelte';
   import BottomSheet from './BottomSheet.svelte';
@@ -126,7 +127,7 @@
    */
   function openPlanner(scope: 'day' | 'week'): void {
     closeMenu();
-    plannerDates = scope === 'day' ? [date] : weekDates(date);
+    plannerDates = scope === 'day' ? [date] : plannerWeek(date, today);
   }
 
   /** „Lista zakupów" for this day or for its whole week. */
@@ -298,6 +299,9 @@
           >
             {day.meals.length === 0 ? 'Zaplanuj dzień' : 'Uzupełnij dzień'}
           </button>
+          <!-- The buttons in the empty-day hint are the primary way in, but the hint is gone
+               the moment the day has a meal, and „Zaplanuj tydzień" must stay reachable from a
+               day that is already planned. -->
           <button
             type="button"
             class="block w-full rounded-lg px-3 py-2 text-left text-sm"
@@ -373,19 +377,22 @@
           >
             Zaplanuj dzień
           </button>
+          <!-- Outlined in the accent rather than filled: it is the same weight of action as
+               „Zaplanuj dzień" and belongs beside it, but two solid buttons in one row shout
+               over each other and neither reads as the first thing to press. -->
+          <button
+            type="button"
+            class="rounded-lg border border-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent)"
+            onclick={() => openPlanner('week')}
+          >
+            Zaplanuj tydzień
+          </button>
           <button
             type="button"
             class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
             onclick={() => (pickerOpen = true)}
           >
             Dodaj posiłek
-          </button>
-          <button
-            type="button"
-            class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
-            onclick={() => (copyFromOpen = true)}
-          >
-            Skopiuj z innego dnia
           </button>
         </div>
       </div>

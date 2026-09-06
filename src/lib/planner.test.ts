@@ -26,6 +26,7 @@ import {
   planRange,
   planWrites,
   plannerWeek,
+  plannerWeekStart,
   repeatCost,
   resolveRunLength,
   runId,
@@ -116,7 +117,7 @@ function inputs(dates: readonly string[], goals = GOALS) {
 
 // 2026-09-07 is a Monday.
 const MONDAY = '2026-09-07';
-const WEEK = plannerWeek(MONDAY);
+const WEEK = plannerWeek(MONDAY, MONDAY);
 
 // ---- purity ------------------------------------------------------------------------------
 
@@ -611,6 +612,40 @@ describe('planning one day', () => {
   });
 });
 
+// ---- which week ---------------------------------------------------------------------------
+
+describe('plannerWeekStart', () => {
+  it('is the Monday of the week in view when that week has not started', () => {
+    // 2026-10-07 is a Wednesday; today is weeks earlier, so the whole week is still ahead.
+    expect(plannerWeekStart('2026-10-07', '2026-09-06')).toBe('2026-10-05');
+    expect(plannerWeekStart(MONDAY, MONDAY)).toBe(MONDAY);
+  });
+
+  it('never proposes days that have already been', () => {
+    // Sunday, looking at Sunday: the week's Monday is six days gone, so the range starts today.
+    expect(plannerWeekStart('2026-09-06', '2026-09-06')).toBe('2026-09-06');
+    // Wednesday, looking at Thursday: Monday and Tuesday are spent, so today is the start.
+    expect(plannerWeekStart('2026-09-10', '2026-09-09')).toBe('2026-09-09');
+  });
+
+  it('plans a past week from its own Monday', () => {
+    // Deliberately looking backwards — filling in last Thursday is what was asked for.
+    expect(plannerWeekStart('2026-09-03', '2026-09-06')).toBe('2026-08-31');
+  });
+
+  it('covers seven days from there', () => {
+    expect(plannerWeek('2026-09-06', '2026-09-06')).toEqual([
+      '2026-09-06',
+      MONDAY,
+      '2026-09-08',
+      '2026-09-09',
+      '2026-09-10',
+      '2026-09-11',
+      '2026-09-12'
+    ]);
+  });
+});
+
 // ---- solving a week ----------------------------------------------------------------------
 
 describe('planning a week', () => {
@@ -799,6 +834,85 @@ describe('locks', () => {
       const others = again.proposal.runs.filter((run) => run.slotId !== 'obiad');
       expect(others.map((run) => run.recipeId)).not.toContain(locked.recipeId);
     }
+  });
+
+  it('rerolls one run into a different recipe, click after click', () => {
+    // The search returns the *cheapest* complete draw, so re-solving one run with everything
+    // else locked answers the same recipe every time. `avoid` is what makes the second click
+    // of „przelosuj" do something (decision 288): five clicks, five changes.
+    const days = inputs([MONDAY]);
+    let runs = (() => {
+      const first = planRange({
+        days,
+        template: FOUR_SLOTS,
+        candidates: library(),
+        random: seededRandom(1)
+      });
+      expect(first.ok).toBe(true);
+      return first.ok ? first.proposal.runs : [];
+    })();
+
+    const target = runs.find((run) => run.slotId === 'sniadanie')?.id as string;
+    const seen: string[] = [];
+
+    for (const seed of [2, 3, 4, 5, 6]) {
+      const current = runs.find((run) => run.id === target) as PlanRun;
+      const again = planRange({
+        days,
+        template: FOUR_SLOTS,
+        candidates: library(),
+        locked: runs.filter((run) => run.id !== target),
+        avoid: [current.recipeId],
+        random: seededRandom(seed)
+      });
+      expect(again.ok).toBe(true);
+      if (!again.ok) return;
+      const next = again.proposal.runs.find((run) => run.id === target) as PlanRun;
+      expect(next.recipeId).not.toBe(current.recipeId);
+      seen.push(next.recipeId);
+      runs = again.proposal.runs;
+    }
+
+    expect(seen).toHaveLength(5);
+  });
+
+  it('leaves a locked run alone even when its recipe is the one being avoided', () => {
+    // `avoid` speaks to the pools the search draws from; a locked run never comes out of one.
+    const first = planRange({
+      days: inputs([MONDAY]),
+      template: FOUR_SLOTS,
+      candidates: library(),
+      random: seededRandom(1)
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const locked = first.proposal.runs.find((run) => run.slotId === 'obiad') as PlanRun;
+
+    const again = planRange({
+      days: inputs([MONDAY]),
+      template: FOUR_SLOTS,
+      candidates: library(),
+      locked: [locked],
+      avoid: [locked.recipeId],
+      random: seededRandom(9)
+    });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.proposal.runs.find((run) => run.slotId === 'obiad')).toEqual(locked);
+  });
+
+  it('fails rather than substituting when the only recipe for a slot is avoided', () => {
+    // What the sheet's fallback is for: one recipe, barred, so there is nothing to draw. The
+    // solver says so instead of quietly reusing it, and the sheet re-solves without the bar.
+    const one: MealPlanTemplate = { slots: [slot('obiad', 1)] };
+    const result = planRange({
+      days: inputs([MONDAY], macros(600, 40, 60, 20)),
+      template: one,
+      candidates: [candidate('only', 600)],
+      avoid: ['only'],
+      random: seededRandom(4)
+    });
+    expect(result.ok).toBe(false);
   });
 
   it('re-solves the days a run’s new length touches and leaves every lock alone', () => {

@@ -3502,6 +3502,141 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      protein, carbohydrate and fat are drawn on every other screen. The tie-breakers are visible;
      they are just aggregated at the level the decision is made.
 
+### 2026-09-05 — Phase 13 follow-up: three things found by using it
+
+288. **The second click of „przelosuj" did nothing, and said nothing.** The search returns the
+     *cheapest* complete draw, so re-solving one run with every other run locked answers the
+     same recipe every time: the first click changed the row, and every click after it
+     recomputed its way back to the same answer. Nothing was broken, nothing was reported, and
+     the button looked dead. Measured before it was changed — five clicks on one row gave
+     `r6 → r3 → r3 → r3 → r3 → r3`.
+
+     `PlanRequest.avoid` is the fix: recipe ids the search may not draw for this solve only.
+     The sheet passes the recipe the row currently holds, so a click always lands somewhere
+     else, and repeated clicks walk the pool instead of standing still. Locked runs are
+     untouched by it — they are kept verbatim and never come out of a pool. When barring the
+     current recipe leaves the slot with nothing at all, the sheet solves again without the
+     bar and says „Nie ma innego przepisu na «X» — zostaje ten sam", because a click that
+     cannot do anything must still explain itself. It is `avoid`, not „exclude the last N":
+     one recipe is what the complaint is about, and a history would need a policy for when it
+     expires.
+
+289. **A page Gemini could not open now says which failure it was.** Every retrieval failure —
+     a host that refuses Google's fetcher, a login wall, a page Google judges unsafe, a
+     timeout — arrived as the same sentence, because the client never read
+     `urlContextMetadata` and only saw the model answering `BRAK_PRZEPISU`. The status is in
+     the response, per URL, and Google distinguishes SUCCESS / PAYWALL / UNSAFE / ERROR.
+     `retrievalFailure` reports only a run where *every* attempted URL failed, matches the
+     status by suffix so a renamed prefix or a new status lands on the general sentence rather
+     than being read as success, and is checked **after** `onusage`: Google answered, so the
+     quota was spent whatever the answer said.
+
+     What prompted it: `kwestiasmaku.com` resets the connection for any client identifying as
+     `Google-Extended` — verified with curl against a recipe page, the homepage and a category
+     page, while `Googlebot` and an ordinary browser UA are served normally. The app could not
+     have told the user that, and still cannot name the host's rule, but „nie zdołał pobrać tej
+     strony" is a different instruction from „nie ma na niej przepisu".
+
+290. **The macro row is two lines, not one.** „Węglowodany" and „249/250" need about 124 px at
+     `text-xs`, and a third of a 400 px screen is 114, so the middle column overflowed and
+     printed over „Tłuszcz" — a flex item does not shrink below its content and a grid track is
+     `auto`-sized, so neither gave way. Truncating the label was tried first and left „Węglo…",
+     which is not a word. Stacking the number under the label fits at every width the app
+     supports, keeps the three bars on one baseline, and costs one line of height per day card.
+
+### 2026-09-06 — Barcode versus label photograph, measured on fourteen packages
+
+291. **The label scan read fourteen packages out of fourteen, without a single wrong number.**
+     Fifty-six values out of fifty-six matched the print, on the app's own path: `SCAN_SYSTEM`
+     read out of `scan.ts` rather than retyped, downscale to 1024 px at JPEG 0.8,
+     `MEDIA_RESOLUTION_MEDIUM`, `temperature: 0`, `gemini-3.5-flash-lite` — the profile default.
+     Median 1.7 s per scan, ~1065 tokens. Four of the fourteen were harder than anything the
+     prompt was written against and none of them cost a value: **Almette** prints „w 100 g"
+     beside „w porcji (15 g)" and the scan took 250 kcal, not 38 (rule 1, on a real two-column
+     label at last); **halloumi** has no table at all, its values run inside a prose paragraph;
+     **Pilos UHT cream** carries an Estonian/Latvian/Hungarian table with no Polish in it; and
+     all fourteen lead with kilojoules, all fourteen came back in kcal. The two criteria
+     PLAN.md left unticked for Phase 12 are now not merely ticked but over-evidenced.
+
+     The one error in the set was a *name*: „Makaron **Welski**" for „Wiejski", off a decorative
+     handwritten face. The macros for that pack were exact. Separately, the Pilos cottage cheese
+     came back `name: null` because the front of the tub was outside the frame — the refusal
+     rule working, as in decision 254, rather than a failure.
+
+292. **Open Food Facts covers this household — 13 of 14, all four fields present — and that
+     turned out not to be the number that decides anything.** Coverage cleared open question 30's
+     „eight in ten" bar with room to spare (93%), and the one miss was a small-producer pasta
+     (Pol-Mak). But only **9 of the 13 hits agreed with the package in hand on all four values**
+     — 42 of 52 numbers, 81%. The four disagreements are not database sloppiness, and three
+     of them share one cause: **a barcode does not identify what the user is holding.**
+
+     - *Tuńczyk Nixe* (`4056489254676`, EAN-13): the entry is the **German** pack, „Thunfisch
+       Filets in Sonnenblumenöl", declaring the undrained contents at 165 kcal. The Polish pack
+       declares „po odsączeniu" at 139. **19% apart, both correct**, one barcode. The entry was
+       modified 2026-09-01, so this is not staleness.
+     - *Halloumi* (`20775995`, EAN-8): the entry is „Mild & Salty", created 2018; the pack is the
+       dried-mint variant. 302 vs 317 kcal.
+     - *Jogurt grecki* (`20761776`, EAN-8): the entry is the **Hungarian** „Krémes görögjoghurt".
+       121 vs 125 kcal, carbs 4 vs 5.
+     - *Filet z piersi kurczaka*: 129 vs 130 kcal — rounding, and the only harmless one.
+
+     **Four of the fourteen codes are EAN-8 with a 20–29 prefix**, which is restricted
+     circulation: store-internal, not globally unique by design. Lidl reuses them across
+     national variants and, over eight years, across product variants. On a Lidl-heavy shopping
+     list — which is what this household's list is — that is the common case, not the edge.
+
+293. **Stage B will not be built, and this is a deliberate deviation from PLAN.md.** PLAN.md
+     gates the WebAssembly decoder on coverage, and coverage passed. It is being declined on a
+     dimension PLAN.md did not anticipate and decision 271 only suspected: **agreement with the
+     package**. Scanning the label is 56/56; the barcode path is 42/52 and fails hardest on the
+     shop this household actually uses. It also costs a decoder in the bundle of an app whose
+     CLAUDE.md requires every dependency to justify itself, and it saves no photograph — the
+     user must frame something either way, and a small barcode is not an easier target than a
+     large table. PLAN.md's stage B description is superseded by this entry; the scan is the
+     only route from a package to a `custom:*` row.
+
+### 2026-09-06 — the week you plan is the week you choose
+
+294. **A planned week starts on a day the user picks, not on the Monday of whatever day is in
+     view.** Reported from use, on a Sunday: „nie wiem jak ustawić pierwszy dzień tygodnia do
+     zaplanowania". There was no way, because `plannerWeek` was `weekDates` — the
+     Monday-to-Sunday block decision 74 draws the calendar with. On Sunday 6 September that
+     block is 31 August to 6 September: six days already eaten and one day left. The sheet
+     would have proposed a week the user had lived through.
+
+     Two halves fix it. **The default no longer opens behind today**: `plannerWeekStart` is the
+     Monday of the week in view, clamped forward to today when that Monday is already spent, so
+     Sunday proposes Sunday-to-Saturday and Wednesday proposes Wednesday-onwards. A day in the
+     *past* still plans from its own Monday — looking backwards is a deliberate act, and filling
+     in last Thursday is a thing this app can do. **And the first day is a control**, in the
+     sheet where the range is visible: „Pierwszy dzień", a native date field with a ±1 day step
+     either side. Seven days from there, whatever weekday that is. The heading, the day cards,
+     the balance and the write all follow it, because they all read one derived `range` rather
+     than the prop the caller passed.
+
+     The window stays seven days. „Zaplanuj tydzień" that plans five or ten is a different
+     feature and needs a different name; nothing in use has asked for it. `rangeFrom` in
+     `calendar.ts` counts days from an arbitrary start and `weekDates` is now written in terms
+     of it, so the Monday-first week and the movable one cannot drift apart.
+
+295. **„Zaplanuj tydzień" is a button beside „Zaplanuj dzień", not a row in the ⋮ menu.** Also
+     reported from use, and the sharper half of the complaint: the app's headline feature was
+     one of seven rows in an overflow menu, indistinguishable from „Wyczyść dzień". It now
+     stands in the empty-day hint next to „Zaplanuj dzień" — the two are the same kind of act
+     at two scales, and that card is what a day with nothing on it actually offers. Outlined in
+     the accent rather than filled, because two solid buttons in one row shout over each other.
+
+     It was tried first as a pill under the week strip, beside „Pokaż miesiąc", on the argument
+     that the strip is where a week is already the subject. The user rejected it: next to a
+     view toggle it reads as another way to *look* at the calendar, not as the thing that fills
+     it in. **The ⋮ menu keeps a „Zaplanuj tydzień" row anyway** — the hint disappears the
+     moment a day has one meal, and a planned Tuesday is exactly when „zaplanuj mi resztę
+     tygodnia" gets asked.
+
+     What moved the other way: **copying a day is now only in the menu**. The empty-day hint had
+     „Skopiuj z innego dnia" as its third button, which put a rare action next to the ones that
+     matter on the screen a new user meets. The menu keeps both copy directions.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -3829,7 +3964,20 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     still works — it retries once without them — so what the visit measures is speed, not
     whether the feature runs. Worth timing the same package before and after.
 
-30. **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
+30. **Does Open Food Facts cover what this household actually buys? Answered 2026-09-06 on
+    fourteen packages — and the question turned out to be the wrong one. Closed.**
+
+    Coverage is **13 of 14** (93%), every hit carrying all four `*_100g` fields, so the „eight
+    in ten" bar this question set is cleared. But agreement with the print is **9 of 13**, and the
+    gap decision 271 suspected is structural rather than incidental: a barcode is shared across
+    national variants that declare different values, and four of these fourteen codes are EAN-8
+    restricted-circulation numbers that Lidl reuses. The measurement, the four disagreements and
+    the verdict are decisions 291–293. **Stage B is declined**, deliberately against PLAN.md's
+    coverage criterion, and the label scan — 56 values out of 56 — stays the only path.
+
+    The original text of this question follows.
+
+    **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
     fired (decision 270), but the number that decides whether a WebAssembly decoder earns its
     place is coverage — on *these* shopping habits, not on the ~37 200 products tagged
     `countries_tags=poland` in the abstract. A shortcut that works on eight products in ten is

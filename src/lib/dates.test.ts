@@ -6,6 +6,7 @@ import {
   daysBetween,
   formatDayLong,
   formatMonthYear,
+  formatWeekdayLong,
   formatWeekdayShort,
   isDateKey,
   parseDateKey,
@@ -125,6 +126,10 @@ describe('Polish formatting', () => {
 
   it('abbreviates the weekday without a trailing dot', () => {
     expect(formatWeekdayShort('2026-08-31')).toBe('pon');
+  });
+
+  it('names the weekday on its own', () => {
+    expect(formatWeekdayLong('2026-08-31')).toBe('poniedziałek');
   });
 
   it('names the month and year', () => {

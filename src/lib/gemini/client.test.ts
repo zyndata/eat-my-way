@@ -335,6 +335,94 @@ describe('the Gemini client', () => {
       generateText({ apiKey: 'k', model: 'm', prompt: 'hi', fetchImpl: empty.fetchImpl })
     ).rejects.toMatchObject({ kind: 'bad-response' });
   });
+
+  describe('a page the url_context tool could not open', () => {
+    /** An answer whose retrieval metadata says what happened to each URL. */
+    const retrieved = (...statuses: string[]): unknown => ({
+      candidates: [
+        {
+          content: { parts: [{ text: 'BRAK_PRZEPISU' }] },
+          urlContextMetadata: {
+            urlMetadata: statuses.map((status) => ({
+              retrievedUrl: 'https://example.com/przepis',
+              urlRetrievalStatus: status
+            }))
+          }
+        }
+      ]
+    });
+
+    const read = (body: unknown): Promise<string> =>
+      generateText({
+        apiKey: 'k',
+        model: 'm',
+        prompt: 'hi',
+        urlContext: true,
+        fetchImpl: recorder(body).fetchImpl
+      });
+
+    it('says a login wall is a login wall, because pasting the text works around it', async () => {
+      await expect(read(retrieved('URL_RETRIEVAL_STATUS_PAYWALL'))).rejects.toMatchObject({
+        kind: 'bad-response',
+        message: expect.stringContaining('za logowaniem')
+      });
+    });
+
+    it('says when Google refused the page as unsafe', async () => {
+      await expect(read(retrieved('URL_RETRIEVAL_STATUS_UNSAFE'))).rejects.toMatchObject({
+        message: expect.stringContaining('niebezpieczną')
+      });
+    });
+
+    it('falls back to the general sentence for an error, or a status it has never seen', async () => {
+      await expect(read(retrieved('URL_RETRIEVAL_STATUS_ERROR'))).rejects.toMatchObject({
+        message: expect.stringContaining('nie zdołał pobrać')
+      });
+      await expect(read(retrieved('SOMETHING_GOOGLE_ADDED_LATER'))).rejects.toMatchObject({
+        message: expect.stringContaining('nie zdołał pobrać')
+      });
+    });
+
+    it('stays quiet when one URL was read, whatever happened to the others', async () => {
+      const body = {
+        candidates: [
+          {
+            content: { parts: [{ text: 'przepis' }] },
+            urlContextMetadata: {
+              urlMetadata: [
+                { urlRetrievalStatus: 'URL_RETRIEVAL_STATUS_ERROR' },
+                { urlRetrievalStatus: 'URL_RETRIEVAL_STATUS_SUCCESS' }
+              ]
+            }
+          }
+        ]
+      };
+      await expect(read(body)).resolves.toBe('przepis');
+    });
+
+    it('stays quiet when the response carries no retrieval metadata at all', async () => {
+      await expect(read(answer('przepis'))).resolves.toBe('przepis');
+    });
+
+    it('reports the tokens Google charged before refusing, because they were spent', async () => {
+      const spent: number[] = [];
+      const body = {
+        ...(retrieved('URL_RETRIEVAL_STATUS_ERROR') as Record<string, unknown>),
+        usageMetadata: { totalTokenCount: 812 }
+      };
+      await expect(
+        generateText({
+          apiKey: 'k',
+          model: 'm',
+          prompt: 'hi',
+          urlContext: true,
+          onusage: (tokens) => spent.push(tokens),
+          fetchImpl: recorder(body).fetchImpl
+        })
+      ).rejects.toMatchObject({ kind: 'bad-response' });
+      expect(spent).toEqual([812]);
+    });
+  });
 });
 
 describe('extractJson', () => {

@@ -19,12 +19,16 @@
 <ul class="grid grid-cols-3 gap-3">
   {#each rows as row (row.key)}
     {@const over = isOverGoal(row.value, row.goal)}
-    <li>
-      <p class="flex items-baseline justify-between gap-1 text-xs">
-        <span class="text-(--color-ink-muted)">{row.label}</span>
-        <span class="font-medium tabular-nums {over ? 'text-(--color-warn)' : ''}">
-          {Math.round(row.value)}/{Math.round(row.goal)}
-        </span>
+    <!-- Two lines, not one. „Węglowodany" and „249/250" together need about 124 px at this
+         size and a third of a 400 px screen is 114, so a single row overflowed its column and
+         printed over „Tłuszcz" — a flex item does not shrink below its content, and a grid
+         track is `auto`-sized. Stacking fits both at any width this app supports, keeps the
+         three bars on one baseline, and costs one line of height per day card. Truncating the
+         label instead was tried and left „Węglo…", which is not a word. -->
+    <li class="min-w-0">
+      <p class="truncate text-xs text-(--color-ink-muted)">{row.label}</p>
+      <p class="text-xs font-medium tabular-nums {over ? 'text-(--color-warn)' : ''}">
+        {Math.round(row.value)}/{Math.round(row.goal)}
       </p>
       <svg
         class="mt-1 h-1.5 w-full rounded-full bg-(--color-border) {over

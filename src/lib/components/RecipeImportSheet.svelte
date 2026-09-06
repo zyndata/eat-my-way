@@ -1,5 +1,6 @@
 <script lang="ts">
   import BottomSheet from './BottomSheet.svelte';
+  import Spinner from './Spinner.svelte';
   import { repository } from '../repository';
   import { GeminiError } from '../gemini/client';
   import { importRecipe, type ImportStage, type ImportedRecipe } from '../gemini/import';
@@ -137,16 +138,29 @@
     {/if}
 
     {#if busy}
-      <p class="text-sm text-(--color-ink-muted)">{stage === '' ? 'Pracuję…' : stage}</p>
+      <!-- The same pair the label scan shows (`CustomIngredientForm`): the spinner says the
+           work is still running, the words say which of the three calls it is on. `Spinner` is
+           `aria-hidden`, so this region is announced once, as its own docs require. -->
+      <p
+        class="flex items-center gap-2 text-sm text-(--color-ink-muted)"
+        role="status"
+        aria-live="polite"
+      >
+        <Spinner />
+        {stage === '' ? 'Pracuję…' : stage}
+      </p>
     {/if}
 
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+        class="inline-flex items-center gap-2 rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
         disabled={busy || input.trim() === ''}
         onclick={() => void run()}
       >
+        {#if busy}
+          <Spinner />
+        {/if}
         {busy ? 'Importuję…' : 'Importuj'}
       </button>
       <button
