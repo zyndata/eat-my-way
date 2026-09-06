@@ -219,8 +219,32 @@ test('a different Google account is refused until the user says otherwise', asyn
   await expect(
     device.getByText('To konto Google jest inne niż to, z którego pochodzą dane na tym urządzeniu.')
   ).toBeVisible();
+  // The warning has to name both accounts: „to konto" alone does not say which of the two.
+  await expect(device.getByText('Zalogowano na koncie ktos.inny@example.com.')).toBeVisible();
+  await expect(device.getByText('pochodzą z konta test@example.com')).toBeVisible();
 
-  await device.getByRole('button', { name: 'Używaj tego konta' }).click();
+  await device.getByRole('button', { name: 'Używaj konta ktos.inny@example.com' }).click();
+  await expect(status(device)).toContainText('ktos.inny@example.com');
+  await expect(device.getByText('To jest inne konto Google niż poprzednio.')).toHaveCount(0);
+});
+
+test('the other account can be accepted after a disconnect, which is how a switch is made', async ({
+  device,
+  drive
+}) => {
+  // The reported route to a second account, and the one that was a dead end: „Rozłącz" is what
+  // makes Google offer its account chooser again, and it also withdraws this device's licence
+  // to sync in the background — which is what used to swallow the acceptance (decision 296).
+  seedAccount(drive);
+  await connect(device);
+  await device.getByRole('button', { name: 'Rozłącz konto' }).click();
+  await expect(status(device)).toHaveText('Niepołączono');
+
+  drive.account = { permissionId: 'sub-2', emailAddress: 'ktos.inny@example.com', displayName: 'Inny' };
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(device.getByText('To jest inne konto Google niż poprzednio.')).toBeVisible();
+
+  await device.getByRole('button', { name: 'Używaj konta ktos.inny@example.com' }).click();
   await expect(status(device)).toContainText('ktos.inny@example.com');
   await expect(device.getByText('To jest inne konto Google niż poprzednio.')).toHaveCount(0);
 });

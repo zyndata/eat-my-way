@@ -3637,6 +3637,70 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      „Skopiuj z innego dnia" as its third button, which put a rare action next to the ones that
      matter on the screen a new user meets. The menu keeps both copy directions.
 
+296. **Switching to another Google account was impossible from the settings screen, and the
+     warning never said which account it meant.** Reported from use: „jak zaloguję się jednym
+     kontem a potem chcę zalogować się innym […] niezależnie co robię nie mogę podłączyć nowego
+     konta. Dodatkowo nie wiem którego konta dotyczy button »Używaj tego konta«."
+
+     Both halves were real. The **switch** is a three-step act — „Rozłącz", „Połącz Dysk
+     Google" (the only path that opens Google's account chooser, because `prompt: 'consent'`
+     runs there), then „Używaj tego konta" on the mismatch warning. `disconnectDrive` clears
+     `silentAllowed`, the flag that decides whether this device may talk to Google without
+     being asked, and `useDifferentAccount` sent its acceptance as a *background* sync — so
+     `syncNow` refused it before the engine ever saw `acceptAccount`, returned „never connected
+     on this device", and the next attempt produced the same warning. The loop the user
+     described. It is now interactive, which is what it always was: a click. A valid token is
+     still returned before anything interactive happens, so accepting the account the popup has
+     just handed back opens no second window; only a lapsed session prompts, and from a click
+     that is correct.
+
+     The **naming** half: `foreignAccount` carried the new account's e-mail all along and the
+     banner showed neither it nor the old one. It now names both — the new one from
+     `about.get`, the previous one from `driveAccountLabel`, which every successful sync
+     writes — and the button reads „Używaj konta ktos@example.com". Where Drive returns no
+     address (decision 89: the appdata scope exposes no identity beyond what `about.get`
+     chooses to give) the wording falls back to the old, vaguer sentence rather than inventing
+     one. The banner also states the consequence, which was never on screen: accepting merges
+     this device's data into that account's Drive, and „Rozłącz" changes nothing locally.
+
+### 2026-09-06 — counting the visits
+
+297. **The app now has analytics, and it cost one token in `script-src`.** The question was how
+     many people open the site, from which country and on what kind of device, without adding a
+     backend the architecture does not have. Cloudflare already proxies every name in the
+     `gorny.dev` zone (decisions 14 and 21), so two answers were already on the shelf:
+
+     - **Zone analytics** (Analytics → Traffic) needs nothing at all, but it counts *requests to
+       the edge* — and this is a PWA whose service worker answers every navigation from the
+       precache (`navigateFallback`, decision 238). A returning user generates no request, so
+       server-side numbers see first visits and little else. It also has no device breakdown.
+     - **Web Analytics / RUM**, enabled globally on the zone, injects
+       `https://static.cloudflareinsights.com/beacon.min.js` into the document at the edge. It
+       is measured in the browser, so it counts an app *opening*, including from cache, which is
+       the number actually wanted. Cookie-less, no identifier, and it reads nothing the app
+       stores.
+
+     RUM is on, and the `Caddyfile` widens `script-src` by that one host. **The host, not the
+     exact file**: the injected `src` carries a cache-busting path segment after
+     `beacon.min.js`, and a CSP source expression with a path matches the path exactly.
+     `connect-src` is untouched — automatic injection posts to `/cdn-cgi/rum` on this same
+     origin, which Cloudflare answers itself and `'self'` already covers. Manual embedding is
+     the variant that would have needed `cloudflareinsights.com` there, and that is a second
+     reason to prefer the injected one.
+
+     This does not reverse **decision 218**, which left Cloudflare's bot-detection *inline*
+     script blocked. That one is inline, unversioned and unnamed by the policy; this is a named
+     host serving one file with an SRI hash, and it buys a number the project wants. `README.md`
+     and `SECURITY.md` both say it is there — „no backend" stays true, „nothing is measured"
+     never was a promise, and it should not become a quiet lie.
+
+     **Verified locally only in the negative sense the container allows**: no edge sits in front
+     of `localhost:8080`, so nothing is injected there and the e2e run proves only that the
+     policy still parses and the app still reports zero violations. That the beacon actually
+     loads is a production check, on the live site, after the release.
+
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
