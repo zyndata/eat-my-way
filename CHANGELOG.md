@@ -16,6 +16,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - **csp:** Allow the Cloudflare Web Analytics beacon
 
+### Miscellaneous
+
+- Regenerate the changelog
+
 ### Tests
 
 - **e2e:** Cover the account switch the fix restores
