@@ -17,10 +17,14 @@ export function weekStart(key: string): string {
   return addDays(key, -weekdayIndex(key));
 }
 
+/** `length` consecutive days starting at `start` — a run of days that need not begin on a Monday. */
+export function rangeFrom(start: string, length: number = WEEK_LENGTH): string[] {
+  return Array.from({ length }, (_, index) => addDays(start, index));
+}
+
 /** The seven days of the week containing `key`, Monday first. */
 export function weekDates(key: string): string[] {
-  const monday = weekStart(key);
-  return Array.from({ length: WEEK_LENGTH }, (_, index) => addDays(monday, index));
+  return rangeFrom(weekStart(key));
 }
 
 /** The week after the one containing `key` — PLAN.md's „cały przyszły tydzień" shortcut. */

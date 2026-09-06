@@ -12,7 +12,7 @@ import {
   scaleMacros,
   sumMacros
 } from './macros';
-import { dayGoals, weekDates } from './calendar';
+import { dayGoals, rangeFrom, weekDates, weekStart } from './calendar';
 import { daysBetween, weekdayIndex } from './dates';
 import { formatPortions, pluralPl } from './text';
 
@@ -1185,9 +1185,24 @@ export function planDayInputs(
   });
 }
 
-/** The dates a „Zaplanuj tydzień" covers: the whole Monday-to-Sunday week around `date`. */
-export function plannerWeek(date: string): string[] {
-  return weekDates(date);
+/**
+ * Where a „Zaplanuj tydzień" starts by default. The Monday of the week `date` sits in — the
+ * week everything else on the calendar screen is drawn as — except that a week containing
+ * today never begins behind it: proposing meals for days that have already been is work the
+ * user has to undo before the plan is usable. A day in the past is planned from its own
+ * Monday, because a past week is what was asked for (decision 294).
+ */
+export function plannerWeekStart(date: string, today: string): string {
+  const monday = weekStart(date);
+  return date >= today && monday < today ? today : monday;
+}
+
+/**
+ * The dates a „Zaplanuj tydzień" covers: seven days from `plannerWeekStart`. The sheet can
+ * move that first day, so this is the proposal, not a rule.
+ */
+export function plannerWeek(date: string, today: string): string[] {
+  return rangeFrom(plannerWeekStart(date, today));
 }
 
 /** The range a day plan covers — one date, spelled as a range so both paths are one code path. */

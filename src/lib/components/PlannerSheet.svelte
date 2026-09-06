@@ -18,8 +18,15 @@
     templateOf,
     weekBalance
   } from '../planner';
-  import { goalRatio, isOverGoal, weekDates } from '../calendar';
-  import { formatDayLong, formatDayMonth, relativeDayLabel } from '../dates';
+  import { goalRatio, isOverGoal, rangeFrom, weekDates } from '../calendar';
+  import {
+    addDays,
+    formatDayLong,
+    formatDayMonth,
+    formatWeekdayLong,
+    isDateKey,
+    relativeDayLabel
+  } from '../dates';
   import { ingredientLookup } from '../macros';
   import { repository } from '../repository';
   import BottomSheet from './BottomSheet.svelte';
@@ -40,6 +47,8 @@
    * spans days is one unit here too — one row, one lock, one 1/2/3 control.
    */
 
+  const CHEVRON_LEFT = 'M15 5l-7 7 7 7';
+  const CHEVRON_RIGHT = 'M9 5l7 7-7 7';
   const LOCK = 'M7 11V8a5 5 0 0 1 10 0v3M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z';
   const UNLOCK = 'M8 11V8a5 5 0 0 1 9.5-2M6.5 11h11a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z';
   // Was a die, which at 16 px is a square with three specks in it — next to a padlock that
@@ -63,6 +72,17 @@
   } = $props();
 
   const weekMode = $derived(dates.length > 1);
+
+  /**
+   * The first day of the range. A week is seven days from here rather than a fixed
+   * Monday-to-Sunday block: „planuję od poniedziałku 7.09" is the normal way to think about
+   * a week that has not started yet, and the caller's Monday is only a proposal (decision 294).
+   * Day mode has nothing to move — its range is the day the sheet was opened on.
+   */
+  let start = $state('');
+  const range = $derived(
+    weekMode && isDateKey(start) ? rangeFrom(start, dates.length) : [...dates]
+  );
 
   let loading = $state(true);
   let applying = $state(false);
@@ -96,15 +116,15 @@
   const candidatesRef: { list: ReturnType<typeof planCandidates>['candidates'] } = { list: [] };
 
   const busyDates = $derived(
-    dayRows.filter((row) => row.meals.length > 0 && dates.includes(row.date)).map((row) => row.date)
+    dayRows.filter((row) => row.meals.length > 0 && range.includes(row.date)).map((row) => row.date)
   );
 
   const title = $derived(
     weekMode
-      ? `Zaplanuj tydzień ${formatDayMonth(dates[0] ?? today)} – ${formatDayMonth(dates[dates.length - 1] ?? today)}`
+      ? `Zaplanuj tydzień ${formatDayMonth(range[0] ?? today)} – ${formatDayMonth(range[range.length - 1] ?? today)}`
       : busyDates.length > 0
-        ? `Uzupełnij ${relativeDayLabel(dates[0] ?? today, today).toLowerCase()}`
-        : `Zaplanuj ${relativeDayLabel(dates[0] ?? today, today).toLowerCase()}`
+        ? `Uzupełnij ${relativeDayLabel(range[0] ?? today, today).toLowerCase()}`
+        : `Zaplanuj ${relativeDayLabel(range[0] ?? today, today).toLowerCase()}`
   );
 
   /** Runs keyed by the day they appear on, so a day card can list its slots in order. */
@@ -133,7 +153,7 @@
     runLengths = {};
     slotOverrides = {};
     replace = false;
-    picked = [...dates];
+    picked = [...range];
 
     const profile = await repository.getProfile();
     goals = profile.goals;
@@ -141,7 +161,7 @@
 
     // The whole week around the range, because the balance is measured over a week even when
     // only one day is being planned.
-    const span = [...new Set([...dates, ...weekDates(dates[0] ?? today)])].sort();
+    const span = [...new Set([...range, ...weekDates(range[0] ?? today)])].sort();
     dayRows = await repository.getDays(span[0] ?? today, span[span.length - 1] ?? today);
 
     const [recipes, usage] = await Promise.all([
@@ -177,8 +197,8 @@
   function solve(only?: string): void {
     error = '';
     note = '';
-    const rows = replace ? dayRows.filter((row) => !dates.includes(row.date)) : dayRows;
-    balance = weekBalance(dates, dayRows, goals);
+    const rows = replace ? dayRows.filter((row) => !range.includes(row.date)) : dayRows;
+    balance = weekBalance(range, dayRows, goals);
 
     const kept =
       only === undefined
@@ -188,7 +208,7 @@
     const rerolled = only === undefined ? undefined : proposal?.runs.find((run) => run.id === only);
 
     const request = {
-      days: planDayInputs(dates, rows, goals, template, balance, slotOverrides),
+      days: planDayInputs(range, rows, goals, template, balance, slotOverrides),
       template,
       candidates: candidatesRef.list,
       locked: kept,
@@ -246,6 +266,11 @@
     solve();
   }
 
+  /** „Pierwszy dzień" — from the field or from the ± steps; anything unparseable is ignored. */
+  function setStart(value: string): void {
+    if (isDateKey(value)) start = value;
+  }
+
   function moveMeal(mealId: string, slotId: string): void {
     slotOverrides = { ...slotOverrides, [mealId]: slotId };
     locks = [];
@@ -266,8 +291,16 @@
     }
   }
 
+  /** Opening re-anchors the range on what the caller proposed; „Pierwszy dzień" moves it from there. */
   $effect(() => {
     if (!open) return;
+    start = dates[0] ?? today;
+  });
+
+  $effect(() => {
+    if (!open) return;
+    // The range, not just `open`: moving the first day is a different week and a fresh solve.
+    range;
     void load();
   });
 
@@ -278,6 +311,41 @@
 </script>
 
 <BottomSheet {open} {title} {onclose}>
+  <!-- Which week is being planned. The calendar screen proposes one, this decides it: without
+       it a week could only ever be the Monday-to-Sunday block around the day in view, and
+       „planuję od 7 września" had no way to be said (decision 294). -->
+  {#if weekMode}
+    <div class="flex flex-wrap items-center gap-2 rounded-lg bg-(--color-surface) px-3 py-2">
+      <span class="text-xs text-(--color-ink-muted)">Pierwszy dzień</span>
+      <button
+        type="button"
+        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+        aria-label="Zacznij dzień wcześniej"
+        onclick={() => setStart(addDays(start, -1))}
+      >
+        <NavIcon path={CHEVRON_LEFT} class="size-4" />
+      </button>
+      <input
+        type="date"
+        class="rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-2 py-1 text-sm tabular-nums"
+        aria-label="Pierwszy dzień planowanego tygodnia"
+        value={start}
+        onchange={(event) => setStart(event.currentTarget.value)}
+      />
+      <button
+        type="button"
+        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+        aria-label="Zacznij dzień później"
+        onclick={() => setStart(addDays(start, 1))}
+      >
+        <NavIcon path={CHEVRON_RIGHT} class="size-4" />
+      </button>
+      <!-- The heading already carries the range; what a date field cannot say is which
+           weekday it landed on, which is the whole question being asked here. -->
+      <span class="text-xs text-(--color-ink-muted)">{formatWeekdayLong(range[0] ?? today)}</span>
+    </div>
+  {/if}
+
   {#if loading}
     <p class="text-sm text-(--color-ink-muted)">Układamy plan…</p>
   {:else}

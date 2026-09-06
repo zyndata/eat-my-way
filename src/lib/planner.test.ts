@@ -26,6 +26,7 @@ import {
   planRange,
   planWrites,
   plannerWeek,
+  plannerWeekStart,
   repeatCost,
   resolveRunLength,
   runId,
@@ -116,7 +117,7 @@ function inputs(dates: readonly string[], goals = GOALS) {
 
 // 2026-09-07 is a Monday.
 const MONDAY = '2026-09-07';
-const WEEK = plannerWeek(MONDAY);
+const WEEK = plannerWeek(MONDAY, MONDAY);
 
 // ---- purity ------------------------------------------------------------------------------
 
@@ -608,6 +609,40 @@ describe('planning one day', () => {
       note: ''
     }, { m1: 'kolacja' });
     expect(days[0]?.takenSlotIds).toEqual(['kolacja']);
+  });
+});
+
+// ---- which week ---------------------------------------------------------------------------
+
+describe('plannerWeekStart', () => {
+  it('is the Monday of the week in view when that week has not started', () => {
+    // 2026-10-07 is a Wednesday; today is weeks earlier, so the whole week is still ahead.
+    expect(plannerWeekStart('2026-10-07', '2026-09-06')).toBe('2026-10-05');
+    expect(plannerWeekStart(MONDAY, MONDAY)).toBe(MONDAY);
+  });
+
+  it('never proposes days that have already been', () => {
+    // Sunday, looking at Sunday: the week's Monday is six days gone, so the range starts today.
+    expect(plannerWeekStart('2026-09-06', '2026-09-06')).toBe('2026-09-06');
+    // Wednesday, looking at Thursday: Monday and Tuesday are spent, so today is the start.
+    expect(plannerWeekStart('2026-09-10', '2026-09-09')).toBe('2026-09-09');
+  });
+
+  it('plans a past week from its own Monday', () => {
+    // Deliberately looking backwards — filling in last Thursday is what was asked for.
+    expect(plannerWeekStart('2026-09-03', '2026-09-06')).toBe('2026-08-31');
+  });
+
+  it('covers seven days from there', () => {
+    expect(plannerWeek('2026-09-06', '2026-09-06')).toEqual([
+      '2026-09-06',
+      MONDAY,
+      '2026-09-08',
+      '2026-09-09',
+      '2026-09-10',
+      '2026-09-11',
+      '2026-09-12'
+    ]);
   });
 });
 

@@ -185,8 +185,8 @@ test('a week is planned, applied, and its batch reads as a batch on the meal scr
   await connectWith(device, drive);
   await device.goto('#/');
 
-  await device.getByLabel('Menu dnia').click();
-  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).click();
+  // „Zaplanuj tydzień" has its own pill under the week strip — no menu to open (decision 294).
+  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
 
   const sheet = device.getByRole('dialog');
   // Seven day cards, each with a tick that decides whether it is written.
@@ -322,8 +322,8 @@ test('a run’s length is changed in the proposal without touching the template'
   await connectWith(device, drive);
   await device.goto('#/');
 
-  await device.getByLabel('Menu dnia').click();
-  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).click();
+  // „Zaplanuj tydzień" has its own pill under the week strip — no menu to open (decision 294).
+  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
 
   const sheet = device.getByRole('dialog');
   await expect(sheet.getByText(/Gotujesz na 2 dni/).first()).toBeVisible();
@@ -392,4 +392,67 @@ test('the template editor saves a weekday that cooks differently', async ({ devi
   await expect
     .poll(() => JSON.stringify(drive.snapshot()['profile.json']), { timeout: 20_000 })
     .toContain('cookDays');
+});
+
+test('the week is planned from the day the user picks, not from a fixed Monday', async ({
+  device,
+  drive
+}) => {
+  await connectWith(device, drive);
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
+
+  const sheet = device.getByRole('dialog');
+  const firstDay = sheet.getByLabel('Pierwszy dzień planowanego tygodnia');
+
+  // Whatever weekday the suite runs on, the proposal never opens on a day already spent.
+  const today = await device.evaluate(() => {
+    const now = new Date();
+    return [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0')
+    ].join('-');
+  });
+  expect(await firstDay.inputValue() >= today).toBe(true);
+
+  // Move it somewhere unambiguous: ten days out, well clear of the current week.
+  const start = await device.evaluate(() => {
+    const at = new Date();
+    at.setDate(at.getDate() + 10);
+    return [
+      at.getFullYear(),
+      String(at.getMonth() + 1).padStart(2, '0'),
+      String(at.getDate()).padStart(2, '0')
+    ].join('-');
+  });
+  await firstDay.fill(start);
+
+  // The heading, the day cards and the write all follow the chosen day.
+  await expect(sheet.getByRole('heading', { name: /^Zaplanuj tydzień/ })).toBeVisible();
+  await expect(sheet.locator('input[type="checkbox"]')).toHaveCount(7);
+  await sheet.getByRole('button', { name: 'Zastosuj', exact: true }).click();
+  await expect(sheet).toBeHidden();
+
+  const planned = await device.evaluate(async () => {
+    const request = indexedDB.open('eat-my-way');
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    return new Promise<{ date: string; meals: unknown[] }[]>((resolve, reject) => {
+      const all = database.transaction('days').objectStore('days').getAll();
+      all.onsuccess = () => resolve(all.result);
+      all.onerror = () => reject(all.error);
+    });
+  });
+
+  const expected = Array.from({ length: 7 }, (_, offset) => {
+    const at = new Date(`${start}T12:00:00`);
+    at.setDate(at.getDate() + offset);
+    return at.toISOString().slice(0, 10);
+  });
+  expect(planned.filter((day) => day.meals.length > 0).map((day) => day.date).sort()).toEqual(
+    expected
+  );
 });
