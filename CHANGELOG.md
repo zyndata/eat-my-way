@@ -13,8 +13,13 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Record that the beacon loads on the live site
 - Record the edge cache rule and how the beacon gets here
 
+### Features
+
+- **day:** Keep the planner on screen and total the whole week
+
 ### Miscellaneous
 
+- Regenerate the changelog
 - Regenerate the changelog
 
 ## [1.9.0] - 2026-09-06
