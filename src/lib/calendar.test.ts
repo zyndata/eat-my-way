@@ -13,6 +13,7 @@ import {
   remainingGoals,
   summarizeDates,
   summarizeDay,
+  summarizeWeekTotals,
   weekDates,
   weekStart
 } from './calendar';
@@ -248,5 +249,59 @@ describe('remainingGoals', () => {
 
   it('a day with no goals at all says nothing', () => {
     expect(remainingGoals(macros(500, 10, 10, 10), macros(0, 0, 0, 0))).toEqual([]);
+  });
+});
+
+describe('summarizeWeekTotals', () => {
+  const week = (): Day[] => [
+    { date: '2026-08-31', meals: [mealOf('m1', 800)] },
+    { date: '2026-09-01', meals: [mealOf('m2', 700), mealOf('m3', 500)] }
+  ];
+
+  it('adds the days up and counts the ones that are planned', () => {
+    const dates = weekDates('2026-09-02');
+    const totals = summarizeWeekTotals(summarizeDates(dates, week(), goals));
+
+    expect(totals.totals.kcal).toBe(2000);
+    expect(totals.plannedDays).toBe(2);
+    expect(totals.dayCount).toBe(7);
+    // Two meals on the Monday, one on the Sunday: 30 g protein at 10 g each.
+    expect(totals.totals.protein).toBe(30);
+  });
+
+  it('sums the goal over the whole week, empty days included', () => {
+    const totals = summarizeWeekTotals(summarizeDates(weekDates('2026-09-02'), week(), goals));
+    // Seven untouched days at the profile goal, not two.
+    expect(totals.goals.kcal).toBe(14000);
+    expect(totals.goals.protein).toBe(700);
+  });
+
+  it('judges each day against its own frozen goals', () => {
+    const days: Day[] = [
+      { date: '2026-08-31', meals: [mealOf('m1', 800)], goalSnapshot: macros(1500, 80, 200, 50) }
+    ];
+    const totals = summarizeWeekTotals(summarizeDates(weekDates('2026-09-02'), days, goals));
+
+    // Six days at 2000 plus the frozen 1500.
+    expect(totals.goals.kcal).toBe(13500);
+  });
+
+  it('averages over the planned days only, and says nothing about an empty week', () => {
+    const totals = summarizeWeekTotals(summarizeDates(weekDates('2026-09-02'), week(), goals));
+    expect(totals.averageKcal).toBe(1000);
+
+    const empty = summarizeWeekTotals(summarizeDates(weekDates('2026-09-02'), [], goals));
+    expect(empty.plannedDays).toBe(0);
+    expect(empty.averageKcal).toBe(0);
+    expect(empty.totals.kcal).toBe(0);
+  });
+
+  it('skips a goal that is absent rather than summing a NaN', () => {
+    const broken = summarizeWeekTotals(
+      summarizeDates(weekDates('2026-09-02'), week(), macros(0, 100, 250, 70))
+    );
+    expect(broken.goals.kcal).toBe(0);
+    expect(broken.goals.protein).toBe(700);
+    expect(broken.totals.kcal).toBe(2000);
   });
 });

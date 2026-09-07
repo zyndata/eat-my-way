@@ -19,6 +19,7 @@
   import RecipePicker from './RecipePicker.svelte';
   import ShoppingListSheet from './ShoppingListSheet.svelte';
   import WeekStrip from './WeekStrip.svelte';
+  import WeekSummary from './WeekSummary.svelte';
 
   /**
    * The calendar and day view — one component behind both `/` and `/day/:date`
@@ -219,6 +220,37 @@
   }
 </script>
 
+<!--
+  „Zaplanuj dzień" / „Uzupełnij dzień" and „Zaplanuj tydzień" — the app's headline act, and it
+  has to be on the screen whether or not the day already has meals (decision 299). One snippet
+  rendered in two places rather than two copies of the markup, so the labels and the handlers
+  cannot drift apart. `primary` fills the day button on an empty day, where planning is the
+  obvious next move, and leaves it outlined once the day has meals, where it is a top-up.
+-->
+{#snippet planActions(primary: boolean)}
+  <button
+    type="button"
+    class={primary
+      ? 'rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)'
+      : 'rounded-lg border border-(--color-accent) px-3 py-1.5 text-sm font-medium text-(--color-accent)'}
+    onclick={() => openPlanner('day')}
+  >
+    {day.meals.length === 0 ? 'Zaplanuj dzień' : 'Uzupełnij dzień'}
+  </button>
+  <!-- Outlined in the accent rather than filled: it is the same weight of action as
+       „Zaplanuj dzień" and belongs beside it, but two solid buttons in one row shout over
+       each other and neither reads as the first thing to press. -->
+  <button
+    type="button"
+    class="rounded-lg border border-(--color-accent) text-sm font-medium text-(--color-accent) {primary
+      ? 'px-4 py-2'
+      : 'px-3 py-1.5'}"
+    onclick={() => openPlanner('week')}
+  >
+    Zaplanuj tydzień
+  </button>
+{/snippet}
+
 {#if !valid}
   <section>
     <h1 class="text-2xl font-semibold tracking-tight">Nie ma takiej daty</h1>
@@ -230,7 +262,9 @@
 {:else}
   <WeekStrip summaries={week} selected={date} {today} />
 
-  <div class="flex justify-center pt-1">
+  <WeekSummary summaries={week} />
+
+  <div class="flex justify-center pt-2">
     <button
       type="button"
       class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-(--color-ink-muted)"
@@ -292,23 +326,9 @@
         <div
           class="absolute right-0 z-30 mt-1 w-56 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-1 shadow-lg"
         >
-          <button
-            type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
-            onclick={() => openPlanner('day')}
-          >
-            {day.meals.length === 0 ? 'Zaplanuj dzień' : 'Uzupełnij dzień'}
-          </button>
-          <!-- The buttons in the empty-day hint are the primary way in, but the hint is gone
-               the moment the day has a meal, and „Zaplanuj tydzień" must stay reachable from a
-               day that is already planned. -->
-          <button
-            type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
-            onclick={() => openPlanner('week')}
-          >
-            Zaplanuj tydzień
-          </button>
+          <!-- No planner rows here any more. They used to be the only way back to the planner
+               once a day had meals; now both buttons sit above the list in every state, and a
+               second copy in the menu is one more thing to read past (decision 299). -->
           <button
             type="button"
             class="block w-full rounded-lg px-3 py-2 text-left text-sm"
@@ -369,34 +389,17 @@
     {:else if day.meals.length === 0}
       <div class="rounded-xl border border-dashed border-(--color-border) p-6 text-center">
         <p class="text-sm text-(--color-ink-muted)">Nic jeszcze nie zaplanowano na ten dzień.</p>
+        <!-- No „Dodaj posiłek" here: the floating button in the corner is that button, and it
+             is on the screen already (decision 299). -->
         <div class="flex flex-wrap justify-center gap-2 pt-3">
-          <button
-            type="button"
-            class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
-            onclick={() => openPlanner('day')}
-          >
-            Zaplanuj dzień
-          </button>
-          <!-- Outlined in the accent rather than filled: it is the same weight of action as
-               „Zaplanuj dzień" and belongs beside it, but two solid buttons in one row shout
-               over each other and neither reads as the first thing to press. -->
-          <button
-            type="button"
-            class="rounded-lg border border-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent)"
-            onclick={() => openPlanner('week')}
-          >
-            Zaplanuj tydzień
-          </button>
-          <button
-            type="button"
-            class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
-            onclick={() => (pickerOpen = true)}
-          >
-            Dodaj posiłek
-          </button>
+          {@render planActions(true)}
         </div>
       </div>
     {:else}
+      <div class="flex flex-wrap gap-2 pb-3">
+        {@render planActions(false)}
+      </div>
+
       <MealList
         meals={day.meals}
         {date}

@@ -203,10 +203,13 @@ test('a week is planned, applied, and its batch reads as a batch on the meal scr
     device.getByRole('list', { name: 'Posiłki dnia' }).getByRole('listitem')
   ).not.toHaveCount(0);
 
-  // The empty-day hint that carried the button is gone with the meals in place, so the ⋮ menu
-  // has to keep the week reachable — otherwise the feature disappears once a day is planned.
-  await device.getByLabel('Menu dnia').click();
+  // The empty-day hint that carried the buttons is gone with the meals in place, so the row
+  // above the list has to keep both reachable — without opening any menu (decision 299).
   await expect(device.getByRole('button', { name: 'Zaplanuj tydzień' })).toBeVisible();
+  await expect(device.getByRole('button', { name: 'Uzupełnij dzień' })).toBeVisible();
+  // And the ⋮ menu no longer carries a second copy of either.
+  await device.getByLabel('Menu dnia').click();
+  await expect(device.getByRole('button', { name: 'Zaplanuj tydzień' })).toHaveCount(1);
   await device.getByLabel('Menu dnia').click();
 
   // A batch written by the planner is the same thing the checkbox writes: the meal screen
