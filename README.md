@@ -44,7 +44,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   you name, not a fixed Monday, and it never opens on days that have already been. It is a
   proposal: reroll it, lock the slots you like, change how long a pot lasts, then „Zastosuj".
   Nothing is written until you do, and no AI is involved — it is arithmetic, done in your
-  browser, offline.
+  browser, offline. Both buttons are on the calendar screen whether or not the day already has
+  meals, and under the week strip a card totals all seven days against all seven days' goals —
+  what the week costs, and how much of it is still open.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
 - **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day

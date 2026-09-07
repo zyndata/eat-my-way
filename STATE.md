@@ -3697,8 +3697,94 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      **Verified locally only in the negative sense the container allows**: no edge sits in front
      of `localhost:8080`, so nothing is injected there and the e2e run proves only that the
      policy still parses and the app still reports zero violations. That the beacon actually
-     loads is a production check, on the live site, after the release.
+     loads was checked on the live site after v1.9.0, and it does: the document carries
+     `static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495`
+     — the cache-busting segment this decision predicted, which is why the host and not the file
+     is what `script-src` names — and a real browser fetches it with no violation against it. The
+     one violation the live console still reports is `inline`, which is decision 218's
+     bot-detection script and stays blocked.
 
+     Two things the edge does that a `curl` will not show: the beacon is injected only for a
+     request that asks for `text/html` (a bare `curl` gets the document without it), and the RUM
+     POST to `/cdn-cgi/rum` was not observable from a headless run at all — `sendBeacon` on
+     unload is invisible to the automation harness. The dashboard, a few hours later, is the
+     only proof that the count is arriving.
+
+
+298. **`ingredients.json` was never cached at the edge, and a `Cache-Control` header was never
+     going to fix it.** Measured on the live site while looking at what the app costs in egress:
+     every asset under `/assets/` carries `public, max-age=31536000, immutable` from the
+     `Caddyfile`, and yet `ingredients-<hash>.json` — 234 kB, the bundled USDA subset and the
+     second-largest file the app ships — answered `cf-cache-status: DYNAMIC`, while the sibling
+     `.js` and `.css` answered `HIT`. **Cloudflare decides eligibility by file extension before
+     it looks at the header, and `.json` is not on its list.** So that file was fetched from the
+     VM on every first visit and on every visit after a release.
+
+     Fixed at the edge, not in the app: a cache rule `Static assets - cache everything` marks
+     `/assets/*` eligible, with edge and browser TTLs taken from the origin's own header — the
+     year was always in the header, only the eligibility was missing. Verified `MISS` then `HIT`,
+     with `/`, `/sw.js` and `/manifest.webmanifest` still `DYNAMIC`, so the shell bypass rule
+     (decision 21) is untouched. Both rules are scoped to `http.host eq "eatmyway.gorny.dev"`,
+     because the zone also carries szok.gorny.dev and Home Assistant and a path-only cache rule
+     is zone-wide.
+
+     **The saving is not the point, and the record should say so.** A first load is ~300 kB
+     compressed and every later one is zero — the service worker answers from precache — so
+     against GCP's 200 GB of free monthly egress the money involved is nil. What this buys is a
+     first load that does not cross Europe to a small VM, and one fewer piece of infrastructure
+     quietly not doing what its header says. Tiered Cache was looked at in the same pass and
+     **not** kept: Cloudflare now bundles Smart Tiered Cache with the paid Smart Shield, and at
+     this traffic it is not worth a subscription.
+
+
+### 2026-09-07 — the calendar screen says what the week costs
+
+299. **The planner buttons are on the screen whether or not the day has meals, and there is only
+     one „Dodaj posiłek".** Reported from use with two screenshots. Decision 295 had moved
+     „Zaplanuj dzień" and „Zaplanuj tydzień" out of the ⋮ menu and into the empty-day hint,
+     which fixed the empty day and left the planned one exactly as bad as before: the moment a
+     day had a single meal the hint vanished, and the app's headline feature was back to being
+     two rows in an overflow menu. That is the same complaint decision 295 answered, arriving
+     from the other side.
+
+     Both buttons now sit in a row directly above the meal list, in **every** state — filled and
+     centred inside the hint on an empty day, outlined and left-aligned above the list on a
+     planned one, with the day button reading „Uzupełnij dzień" once there is something to top
+     up. One `{#snippet}` renders both placements, so the labels and the handlers cannot drift
+     apart the way two copies of the markup would. **The two planner rows are gone from the ⋮
+     menu**, which is the same dedupe: a control that is already visible does not also need a
+     row in a menu, and the menu is shorter for it.
+
+     The empty-day hint's „Dodaj posiłek" is gone too, for the reason the user gave — the
+     floating button in the bottom-right corner is that button, it is on the screen at the same
+     time, and two identical buttons a thumb apart is a question, not an affordance. Nothing is
+     lost: the FAB is present in both states and is what every e2e test already reaches for.
+
+300. **The week has a total, and it is judged against all seven days' goals — not just the
+     planned ones.** Asked for directly („dodaj podsumowanie kaloryczności z całego tygodnia").
+     The week strip could say what Wednesday cost but nothing could say what the week cost,
+     which is the number a week actually gets planned against.
+
+     It is a card under the strip: the date range, `kcal / kcal`, a bar, and one line of
+     „Zaplanowano 4 z 7 dni · średnio 814 kcal na dzień". Three choices worth recording.
+     **The goal sums every day in the range, empty ones included** — a day nobody has planned
+     still has a target, and the point of the readout is to see how much of the week is still
+     open; summing only the planned days would make a half-empty week look permanently on
+     budget, which is exactly backwards. **Each day is judged against its own goals**, the
+     frozen `goalSnapshot` where there is one and the profile's elsewhere (decision 75), so a
+     week spanning a change of goals adds up honestly instead of re-judging history. **The
+     average is over the planned days only**, because „średnio 496 kcal" across six untouched
+     days is not a fact about anything.
+
+     Two smaller things. The numbers are grouped — „14 000", not „14000": a week runs to five
+     digits where a day never does. And the sentence is „Zaplanowano 4 z 7 dni" rather than
+     „4 z 7 dni zaplanowanych", because after „z 7" Polish wants the genitive „dni" whatever
+     the count is, so this phrasing needs no plural rule and cannot come out wrong — the
+     failure mode decision 139's sweep was about.
+
+     `summarizeWeekTotals` is pure and lives in `calendar.ts` beside `summarizeDates`, drawn
+     with the same SVG `<rect>` width as `MacroBars` so the production CSP needs no `style-src`
+     loophole (decision 71). No new dependency, no new host, no CSP or `Caddyfile` change.
 
 
 ## Open questions

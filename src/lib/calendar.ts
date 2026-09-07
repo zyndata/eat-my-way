@@ -185,3 +185,53 @@ export function remainingGoals(totals: Macros, goals: Macros): RemainingGoal[] {
     ({ key, label }) => ({ key, label, remaining: left[key] })
   );
 }
+
+// ---- the week's totals -------------------------------------------------------------------
+
+/**
+ * What a whole week adds up to — the row under the week strip.
+ *
+ * `goals` sums **every** day in the range, including the ones with nothing on them: a day
+ * you have not planned yet still has a target, and the point of a weekly readout is to see
+ * how much of the week is still open. Summing only the planned days would make a half-empty
+ * week look permanently on budget, which is the opposite of useful when the reason to look
+ * is „ile mi jeszcze zostało do zaplanowania".
+ *
+ * Each day is judged against its own goals — the frozen `goalSnapshot` where there is one,
+ * the profile's current goals elsewhere (decision 75) — so a week spanning a change of goals
+ * adds up honestly rather than re-judging history against today's numbers.
+ */
+export interface WeekTotals {
+  totals: Macros;
+  goals: Macros;
+  /** Days carrying at least one meal. */
+  plannedDays: number;
+  /** Days in the range, planned or not. */
+  dayCount: number;
+  /** Mean kcal across the planned days only; zero when nothing is planned. */
+  averageKcal: number;
+}
+
+export function summarizeWeekTotals(summaries: readonly DaySummary[]): WeekTotals {
+  const totals: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  const goals: Macros = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+  let plannedDays = 0;
+
+  for (const day of summaries) {
+    for (const key of ['kcal', 'protein', 'carbs', 'fat'] as const) {
+      totals[key] += day.totals[key];
+      // A goal that is zero, absent or nonsense contributes nothing rather than poisoning
+      // the sum with a NaN that would blank the whole readout.
+      if (Number.isFinite(day.goals[key]) && day.goals[key] > 0) goals[key] += day.goals[key];
+    }
+    if (day.mealCount > 0) plannedDays += 1;
+  }
+
+  return {
+    totals,
+    goals,
+    plannedDays,
+    dayCount: summaries.length,
+    averageKcal: plannedDays === 0 ? 0 : totals.kcal / plannedDays
+  };
+}
