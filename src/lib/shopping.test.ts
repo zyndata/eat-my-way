@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatShoppingLine, formatShoppingList, shoppingLines, type ShoppingMeal } from './shopping';
 import { ingredientLookup } from './macros';
-import { chicken, egg, ingredients, item, macros, makeRecipe } from '../test/fixtures';
+import { chicken, egg, ingredients, item, macros, makeRecipe, oil } from '../test/fixtures';
 import type { PlannedMeal } from './types';
 
 const lookup = ingredientLookup(ingredients);
@@ -142,6 +142,75 @@ describe('shoppingLines', () => {
     expect(shoppingLines(scope, lookup).map((line) => line.ingredientId)).toEqual([
       egg.id,
       chicken.id
+    ]);
+  });
+});
+
+describe('shoppingLines with a meal changed against its recipe', () => {
+  // The list buys what is actually cooked (PLAN.md Phase 14 task 5): a list that keeps
+  // buying the bread you replaced is the Phase 9 over-buying bug in a new hat.
+  const recipe = makeRecipe({ id: 'r1', items: [item(chicken.id, 200), item(egg.id, 100)] });
+
+  it('stops buying a skipped ingredient', () => {
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ adjustments: [{ replaces: egg.id }] }), recipe }
+    ];
+    expect(shoppingLines(scope, lookup).map((line) => line.ingredientId)).toEqual([chicken.id]);
+  });
+
+  it('buys the swapped-in ingredient instead of the swapped-out one', () => {
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ adjustments: [{ replaces: egg.id, item: item(oil.id, 20) }] }), recipe }
+    ];
+    expect(shoppingLines(scope, lookup)).toEqual([
+      { ingredientId: chicken.id, name: chicken.name, unit: 'g', amount: 200, grams: 200 },
+      { ingredientId: oil.id, name: oil.name, unit: 'g', amount: 20, grams: 20 }
+    ]);
+  });
+
+  it('buys an added ingredient, at the end of the list', () => {
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ adjustments: [{ item: item(oil.id, 10) }] }), recipe }
+    ];
+    expect(shoppingLines(scope, lookup).map((line) => line.ingredientId)).toEqual([
+      chicken.id,
+      egg.id,
+      oil.id
+    ]);
+  });
+
+  it('follows the changed amount through cookingScale', () => {
+    const scope: ShoppingMeal[] = [
+      {
+        meal: meal({
+          cookingScale: 2,
+          adjustments: [{ replaces: chicken.id, item: item(chicken.id, 50) }]
+        }),
+        recipe
+      }
+    ];
+    expect(shoppingLines(scope, lookup)[0]).toEqual({
+      ingredientId: chicken.id,
+      name: chicken.name,
+      unit: 'g',
+      amount: 100,
+      grams: 100
+    });
+  });
+
+  it('still buys a two-day batch of a changed recipe exactly once', () => {
+    // „Gotuję na 2 dni": scale 2 on the cooking day, a one-portion copy on the next, and the
+    // copy carries the same layer. `cookedScales` suppresses the second day, so the changed
+    // amounts are bought once — not three times.
+    const layer = [{ replaces: egg.id, item: item(oil.id, 20) }];
+    const scope: ShoppingMeal[] = [
+      { meal: meal({ id: 'm1', cookingScale: 2, adjustments: layer }), recipe, date: '2026-09-10' },
+      { meal: meal({ id: 'm2', adjustments: layer }), recipe, date: '2026-09-11' }
+    ];
+
+    expect(shoppingLines(scope, lookup)).toEqual([
+      { ingredientId: chicken.id, name: chicken.name, unit: 'g', amount: 400, grams: 400 },
+      { ingredientId: oil.id, name: oil.name, unit: 'g', amount: 40, grams: 40 }
     ]);
   });
 });

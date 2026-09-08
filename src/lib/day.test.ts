@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addMeals,
+  adjustMeal,
   clearDay,
   clonePlannedMeal,
   clonePlannedMeals,
@@ -19,7 +20,15 @@ import {
 } from './day';
 import { dayTotals, ingredientLookup, mealMacros } from './macros';
 import type { Day, PlannedMeal } from './types';
-import { chicken, ingredients, item, macros, makeRecipe, seqIds } from '../test/fixtures';
+import {
+  chicken,
+  ingredients,
+  item,
+  macros,
+  makeRecipe,
+  oil,
+  seqIds
+} from '../test/fixtures';
 
 const lookup = ingredientLookup(ingredients);
 const goals = macros(2000, 100, 250, 70);
@@ -201,6 +210,9 @@ describe('resnapshotMeals', () => {
     macroSnapshot: snapshot
   });
 
+  /** `makeRecipe()` is 200 g chicken + 1 egg of 50 g = 300 kcal per portion. */
+  const r1 = makeRecipe({ id: 'r1' });
+
   it('rewrites every meal from that recipe and nothing else', () => {
     const day: Day = {
       date: '2026-09-10',
@@ -208,7 +220,7 @@ describe('resnapshotMeals', () => {
       goalSnapshot: macros(2000, 100, 250, 70)
     };
 
-    const updated = resnapshotMeals(day, 'r1', macros(300, 30, 10, 5));
+    const updated = resnapshotMeals(day, r1, lookup);
 
     expect(updated.meals.map((meal) => meal.macroSnapshot.kcal)).toEqual([300, 100, 300]);
     expect(updated.goalSnapshot).toEqual(day.goalSnapshot);
@@ -216,24 +228,111 @@ describe('resnapshotMeals', () => {
 
   it('leaves cookingScale and portionsEaten alone', () => {
     const day: Day = { date: '2026-09-10', meals: [from('r1', 'm1')] };
-    const [meal] = resnapshotMeals(day, 'r1', macros(1, 1, 1, 1)).meals;
+    const [meal] = resnapshotMeals(day, r1, lookup).meals;
 
     expect(meal?.cookingScale).toBe(2);
     expect(meal?.portionsEaten).toBe(1.5);
   });
 
-  it('copies the macros rather than sharing the object', () => {
-    const replacement = macros(300, 30, 10, 5);
-    const day: Day = { date: '2026-09-10', meals: [from('r1', 'm1')] };
-    const [meal] = resnapshotMeals(day, 'r1', replacement).meals;
+  it('writes a fresh macros object rather than sharing one', () => {
+    const day: Day = { date: '2026-09-10', meals: [from('r1', 'm1'), from('r1', 'm2')] };
+    const [first, second] = resnapshotMeals(day, r1, lookup).meals;
 
-    expect(meal?.macroSnapshot).not.toBe(replacement);
-    expect(meal?.macroSnapshot).toEqual(replacement);
+    expect(first?.macroSnapshot).not.toBe(second?.macroSnapshot);
+    expect(first?.macroSnapshot).toEqual(macros(300, 45, 1, 9));
   });
 
   it('returns the same day object when no meal came from that recipe', () => {
     const day: Day = { date: '2026-09-10', meals: [from('r2', 'm1')] };
-    expect(resnapshotMeals(day, 'r1', macros(1, 1, 1, 1))).toBe(day);
+    expect(resnapshotMeals(day, r1, lookup)).toBe(day);
+  });
+
+  it('re-applies a meal own changes on top of the new recipe', () => {
+    // The chicken row is skipped on m1, so the refresh must land on the egg alone (100 kcal).
+    const adjusted: PlannedMeal = {
+      ...from('r1', 'm1'),
+      adjustments: [{ replaces: chicken.id }]
+    };
+    const day: Day = { date: '2026-09-10', meals: [adjusted, from('r1', 'm2')] };
+
+    const updated = resnapshotMeals(day, r1, lookup);
+
+    expect(updated.meals[0]?.macroSnapshot.kcal).toBe(100);
+    expect(updated.meals[0]?.adjustments).toEqual([{ replaces: chicken.id }]);
+    expect(updated.meals[1]?.macroSnapshot.kcal).toBe(300);
+  });
+});
+
+describe('adjustMeal', () => {
+  const recipe = makeRecipe();
+  const day = (): Day => ({
+    date: '2026-09-10',
+    meals: [
+      {
+        id: 'm1',
+        recipeId: recipe.id,
+        cookingScale: 1,
+        portionsEaten: 2,
+        macroSnapshot: macros(300, 45, 1, 9)
+      },
+      {
+        id: 'm2',
+        recipeId: recipe.id,
+        cookingScale: 1,
+        portionsEaten: 1,
+        macroSnapshot: macros(300, 45, 1, 9)
+      }
+    ],
+    goalSnapshot: goals
+  });
+
+  it('writes the layer and re-freezes the snapshot through it', () => {
+    const updated = adjustMeal(day(), 'm1', [{ replaces: chicken.id }], recipe, lookup);
+    const [meal] = updated.meals;
+
+    expect(meal?.adjustments).toEqual([{ replaces: chicken.id }]);
+    expect(meal?.macroSnapshot).toEqual(macros(100, 5, 1, 5));
+    // The day's totals keep their invariant: snapshot x portionsEaten.
+    expect(dayTotals(updated).kcal).toBe(100 * 2 + 300);
+  });
+
+  it('touches no other meal, and keeps the goal snapshot', () => {
+    const updated = adjustMeal(day(), 'm1', [{ replaces: chicken.id }], recipe, lookup);
+
+    expect(updated.meals[1]?.macroSnapshot).toEqual(macros(300, 45, 1, 9));
+    expect(updated.meals[1]?.adjustments).toBeUndefined();
+    expect(updated.goalSnapshot).toEqual(goals);
+  });
+
+  it('drops the field entirely when the layer comes out empty', () => {
+    const adjusted = adjustMeal(day(), 'm1', [{ replaces: chicken.id }], recipe, lookup);
+    const restored = adjustMeal(adjusted, 'm1', [], recipe, lookup);
+
+    expect(restored.meals[0]).not.toHaveProperty('adjustments');
+    expect(restored.meals[0]?.macroSnapshot).toEqual(macros(300, 45, 1, 9));
+  });
+
+  it('drops an empty change on write', () => {
+    const updated = adjustMeal(day(), 'm1', [{}, { replaces: chicken.id }, {}], recipe, lookup);
+    expect(updated.meals[0]?.adjustments).toEqual([{ replaces: chicken.id }]);
+  });
+
+  it('deep-copies the layer rather than storing what it was handed', () => {
+    const layer = [{ replaces: chicken.id, item: item(oil.id, 10) }];
+    const updated = adjustMeal(day(), 'm1', layer, recipe, lookup);
+
+    expect(updated.meals[0]?.adjustments?.[0]).not.toBe(layer[0]);
+    expect(updated.meals[0]?.adjustments?.[0]?.item).not.toBe(layer[0]?.item);
+  });
+
+  it('keeps the snapshot when the recipe is gone', () => {
+    const updated = adjustMeal(day(), 'm1', [{ replaces: chicken.id }], undefined, lookup);
+    expect(updated.meals[0]?.macroSnapshot).toEqual(macros(300, 45, 1, 9));
+  });
+
+  it('returns the same day when the meal is not on it', () => {
+    const source = day();
+    expect(adjustMeal(source, 'nope', [{ replaces: chicken.id }], recipe, lookup)).toBe(source);
   });
 });
 

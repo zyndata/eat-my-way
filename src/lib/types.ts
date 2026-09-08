@@ -1,3 +1,7 @@
+import type { MealAdjustment } from './adjustments';
+
+export type { MealAdjustment };
+
 /**
  * Data model. These are the *wire* shapes: exactly what PLAN.md specifies and exactly
  * what is written to Google Drive in Phase 6. The IndexedDB layer may add derived index
@@ -91,8 +95,24 @@ export interface PlannedMeal {
   cookingScale: number;
   /** Scales the MACROS. Never touches displayed amounts. */
   portionsEaten: number;
-  /** Per-1-portion macros frozen at the moment the meal was added. Never recomputed. */
+  /**
+   * Per-1-portion macros frozen at the moment the meal was added. Never recomputed behind
+   * the user's back: only `resnapshotMeals` („zaktualizuj przyszłe dni") and `adjustMeal`
+   * rewrite it, and both are an explicit act by the user on this meal.
+   */
   macroSnapshot: Macros;
+  /**
+   * This meal's own changes over the recipe it came from (Phase 14): a row skipped, eaten in
+   * a different amount, swapped for something else, or added. Applied by `effectiveItems`
+   * and never written back into the recipe (STATE.md decision 303).
+   *
+   * Optional for the same reason `sourceUrl`, `Ingredient.updatedAt` and `Profile.mealPlan`
+   * are: no schema version, no migration, nothing in the transport. Drive round-trips it
+   * because `readDaysDocument` spreads the day it parsed, and a backup round-trips it
+   * because `readBackup` validates meals rather than rebuilding them. A meal without the
+   * field is a meal exactly as it was before the phase existed.
+   */
+  adjustments?: MealAdjustment[];
 }
 
 export interface Day {

@@ -5,7 +5,17 @@ import { DEFAULT_PROFILE } from './db';
 import { dayTotals } from './macros';
 import { addDays, addYears } from './dates';
 import type { Recipe } from './types';
-import { chicken, freshDb, ingredients, item, macros, makeRecipe, seqIds } from '../test/fixtures';
+import {
+  chicken,
+  egg,
+  freshDb,
+  ingredients,
+  item,
+  macros,
+  makeRecipe,
+  oil,
+  seqIds
+} from '../test/fixtures';
 
 let db: EatMyWayDb;
 let repo: Repository;
@@ -423,6 +433,56 @@ describe('refreshFutureSnapshots', () => {
   it('refuses to refresh a recipe that is gone', async () => {
     await expect(repo.refreshFutureSnapshots('nie-ma', MONDAY)).rejects.toThrow('Unknown recipe');
   });
+
+  it("re-applies a meal's own changes on top of the new recipe", async () => {
+    const recipe = await seedRecipe();
+    const plain = await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+    const changed = await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+    await repo.adjustMeal(WEDNESDAY, changed.id, [{ replaces: egg.id }]);
+
+    // The recipe's chicken row doubles; the changed meal still has no egg in it.
+    await repo.saveRecipe({ ...recipe, items: [item(chicken.id, 400), item(egg.id, 1, 'szt', { gramsPerUnit: 50 })] });
+    const refreshed = await repo.refreshFutureSnapshots(recipe.id, WEDNESDAY);
+
+    const day = await repo.getDay(WEDNESDAY);
+    expect(refreshed.meals).toBe(2);
+    expect(day.meals[0]?.id).toBe(plain.id);
+    expect(day.meals[0]?.macroSnapshot).toEqual(macros(500, 85, 1, 13));
+    expect(day.meals[1]?.macroSnapshot).toEqual(macros(400, 80, 0, 8));
+    expect(day.meals[1]?.adjustments).toEqual([{ replaces: egg.id }]);
+  });
+
+  it('prices an ingredient the recipe does not mention', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+    await repo.adjustMeal(WEDNESDAY, meal.id, [{ item: item(oil.id, 10) }]);
+
+    await shrinkRecipe(recipe);
+    await repo.refreshFutureSnapshots(recipe.id, WEDNESDAY);
+
+    // 100 g chicken (100 kcal) + 10 g oil (90 kcal), not 100 + 0: the refresh has to look
+    // the oil up even though the recipe never names it.
+    expect((await repo.getDay(WEDNESDAY)).meals[0]?.macroSnapshot.kcal).toBeCloseTo(190);
+  });
+
+  it('leaves a change naming a row the edit removed inert, not deleted', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(WEDNESDAY, recipe.id);
+    await repo.adjustMeal(WEDNESDAY, meal.id, [{ replaces: egg.id, item: item(oil.id, 10) }]);
+
+    // The edit drops the egg row, so the change has nothing left to apply to.
+    await shrinkRecipe(recipe);
+    await repo.refreshFutureSnapshots(recipe.id, WEDNESDAY);
+    expect((await repo.getDay(WEDNESDAY)).meals[0]?.macroSnapshot.kcal).toBe(100);
+
+    // Putting the row back brings the change back with it.
+    await repo.saveRecipe({ ...recipe, items: [item(chicken.id, 100), item(egg.id, 1, 'szt', { gramsPerUnit: 50 })] });
+    await repo.refreshFutureSnapshots(recipe.id, WEDNESDAY);
+
+    const day = await repo.getDay(WEDNESDAY);
+    expect(day.meals[0]?.adjustments).toEqual([{ replaces: egg.id, item: item(oil.id, 10) }]);
+    expect(day.meals[0]?.macroSnapshot.kcal).toBeCloseTo(190);
+  });
 });
 
 describe('deleting a recipe', () => {
@@ -495,6 +555,100 @@ describe('updateMeal', () => {
     await repo.updateMeal(MONDAY, meal.id, { portionsEaten: 2 });
 
     expect(dayTotals(await repo.getDay(MONDAY))).toEqual(macros(600, 90, 2, 18));
+  });
+});
+
+describe('adjustMeal (Phase 14)', () => {
+  it('writes the layer and re-freezes the snapshot in one transaction', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id, { portionsEaten: 2 });
+
+    await repo.adjustMeal(MONDAY, meal.id, [{ replaces: chicken.id }]);
+
+    const day = await repo.getDay(MONDAY);
+    expect(day.meals[0]?.adjustments).toEqual([{ replaces: chicken.id }]);
+    // The egg alone: 100 kcal per portion, and the day falls with it.
+    expect(day.meals[0]?.macroSnapshot).toEqual(macros(100, 5, 1, 5));
+    expect(dayTotals(day)).toEqual(macros(200, 10, 2, 10));
+  });
+
+  it('leaves the recipe in the library byte-for-byte unchanged', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.adjustMeal(MONDAY, meal.id, [{ replaces: chicken.id }]);
+
+    expect(await repo.getRecipe(recipe.id)).toEqual(recipe);
+  });
+
+  it('prices an ingredient the recipe has not got', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    // 10 g of oil at 900 kcal / 100 g is 90 kcal on top of the recipe's 300.
+    await repo.adjustMeal(MONDAY, meal.id, [{ item: item(oil.id, 10) }]);
+
+    const day = await repo.getDay(MONDAY);
+    expect(day.meals[0]?.macroSnapshot.kcal).toBeCloseTo(390);
+  });
+
+  it('changes that meal only', async () => {
+    const recipe = await seedRecipe();
+    const first = await repo.addRecipeToDay(MONDAY, recipe.id);
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    await repo.addRecipeToDay(TUESDAY, recipe.id);
+
+    await repo.adjustMeal(MONDAY, first.id, [{ replaces: chicken.id }]);
+
+    const monday = await repo.getDay(MONDAY);
+    expect(monday.meals[1]?.macroSnapshot).toEqual(macros(300, 45, 1, 9));
+    expect(monday.meals[1]?.adjustments).toBeUndefined();
+    expect(dayTotals(await repo.getDay(TUESDAY))).toEqual(macros(300, 45, 1, 9));
+  });
+
+  it('„Przywróć oryginał" takes the field and the macros back', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+
+    await repo.adjustMeal(MONDAY, meal.id, [{ replaces: chicken.id }]);
+    await repo.adjustMeal(MONDAY, meal.id, []);
+
+    const day = await repo.getDay(MONDAY);
+    expect(day.meals[0]).not.toHaveProperty('adjustments');
+    expect(day.meals[0]?.macroSnapshot).toEqual(macros(300, 45, 1, 9));
+  });
+
+  it('refuses a meal that is not on the day', async () => {
+    await expect(repo.adjustMeal(MONDAY, 'nie-ma', [])).rejects.toThrow('Unknown meal');
+  });
+
+  it('is carried by every copy, and the copy is edited independently', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id);
+    await repo.adjustMeal(MONDAY, meal.id, [{ replaces: chicken.id }]);
+
+    await repo.cookAlsoOn(MONDAY, meal.id, TUESDAY, { nextId: seqIds('copy') });
+    await repo.duplicateMeal(MONDAY, meal.id, seqIds('dup'));
+    await repo.copyDay(MONDAY, [WEDNESDAY], 'append', seqIds('week'));
+
+    for (const [date, index] of [
+      [TUESDAY, 0],
+      [MONDAY, 1],
+      [WEDNESDAY, 0]
+    ] as const) {
+      const day = await repo.getDay(date);
+      expect(day.meals[index]?.adjustments).toEqual([{ replaces: chicken.id }]);
+      expect(day.meals[index]?.macroSnapshot).toEqual(macros(100, 5, 1, 5));
+    }
+
+    // Editing the copy does not reach back into the original.
+    const copy = (await repo.getDay(TUESDAY)).meals[0];
+    await repo.adjustMeal(TUESDAY, copy?.id ?? '', []);
+
+    expect((await repo.getDay(TUESDAY)).meals[0]).not.toHaveProperty('adjustments');
+    expect((await repo.getDay(MONDAY)).meals[0]?.adjustments).toEqual([
+      { replaces: chicken.id }
+    ]);
   });
 });
 

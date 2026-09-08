@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readMealPlan, readProfileDocument } from './documents';
+import { readDaysDocument, readMealPlan, readProfileDocument } from './documents';
 import { DEFAULT_PROFILE } from '../db';
 
 /**
@@ -53,5 +53,47 @@ describe('readMealPlan', () => {
     expect(readProfileDocument(PROFILE_JSON, local).mealPlan).toEqual(local.mealPlan);
     // …and a profile that has never had one stays without one, rather than gaining `{}`.
     expect(readProfileDocument(PROFILE_JSON, DEFAULT_PROFILE)).not.toHaveProperty('mealPlan');
+  });
+});
+
+describe('readDaysDocument', () => {
+  /**
+   * The days document is spread through rather than rebuilt field by field, which is what
+   * lets an optional addition like Phase 14's `adjustments` cross Drive with no schema
+   * version and no migration (STATE.md decision 309).
+   */
+  const day = {
+    date: '2026-09-10',
+    meals: [
+      {
+        id: 'meal-1',
+        recipeId: 'recipe-1',
+        cookingScale: 1,
+        portionsEaten: 1,
+        macroSnapshot: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+        adjustments: [
+          { replaces: 'usda:1' },
+          { item: { ingredientId: 'usda:3', amount: 10, unit: 'g' } }
+        ]
+      }
+    ]
+  };
+
+  it('round-trips a meal changed against its recipe', () => {
+    const read = readDaysDocument(JSON.parse(JSON.stringify({ '2026-09-10': day })));
+    expect(read['2026-09-10']).toEqual(day);
+  });
+
+  it('leaves a meal without the field alone', () => {
+    const meal = {
+      id: 'meal-1',
+      recipeId: 'recipe-1',
+      cookingScale: 1,
+      portionsEaten: 1,
+      macroSnapshot: { kcal: 100, protein: 5, carbs: 10, fat: 2 }
+    };
+
+    const read = readDaysDocument({ '2026-09-10': { ...day, meals: [meal] } });
+    expect(read['2026-09-10']?.meals[0]).not.toHaveProperty('adjustments');
   });
 });

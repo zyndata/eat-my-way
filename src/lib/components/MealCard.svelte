@@ -1,6 +1,7 @@
 <script lang="ts">
   import { dragHandle } from 'svelte-dnd-action';
   import type { PlannedMeal } from '../types';
+  import { isAdjusted } from '../adjustments';
   import { mealMacros } from '../macros';
   import { formatPortions } from '../text';
   import NavIcon from './NavIcon.svelte';
@@ -49,6 +50,11 @@
   let suppressClick = false;
 
   const macros = $derived(mealMacros(meal));
+  /**
+   * A day whose numbers differ from its recipes has to say so where the numbers are read,
+   * not only two taps deeper (PLAN.md Phase 14 task 7).
+   */
+  const changed = $derived(isAdjusted(meal));
 
   function onTouchStart(event: TouchEvent): void {
     const touch = event.changedTouches[0];
@@ -131,6 +137,9 @@
         {Math.round(macros.kcal)} kcal · {formatPortions(meal.portionsEaten)}
         {#if meal.cookingScale !== 1}
           · gotowane ×{meal.cookingScale}
+        {/if}
+        {#if changed}
+          · <span class="text-(--color-warn)">zmieniony</span>
         {/if}
       </span>
     </a>
