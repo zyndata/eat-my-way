@@ -2,6 +2,7 @@ import type { Day, Macros, PlannedMeal, Recipe } from './types';
 import type { IdFactory } from './ids';
 import { newId } from './ids';
 import { recipePortionMacros, type IngredientLookup } from './macros';
+import { adjustedPortionMacros, cloneAdjustments, type MealAdjustment } from './adjustments';
 
 /**
  * Day and meal operations, pure. Nothing here touches the database or generates ids on its
@@ -59,13 +60,20 @@ export function planMeal(
  * object: identical numbers, no shared reference back to the original.
  */
 export function clonePlannedMeal(meal: PlannedMeal, id: string): PlannedMeal {
-  return {
+  const copy: PlannedMeal = {
     id,
     recipeId: meal.recipeId,
     cookingScale: meal.cookingScale,
     portionsEaten: meal.portionsEaten,
     macroSnapshot: { ...meal.macroSnapshot }
   };
+  // A copy of a changed meal starts where its source ended (STATE.md decision 308). This has
+  // to be deliberate: the fields above are enumerated by name, so the layer would otherwise
+  // be dropped in silence — and „Dodaj też jutro", „Powiel posiłek" and every day- and
+  // week-level copy all come through here.
+  const layer = cloneAdjustments(meal.adjustments);
+  if (layer.length > 0) copy.adjustments = layer;
+  return copy;
 }
 
 /** Deep copies of a whole list, each under a fresh id, order preserved. */
@@ -137,7 +145,9 @@ export type MealChanges = Partial<Pick<PlannedMeal, 'cookingScale' | 'portionsEa
 
 /**
  * Patch one meal's `cookingScale` or `portionsEaten`. `macroSnapshot` is deliberately not
- * patchable here — the only thing allowed to rewrite it is `resnapshotMeals`.
+ * patchable here — the only things allowed to rewrite it are `resnapshotMeals` and
+ * `adjustMeal`. The two numbers and the layer are different concerns and stay in different
+ * operations, so `...meal` carries any `adjustments` across untouched.
  */
 export function updateMeal(day: Day, mealId: string, changes: MealChanges): Day {
   if (!day.meals.some((meal) => meal.id === mealId)) return day;
@@ -191,20 +201,70 @@ export function copyMealsInto(
 /**
  * Rewrite the frozen snapshot of every meal on this day that came from `recipeId`.
  *
- * This is the one operation allowed to touch a `macroSnapshot` after the fact, and it
- * exists only for "update future days" on a recipe edit (PLAN.md; STATE.md decisions 49-50).
- * `cookingScale` and `portionsEaten` are the user's own numbers and are left alone. A day
- * with no meal from that recipe is returned unchanged, identity included, so a caller can
- * skip the write.
+ * One of the two operations allowed to touch a `macroSnapshot` after the fact (the other is
+ * `adjustMeal`), and it exists only for "update future days" on a recipe edit (PLAN.md;
+ * STATE.md decisions 49-50). `cookingScale` and `portionsEaten` are the user's own numbers
+ * and are left alone. A day with no meal from that recipe is returned unchanged, identity
+ * included, so a caller can skip the write.
+ *
+ * Each meal is recomputed through **its own** `effectiveItems`, so a meal the user changed
+ * has those changes re-applied on top of the new recipe rather than discarding them — being
+ * left out of a correction the user has just asked for is not a sensible price for having
+ * skipped one row (STATE.md decision 306).
  */
-export function resnapshotMeals(day: Day, recipeId: string, macros: Macros): Day {
-  if (!day.meals.some((meal) => meal.recipeId === recipeId)) return day;
+export function resnapshotMeals(day: Day, recipe: Recipe, lookup: IngredientLookup): Day {
+  if (!day.meals.some((meal) => meal.recipeId === recipe.id)) return day;
 
   const meals = day.meals.map((meal) =>
-    meal.recipeId === recipeId ? { ...meal, macroSnapshot: { ...macros } } : meal
+    meal.recipeId === recipe.id
+      ? { ...meal, macroSnapshot: adjustedPortionMacros(recipe, meal.adjustments, lookup) }
+      : meal
   );
   return makeDay(day.date, meals, day.goalSnapshot);
 }
+
+/**
+ * Write one meal's own changes over the recipe, and re-freeze its snapshot through them in
+ * the same breath — so a meal can never be stored with a snapshot that disagrees with its
+ * own changes.
+ *
+ * The other operation allowed to rewrite a `macroSnapshot`, and for the same reason
+ * `resnapshotMeals` is: it is an explicit act by the user **on this meal**. The freeze exists
+ * so a *recipe* edit cannot silently rewrite what was eaten last Tuesday, which a change the
+ * user is making by hand is the opposite of (STATE.md decision 302).
+ *
+ * A layer that comes out empty takes the field away again, so a meal restored to its recipe
+ * is byte-for-byte a meal that was never changed. A meal whose recipe is gone keeps the
+ * snapshot it has — there are no ingredients left to compute one from (decisions 51 and 73).
+ */
+export function adjustMeal(
+  day: Day,
+  mealId: string,
+  adjustments: readonly MealAdjustment[] | undefined,
+  recipe: Recipe | undefined,
+  lookup: IngredientLookup
+): Day {
+  if (!day.meals.some((meal) => meal.id === mealId)) return day;
+  const layer = cloneAdjustments(adjustments);
+
+  const meals = day.meals.map((meal) => {
+    if (meal.id !== mealId) return meal;
+
+    const next: PlannedMeal = {
+      ...meal,
+      macroSnapshot:
+        recipe === undefined
+          ? { ...meal.macroSnapshot }
+          : adjustedPortionMacros(recipe, layer, lookup)
+    };
+    if (layer.length === 0) delete next.adjustments;
+    else next.adjustments = layer;
+    return next;
+  });
+
+  return makeDay(day.date, meals, day.goalSnapshot);
+}
+
 
 /** How many meals on this day came from `recipeId`. */
 export function countMealsFromRecipe(day: Day, recipeId: string): number {

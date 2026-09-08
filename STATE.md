@@ -20,8 +20,27 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 11    | Zgłoszenia z użytkowania    | done    | 2026-09-03 |
 | 12    | Skanowanie opakowania       | done    | 2026-09-04 |
 | 13    | Planer posiłków             | done    | 2026-09-04 |
+| 14    | Poprawki posiłku            | done    | 2026-09-08 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 14 is **built**, in the shape it was planned (2026-09-08, decisions 301–317). It answers
+one thing daily use kept running into: what was eaten was not quite the recipe — the salad
+reduced to its cucumbers because nothing else was in the house, the bread home-baked one week
+and bought the next — and the app's only answer was to duplicate the recipe, which the user
+refuses because it turns the library into near-identical cards. A planned meal now carries **a
+layer of its own changes** over the recipe: `src/lib/adjustments.ts` is the whole layer, pure,
+and everything that used to read `recipe.items` for a planned meal — the snapshot, the meal
+screen's list, the shopping list — reads `effectiveItems` instead. The recipe stays exactly as
+typed and the layer never travels back into the library. It reverses decision 67, which declined
+this in Phase 5; decision 302 says why that reasoning no longer holds.
+
+Cost, as predicted: **one optional field on `PlannedMeal`, no schema version, no migration, no
+dependency, no CSP change and no `Caddyfile` change** — the field round-trips Drive and a backup
+for free, and `planner.ts` was not touched at all. All sixteen acceptance criteria are verified,
+including the full e2e suite run twice against the Caddy container under the production CSP
+(98 specs, zero violations reported). Five things came out differently from the letter of
+PLAN.md and are recorded as decisions 311–316; none of them changes what the phase does.
 
 Phase 13 is **built**, in the shape it was planned: a solver that proposes a day or a whole
 week against the goals, a template edited as rows in Settings, cooking on stock as runs of one
@@ -3786,6 +3805,164 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      with the same SVG `<rect>` width as `MacroBars` so the production CSP needs no `style-src`
      loophole (decision 71). No new dependency, no new host, no CSP or `Caddyfile` change.
 
+### 2026-09-08 — Phase 14 planned: a meal that is not quite its recipe
+
+301. **A new phase, asked for from daily use.** PLAN.md gains **Phase 14 — Poprawki posiłku**,
+     and `PlannedMeal` gains an optional `adjustments`. Same origin as Phases 10–13 (decisions
+     175, 198, 240, 256): something the app makes awkward every week. In the user's words —
+     sometimes the ingredients for the planned salad are not in the house and what gets eaten is
+     the cucumbers out of it; sometimes breakfast bread is home-baked and sometimes it is bought.
+     And the sentence that defines the phase: **„nie chcę robić osobnego wariantu potrawy pod
+     każdą taką zmianę"**.
+
+302. **Decision 67 is reversed, deliberately, and both of its arguments are answered.** That
+     decision declined per-meal ingredient substitution in Phase 5 on two grounds. The first —
+     „a duplicated recipe covers it in two taps" — is true for a **variant you will cook again**
+     and false for an improvisation you will never repeat; paying a library card for every „dziś
+     bez sera" is precisely the cost the user is refusing, and a library of near-identical cards
+     is worse than the problem. The second — „`macroSnapshot` is frozen so history cannot rewrite
+     itself" — was aimed at the right thing but hits the wrong target: the freeze exists so a
+     *recipe edit* cannot silently rewrite what was eaten last Tuesday, and a change the user
+     makes **on that one meal** is the opposite of silent. The snapshot stays frozen against
+     everything except an explicit act on that meal, which is exactly the exception
+     `resnapshotMeals` has been since decisions 49–50. Recorded as a reversal rather than
+     quietly built, because the original decision is still in this file and would otherwise read
+     as current.
+
+303. **The layer never goes back to the recipe.** The user's call, asked directly: „warianty nie
+     powinny wracać, przepis powinien zostać w formie oryginalnej". So there is no „zapisz jako
+     wariant", no promotion of a change into the library, and the recipe screen never learns that
+     a meal made from it was changed. The layer lives and dies on the planned meal. This is what
+     keeps the feature small: it adds one field and one seam, and it takes nothing away from the
+     recipe model, which is the part of the app everything else depends on.
+
+304. **Changes are keyed by ingredient, not by row position.** An index into `recipe.items` is
+     wrong the moment the recipe is edited — the layer would point at the wrong row and quietly
+     change the wrong food. `replaces` therefore names an ingredient id. Consequence, stated so
+     it is not a surprise: a recipe listing the same ingredient in two rows has one of it as far
+     as the layer is concerned, and skipping „oliwa" skips both. That is what a person means.
+
+305. **One shape, four operations.** `{ replaces?, item? }` expresses skip (`replaces` alone),
+     amount change and swap (`replaces` + `item`) and addition (`item` alone), instead of four
+     tagged variants that would each need their own parser, their own test matrix and their own
+     merge rule. `item` is a plain `RecipeItem`, so a swap inherits `gramsPerUnit` and
+     `macroOverride` for free and can point at an ingredient scanned off a package (Phase 12).
+
+306. **„Zaktualizuj przyszłe dni" re-applies the layer; it does not skip the meal.** When a
+     recipe is edited, `resnapshotMeals` recomputes each future meal's snapshot — now through
+     `effectiveItems`, so the user's own changes are re-applied on top of the new recipe. The
+     alternative considered was to leave adjusted meals out of the refresh: rejected, because it
+     would hand a modified meal stale macros and make „I changed one row" a reason to be excluded
+     from a correction the user has just asked for. Keying by ingredient (decision 304) is what
+     makes re-application well defined. A change naming a row the edit removed goes **inert, not
+     deleted** — it applies to nothing, and applies again if the row comes back.
+
+307. **The shopping list sees the changes.** The user's call, and half the value of the phase: a
+     list that keeps buying the home-baked bread you replaced, or the cheese you skipped, is the
+     Phase 9 over-buying bug in a new hat (decision 281). `shoppingLines` reads
+     `effectiveItems(recipe, meal.adjustments)` instead of `recipe.items`; `cookedScales` is
+     untouched, because batches are about pots and portions, not about rows.
+
+308. **A copy carries the changes.** Also the user's call, with the reasoning recorded because it
+     shapes the default: a copy that arrives already changed has „most of the work done", and
+     editing the copy from there is cheaper than redoing it. So `clonePlannedMeal` deep-copies
+     `adjustments`, which covers „Dodaj też jutro", „Powiel posiłek" and every day- and
+     week-level copy — and it has to be done deliberately, because that function enumerates
+     fields by name and would otherwise drop the field in silence.
+
+309. **The cost is one optional field and one seam.** `adjustments` is optional for the same
+     reason `sourceUrl`, `Ingredient.updatedAt` and `Profile.mealPlan` are: no schema version, no
+     migration, nothing in the transport. Drive round-trips it because `readDaysDocument` spreads
+     the day it parsed, and a backup round-trips it because `readBackup` validates meals rather
+     than rebuilding them. Everything that reads `recipe.items` for a *planned meal* — the
+     snapshot, the meal screen's ingredient list, the shopping list — goes through one new pure
+     function. No dependency, no CSP change, no `Caddyfile` change, and `planner.ts` is not
+     touched at all: the planner writes fresh meals and has nothing to carry.
+
+310. **Three alternatives considered and not built**, recorded with what would revive each,
+     rather than left to be re-discovered:
+     - **Alternatives declared on the recipe row** („chleb domowy albo sklepowy", chosen per
+       meal). The cheapest possible answer for the bread case and useless for the cucumber one,
+       because it requires foreseeing the swap. Deferred behind a trigger: if the layer shows the
+       same swap being made on the same recipe over and over, the app can then offer to record it
+       in the recipe — and that offer is only possible once the layer exists.
+     - **Named variants hidden under one recipe card.** Rejected: naming and saving each
+       combination is the same work the user refused, only better hidden.
+     - **A meal with no recipe at all** („ogórki, 200 g"). A real need — eating something outside
+       the plan — but a different feature, not a modification of a recipe, and it would not have
+       answered either of the two reported cases. Left for a phase of its own if daily use asks.
+
+### 2026-09-08 — Phase 14 built
+
+311. **`resnapshotMeals` takes the recipe and a lookup, not a precomputed `Macros`.** PLAN.md
+     did not say so, but there is no alternative once a meal has changes of its own: the whole
+     point of decision 306 is that every meal from that recipe gets a *different* number, so one
+     value handed in from the caller cannot express the result. `refreshFutureSnapshots` still
+     reports the plain recipe's per-portion macros in `SnapshotRefresh.macros` — that is what
+     the „zaktualizuj przyszłe dni" prompt is about — and it now builds one ingredient lookup
+     for the whole range, widened by every id the range's layers point at. Without that
+     widening a swapped-in or added ingredient is not in the recipe, so it would have priced at
+     zero on every refresh. The same widening was needed in `adjustMeal`, on the meal screen
+     and in `ShoppingListSheet`; each of the four is a separate call site and each has a test.
+
+312. **`unitLabel` and the amount formatter moved from `shopping.ts` to `text.ts`.**
+     `adjustments.ts` writes „Jajko → 2 szt." and `shopping.ts` writes „Jajko — 2 szt.", and
+     `shopping.ts` now imports `effectiveItems`, so leaving the formatter where it was would
+     have made the two modules import each other. `text.ts` is where „how a number is written
+     in Polish" already lives (`formatPortions`, `formatBytes`), so this is the shorter file
+     for it rather than a place invented to break a cycle. Behaviour is unchanged and
+     `shopping.test.ts` still pins the output.
+
+313. **The summary line uses signs and an arrow, not prose.** PLAN.md illustrates the line as
+     „bez sera żółtego, chleb sklepowy zamiast domowego", which is correct Polish and cannot be
+     generated: „bez" and „zamiast" take the genitive, and an ingredient name read out of the
+     database is a nominative that no code here can decline — „Ser żółty" would come out as
+     „bez Ser żółty". So the line reads **„Zmieniony wobec przepisu: − Ser żółty, Chleb domowy
+     → Chleb sklepowy, + Oliwa z oliwek 10 g"**. Signs and an arrow are grammatical for every
+     name there is, and PLAN.md's own task 1 already describes the function as producing the
+     „−ser, +oliwa" line. The screen's prose around it is ordinary Polish.
+
+314. **Five builders, not the seven operations PLAN.md lists.** „Pomiń", „zmień ilość", „zamień"
+     and „dodaj" are not four writes: with one shape (decision 305), an amount change and a swap
+     are the *same* write and differ only in the ingredient id of the item. So the exported
+     builders are `skipRow`, `changeRow`, `addRow`, `restoreRow` (which is both „cofnij pominięcie"
+     and „usuń tę zmianę" — they are one operation under two names) and `keepOnlyRow`, plus
+     `clearAdjustments`. Each collapses a second change to the same row rather than stacking two.
+     Rows are addressed by an opaque key with two spaces, `r:<ingredient>` for a recipe row and
+     `a:<ingredient>` for an addition, so a recipe row and an added row naming the same
+     ingredient stay distinct — without that, adding back something you had swapped away would
+     silently overwrite the swap.
+
+315. **The amount field edits the amount on screen, which is the cooked one.** The meal screen
+     shows `amount × cookingScale`, because that is what „Składniki na 3 porcje do ugotowania"
+     means; stored amounts are always per portion. Typing into the field therefore divides the
+     scale back out. The alternative — editing the per-portion number — would have shown one
+     figure and edited another on any meal with a scale, which is the kind of surprise the
+     `cookingScale`/`portionsEaten` split exists to avoid. At scale 1, the common case, the two
+     are the same number.
+
+316. **„Zostaw tylko ten składnik" drops the changes made to the rows it skips.** It keeps a
+     change made to the row it is *keeping* — a smaller amount, a substitute — because that is
+     still what was eaten. Everything else goes: a swap made on a row that is no longer part of
+     the meal is not about anything. Stated here because the alternative (keep every change and
+     skip on top of it) leaves a layer full of entries that apply to nothing, and „Przywróć" on
+     one row would then bring back a substitution the user had already replaced with „only the
+     cucumbers".
+
+317. **What was verified and how.** Unit tests: `adjustments.test.ts` (41 cases) over every rule
+     — the four operations, ordering, `replaces` hitting a repeated ingredient, an inert change
+     surviving a recipe edit and waking up when the row returns, `{}` dropped on write, builders
+     collapsing repeats — plus `day`, `repository`, `shopping`, `backup` and `sync/documents`
+     for the re-freeze, the copies, the list and both round trips. 830 unit tests pass. E2E:
+     `e2e/adjustments.spec.ts`, four specs through the real screens, run green against
+     `vite preview` **and** against `npm run docker:up` on http://localhost:8080 — the second is
+     what makes the „no CSP change" claim mean anything, and the added-ingredient spec asserts
+     `cspViolations` is empty. The whole suite under the container is 98 green. Screenshots were
+     re-taken (`npm run screenshots`): `meal.png` changed, and `day.png` and `planner.png` moved
+     with it. **One caveat, recorded rather than hidden:** the e2e suite is flaky on this Windows
+     machine under full parallel load — a different two or three specs fail on each run, on the
+     unchanged tree as much as on this one — so the runs quoted above are the `--retries=1` runs
+     CI itself uses. The four Phase 14 specs never needed a retry.
 
 ## Open questions
 

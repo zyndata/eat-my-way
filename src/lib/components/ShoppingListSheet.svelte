@@ -63,9 +63,16 @@
     const recipes: Map<string, Recipe> = await repository.recipesByIds(
       planned.map((row) => row.meal.recipeId)
     );
-    const ingredientIds = [...recipes.values()].flatMap((recipe) =>
-      recipe.items.map((item) => item.ingredientId)
-    );
+    // Both halves matter: the recipes' own rows, and whatever a meal's changes point at —
+    // a swapped-in or added ingredient is in no recipe and would print as „Nieznany składnik".
+    const ingredientIds = [
+      ...[...recipes.values()].flatMap((recipe) => recipe.items.map((item) => item.ingredientId)),
+      ...planned.flatMap((row) =>
+        (row.meal.adjustments ?? []).flatMap((adjustment) =>
+          adjustment.item === undefined ? [] : [adjustment.item.ingredientId]
+        )
+      )
+    ];
     const lookup = ingredientLookup(await repository.ingredientsByIds(ingredientIds));
 
     const meals: ShoppingMeal[] = planned.map((row) => ({

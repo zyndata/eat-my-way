@@ -98,6 +98,48 @@ describe('building a backup', () => {
   });
 });
 
+describe('a meal changed against its recipe', () => {
+  // `adjustments` is optional and carries no schema version: the export writes what it was
+  // handed and `readBackup` validates meals rather than rebuilding them, so the field
+  // round-trips for free (PLAN.md Phase 14; STATE.md decision 309).
+  const adjusted: Day = {
+    date: '2026-09-02',
+    meals: [
+      {
+        id: 'meal-2',
+        recipeId: 'recipe-1',
+        portionsEaten: 1,
+        cookingScale: 1,
+        macroSnapshot: macros,
+        adjustments: [
+          { replaces: 'usda-1' },
+          { item: { ingredientId: 'usda-2', amount: 50, unit: 'g' } }
+        ]
+      }
+    ]
+  };
+
+  it('survives an export and an import unchanged, with no schema version bump', () => {
+    const written = buildBackup(
+      { ...input, days: [day, adjusted] },
+      new Date('2026-09-08T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(written));
+
+    expect(read.days[1]).toEqual(adjusted);
+    expect(read.version).toBe(BACKUP_VERSION);
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+  });
+
+  it('leaves a meal without the field alone', () => {
+    const written = buildBackup(input, new Date('2026-09-08T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(written));
+
+    expect(read.days[0]).toEqual(day);
+    expect(read.days[0]?.meals[0]).not.toHaveProperty('adjustments');
+  });
+});
+
 describe('reading a backup', () => {
   it('round-trips what was exported', () => {
     const backup = readBackup(JSON.stringify(buildBackup(input)));

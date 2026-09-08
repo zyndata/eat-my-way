@@ -31,6 +31,7 @@ import {
 import { ingredientLookup, recipePortionMacros, type IngredientLookup } from './macros';
 import {
   addMeals,
+  adjustMeal,
   copyMealsInto,
   countMealsFromRecipe,
   clonePlannedMeal,
@@ -45,6 +46,7 @@ import {
   type CopyMode,
   type MealChanges
 } from './day';
+import type { MealAdjustment } from './adjustments';
 import { newId, type IdFactory } from './ids';
 import { countTagUses, removeTagKey, replaceTagKey, resolveTags, tagKey } from './tags';
 import {
@@ -149,12 +151,30 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     return profile?.goals ?? DEFAULT_PROFILE.goals;
   }
 
-  /** Ingredient lookup covering exactly the ingredients one recipe refers to. */
-  async function lookupForRecipe(recipe: Recipe): Promise<IngredientLookup> {
-    const ids = [...new Set(recipe.items.map((item) => item.ingredientId))];
-    const rows = await database.ingredients.bulkGet(ids);
+  /** Ingredient lookup covering exactly the ids asked for. */
+  async function lookupForIds(ids: readonly string[]): Promise<IngredientLookup> {
+    const rows = await database.ingredients.bulkGet([...new Set(ids)]);
     const found = rows.filter((row): row is IngredientRecord => row !== undefined);
     return ingredientLookup(found.map(fromIngredientRecord));
+  }
+
+  /** Ingredient lookup covering exactly the ingredients one recipe refers to. */
+  async function lookupForRecipe(recipe: Recipe): Promise<IngredientLookup> {
+    return lookupForIds(recipe.items.map((item) => item.ingredientId));
+  }
+
+  /**
+   * The same, widened by whatever a meal's own changes point at. A swapped-in or added
+   * ingredient is not in the recipe, so a recipe-only lookup would price it at zero.
+   */
+  function adjustmentIngredientIds(
+    adjustments: readonly (readonly MealAdjustment[] | undefined)[]
+  ): string[] {
+    return adjustments.flatMap((layer) =>
+      (layer ?? []).flatMap((adjustment) =>
+        adjustment.item === undefined ? [] : [adjustment.item.ingredientId]
+      )
+    );
   }
 
   /** How many recipes use each ingredient. Ingredients nobody uses are simply absent. */
@@ -744,6 +764,46 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       );
     },
 
+    /**
+     * „Poprawki posiłku": write this meal's own changes over the recipe, and re-freeze its
+     * `macroSnapshot` through them in the same transaction — a meal is never stored with a
+     * snapshot that disagrees with its own changes (PLAN.md Phase 14 task 2).
+     *
+     * Deliberately not folded into `updateMeal`: the two numbers and the layer are different
+     * concerns, and only this one needs the recipe and the ingredient table.
+     */
+    async adjustMeal(
+      date: string,
+      mealId: string,
+      adjustments: readonly MealAdjustment[] | undefined
+    ): Promise<Day> {
+      return database.transaction(
+        'rw',
+        database.days,
+        database.recipes,
+        database.ingredients,
+        async () => {
+          const day = await loadDay(date);
+          const meal = findMeal(day, mealId);
+          if (meal === undefined) throw new Error(`Unknown meal: ${mealId} on ${date}`);
+
+          // Everything here came out of a Svelte rune; `plain` is what makes it clonable
+          // (decision 56), and it has to happen before the macros are read off it.
+          const layer = plain(adjustments === undefined ? undefined : [...adjustments]);
+          const recipe = await database.recipes.get(meal.recipeId);
+          const lookup =
+            recipe === undefined
+              ? ((): undefined => undefined)
+              : await lookupForIds([
+                  ...recipe.items.map((item) => item.ingredientId),
+                  ...adjustmentIngredientIds([layer])
+                ]);
+
+          return storeDay(adjustMeal(day, mealId, layer, recipe, lookup));
+        }
+      );
+    },
+
     // ---- copy operations -----------------------------------------------------------
 
     /** Copy one meal within its own day, inserted right after the original. */
@@ -903,12 +963,27 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           const recipe = await database.recipes.get(recipeId);
           if (recipe === undefined) throw new Error(`Unknown recipe: ${recipeId}`);
 
-          const macros = recipePortionMacros(recipe, await lookupForRecipe(recipe));
+          const upcoming = await database.days.where('date').aboveOrEqual(fromDate).toArray();
+          // One lookup for the whole range, widened by whatever the meals' own changes point
+          // at: a swapped-in ingredient is not in the recipe and would otherwise price at 0.
+          const lookup = await lookupForIds([
+            ...recipe.items.map((item) => item.ingredientId),
+            ...adjustmentIngredientIds(
+              upcoming.flatMap((day) =>
+                day.meals
+                  .filter((meal) => meal.recipeId === recipeId)
+                  .map((meal) => meal.adjustments)
+              )
+            )
+          ]);
+
+          // The number reported back is the plain recipe's, which is what the prompt says:
+          // each meal's own snapshot is its own arithmetic (decision 306).
+          const macros = recipePortionMacros(recipe, lookup);
           const refreshed: SnapshotRefresh = { days: 0, meals: 0, macros };
 
-          const upcoming = await database.days.where('date').aboveOrEqual(fromDate).toArray();
           for (const day of upcoming) {
-            const updated = resnapshotMeals(day, recipeId, macros);
+            const updated = resnapshotMeals(day, recipe, lookup);
             // `resnapshotMeals` returns the same object when nothing matched.
             if (updated === day) continue;
             refreshed.days += 1;

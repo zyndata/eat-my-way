@@ -1,13 +1,26 @@
 <script lang="ts">
-  import type { Ingredient, PlannedMeal, Recipe } from '../lib/types';
+  import type { Ingredient, PlannedMeal, Recipe, RecipeItem } from '../lib/types';
   import {
     displayedAmount,
     displayedGrams,
     ingredientLookup,
     itemMacros,
-    recipePortionMacros,
     scaleMacros
   } from '../lib/macros';
+  import {
+    addRow,
+    adjustedPortionMacros,
+    adjustedRows,
+    adjustmentSummary,
+    changeRow,
+    clearAdjustments,
+    isAdjusted,
+    keepOnlyRow,
+    restoreRow,
+    skipRow,
+    type AdjustedRow,
+    type MealAdjustment
+  } from '../lib/adjustments';
   import { findMeal } from '../lib/day';
   import { portionWord, sourceHost } from '../lib/text';
   import {
@@ -20,7 +33,9 @@
   } from '../lib/dates';
   import { repository } from '../lib/repository';
   import { scheduleSync, syncState } from '../lib/sync/state.svelte';
+  import BottomSheet from '../lib/components/BottomSheet.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
+  import IngredientAutocomplete from '../lib/components/IngredientAutocomplete.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
   import ShoppingListSheet from '../lib/components/ShoppingListSheet.svelte';
 
@@ -33,6 +48,11 @@
    * is the only one that moves the day's totals. Macros always come from the meal's frozen
    * `macroSnapshot`, never recomputed from the recipe — a recipe edited afterwards must not
    * silently rewrite what was eaten.
+   *
+   * „Składniki" is also where the meal's own changes over the recipe are made (Phase 14).
+   * Every one of them writes through `repository.adjustMeal`, which re-freezes the snapshot
+   * in the same transaction — the recipe in the library is never touched, and the layer never
+   * travels back into it (STATE.md decision 303).
    */
 
   const CHEVRON_LEFT = 'M15 5l-7 7 7 7';
@@ -54,6 +74,9 @@
   let tomorrowMeals = $state<string[]>([]);
   let uncheckOpen = $state(false);
   let shoppingOpen = $state(false);
+  /** The row „Zmień" is open for, `'add'` for „Dodaj składnik", or nothing. */
+  let pickerFor = $state<string | undefined>(undefined);
+  let restoreOpen = $state(false);
 
   const alreadyTomorrow = $derived(tomorrowMeals.length > 0);
 
@@ -67,9 +90,24 @@
       ? { kcal: 0, protein: 0, carbs: 0, fat: 0 }
       : scaleMacros(meal.macroSnapshot, portions)
   );
-  /** The recipe as it stands now — only used to point out that it has drifted. */
+
+  /** This meal's own changes over the recipe. `undefined` reads as „no changes". */
+  const layer = $derived<MealAdjustment[] | undefined>(meal?.adjustments);
+  const changed = $derived(meal !== undefined && isAdjusted(meal));
+  /** The ingredient list as this meal is actually made, skipped rows included and marked. */
+  const rows = $derived<AdjustedRow[]>(recipe === undefined ? [] : adjustedRows(recipe, layer));
+  const summary = $derived(
+    recipe === undefined ? [] : adjustmentSummary(recipe, layer, lookup)
+  );
+
+  /**
+   * The recipe as it stands now, **with this meal's changes re-applied** — only used to point
+   * out that the recipe has drifted. Comparing against the plain recipe would make the banner
+   * true for every changed meal, permanently, and it would then be saying „you changed
+   * something" rather than „the recipe moved" (PLAN.md Phase 14 task 4).
+   */
   const currentPortion = $derived(
-    recipe === undefined ? undefined : recipePortionMacros(recipe, lookup)
+    recipe === undefined ? undefined : adjustedPortionMacros(recipe, layer, lookup)
   );
   const drifted = $derived(
     meal !== undefined &&
@@ -102,9 +140,14 @@
     const stored = await repository.getRecipe(found.recipeId);
     recipe = stored;
     if (stored !== undefined) {
-      ingredients = await repository.ingredientsByIds(
-        stored.items.map((item) => item.ingredientId)
-      );
+      // A swapped-in or added ingredient is not in the recipe; without it the row would
+      // render as „Nieznany składnik" and price at zero.
+      ingredients = await repository.ingredientsByIds([
+        ...stored.items.map((item) => item.ingredientId),
+        ...(found.adjustments ?? []).flatMap((adjustment) =>
+          adjustment.item === undefined ? [] : [adjustment.item.ingredientId]
+        )
+      ]);
     }
 
     const next = await repository.getDay(addDays(dayDate, 1));
@@ -142,6 +185,60 @@
     if (meal === undefined) return;
     await repository.updateMeal(date, mealId, { portionsEaten: portions });
     scheduleSync();
+  }
+
+  /**
+   * Every change to the layer goes through here: one write, one re-freeze, one reload. The
+   * screen never holds a half-edited layer of its own — the stored meal is the truth.
+   */
+  async function writeLayer(next: MealAdjustment[]): Promise<void> {
+    if (meal === undefined) return;
+    await repository.adjustMeal(date, mealId, next);
+    await load(date, mealId);
+    scheduleSync();
+  }
+
+  /**
+   * The amount field edits the number on screen, which is the **cooked** amount. Stored
+   * amounts are always per portion, so the cooking scale comes back out here.
+   */
+  async function setRowAmount(row: AdjustedRow, value: number): Promise<void> {
+    if (!Number.isFinite(value) || value < 0) return;
+    const amount = value / (scale === 0 ? 1 : scale);
+    if (amount === row.item.amount) return;
+    await writeLayer(changeRow(layer, row.key, { ...row.item, amount }));
+  }
+
+  /** „Zostaw tylko ten składnik" — the cucumber case, one tap instead of five. */
+  async function keepOnly(row: AdjustedRow): Promise<void> {
+    if (recipe === undefined) return;
+    await writeLayer(keepOnlyRow(recipe, layer, row.key));
+  }
+
+  /**
+   * „Zmień": the row is eaten as another ingredient, keeping its amount and unit (STATE.md
+   * decision 66). A `macroOverride` does not travel — it described the ingredient that is
+   * leaving.
+   */
+  async function pickIngredient(ingredient: Ingredient): Promise<void> {
+    const target = pickerFor;
+    pickerFor = undefined;
+    if (target === undefined) return;
+
+    if (target === 'add') {
+      await writeLayer(addRow(layer, { ingredientId: ingredient.id, amount: 100, unit: 'g' }));
+      return;
+    }
+
+    const row = rows.find((candidate) => candidate.key === target);
+    if (row === undefined) return;
+    const swapped: RecipeItem = {
+      ingredientId: ingredient.id,
+      amount: row.item.amount,
+      unit: row.item.unit
+    };
+    if (row.item.gramsPerUnit !== undefined) swapped.gramsPerUnit = row.item.gramsPerUnit;
+    await writeLayer(changeRow(layer, row.key, swapped));
   }
 
   /** „Gotuję na 2 dni": scale to 2 and drop a one-portion copy on tomorrow. */
@@ -221,31 +318,124 @@
           {/if}
         </h2>
 
-        {#if recipe.items.length === 0}
+        {#if changed}
+          <p class="pt-2 text-sm text-(--color-warn)">
+            Zmieniony wobec przepisu: {summary.join(', ')}
+          </p>
+        {/if}
+
+        {#if rows.length === 0}
           <p class="pt-1 text-sm text-(--color-ink-muted)">Ten przepis nie ma składników.</p>
         {:else}
-          <ul class="flex flex-col gap-1 pt-2">
-            {#each recipe.items as item, index (index)}
-              {@const ingredient = lookup(item.ingredientId)}
+          <!-- Skipped rows stay on the list, struck through: a list that silently loses
+               rows is a list nobody trusts. -->
+          <ul class="flex flex-col gap-1 pt-2" aria-label="Składniki posiłku">
+            {#each rows as row, index (row.key + index)}
+              {@const ingredient = lookup(row.item.ingredientId)}
+              {@const skipped = row.kind === 'skipped'}
               <li
-                class="flex items-baseline justify-between gap-3 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2"
+                class="rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 {skipped
+                  ? 'opacity-60'
+                  : ''}"
               >
-                <span class="min-w-0 truncate text-sm">
-                  {ingredient?.name ?? 'Nieznany składnik'}
-                </span>
-                <span class="shrink-0 text-sm font-medium tabular-nums">
-                  {Math.round(displayedAmount(item, scale) * 100) / 100}
-                  {item.unit === 'szt' ? 'szt.' : item.unit}
-                  {#if item.unit !== 'g'}
-                    <span class="font-normal text-(--color-ink-muted)">
-                      ({Math.round(displayedGrams(item, scale))} g)
+                <div class="flex items-baseline justify-between gap-3">
+                  <span class="min-w-0 truncate text-sm {skipped ? 'line-through' : ''}">
+                    {ingredient?.name ?? 'Nieznany składnik'}
+                  </span>
+                  {#if skipped}
+                    <span class="shrink-0 text-sm text-(--color-ink-muted)">pominięty</span>
+                  {:else}
+                    <span class="flex shrink-0 items-baseline gap-1 text-sm font-medium">
+                      <label>
+                        <span class="sr-only">
+                          Ilość: {ingredient?.name ?? 'nieznany składnik'}
+                        </span>
+                        <input
+                          class="w-20 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-2 py-1 text-right text-base tabular-nums outline-none focus:border-(--color-accent)"
+                          type="number"
+                          inputmode="decimal"
+                          min="0"
+                          step="any"
+                          value={Math.round(displayedAmount(row.item, scale) * 100) / 100}
+                          onchange={(event) =>
+                            void setRowAmount(row, event.currentTarget.valueAsNumber)}
+                        />
+                      </label>
+                      <span>{row.item.unit === 'szt' ? 'szt.' : row.item.unit}</span>
+                      {#if row.item.unit !== 'g'}
+                        <span class="font-normal text-(--color-ink-muted)">
+                          ({Math.round(displayedGrams(row.item, scale))} g)
+                        </span>
+                      {/if}
                     </span>
                   {/if}
-                </span>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 pt-1.5 text-xs">
+                  {#if skipped}
+                    <button
+                      type="button"
+                      class="font-medium text-(--color-accent) underline"
+                      onclick={() => void writeLayer(restoreRow(layer, row.key))}
+                    >
+                      Przywróć
+                    </button>
+                  {:else}
+                    <button
+                      type="button"
+                      class="text-(--color-ink-muted) underline"
+                      onclick={() => void writeLayer(skipRow(layer, row.key))}
+                    >
+                      Pomiń
+                    </button>
+                    <button
+                      type="button"
+                      class="text-(--color-ink-muted) underline"
+                      onclick={() => (pickerFor = row.key)}
+                    >
+                      Zmień
+                    </button>
+                    <button
+                      type="button"
+                      class="text-(--color-ink-muted) underline"
+                      onclick={() => void keepOnly(row)}
+                    >
+                      Zostaw tylko ten składnik
+                    </button>
+                  {/if}
+                  {#if row.kind !== 'plain' && !skipped}
+                    <span class="text-(--color-ink-muted)">
+                      {row.kind === 'added' ? 'dodany' : 'zmieniony'}
+                    </span>
+                  {/if}
+                </div>
               </li>
             {/each}
           </ul>
         {/if}
+
+        <div class="flex flex-wrap items-center gap-4 pt-3">
+          <button
+            type="button"
+            class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+            onclick={() => (pickerFor = 'add')}
+          >
+            Dodaj składnik
+          </button>
+          {#if changed}
+            <button
+              type="button"
+              class="text-sm font-medium text-(--color-accent) underline"
+              onclick={() => (restoreOpen = true)}
+            >
+              Przywróć oryginał
+            </button>
+          {/if}
+        </div>
+
+        <p class="pt-2 text-xs text-(--color-ink-muted)">
+          Zmiany dotyczą tylko tego posiłku. Przepis w bibliotece zostaje bez zmian.
+        </p>
 
         {#if recipe.instructions !== ''}
           <div class="pt-4">
@@ -412,16 +602,16 @@
       {/if}
     </section>
 
-    {#if recipe !== undefined && recipe.items.length > 0}
+    {#if recipe !== undefined && rows.length > 0}
       <details class="mt-4 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
         <summary class="cursor-pointer text-sm font-semibold">
           Makroskładniki składnik po składniku
         </summary>
         <p class="pt-1 text-xs text-(--color-ink-muted)">
-          Wartości dla 1 porcji, wyliczone z aktualnego przepisu.
+          Wartości dla 1 porcji, wyliczone z aktualnego przepisu i zmian tego posiłku.
         </p>
         <ul class="flex flex-col gap-1 pt-2">
-          {#each recipe.items as item, index (index)}
+          {#each rows.filter((row) => row.kind !== 'skipped') as { item }, index (index)}
             {@const ingredient = lookup(item.ingredientId)}
             {@const macros = itemMacros(item, ingredient)}
             <li class="flex items-baseline justify-between gap-3 text-xs">
@@ -445,6 +635,35 @@
   {mealId}
   onclose={() => (shoppingOpen = false)}
 />
+
+<BottomSheet
+  open={pickerFor !== undefined}
+  title={pickerFor === 'add' ? 'Dodaj składnik' : 'Zmień składnik'}
+  onclose={() => (pickerFor = undefined)}
+>
+  <p class="pb-3 text-sm text-(--color-ink-muted)">
+    {#if pickerFor === 'add'}
+      Składnik trafi na koniec listy tego posiłku, w gramach — ilość poprawisz na liście.
+    {:else}
+      Nowy składnik przejmie ilość i jednostkę tego wiersza. Przepis zostaje bez zmian.
+    {/if}
+  </p>
+  <IngredientAutocomplete id="meal-ingredient" flow onselect={(picked) => void pickIngredient(picked)} />
+</BottomSheet>
+
+<ConfirmDialog
+  open={restoreOpen}
+  title="Przywrócić oryginał?"
+  confirmLabel="Przywróć"
+  cancelLabel="Zostaw zmiany"
+  onconfirm={() => {
+    restoreOpen = false;
+    void writeLayer(clearAdjustments());
+  }}
+  oncancel={() => (restoreOpen = false)}
+>
+  Ten posiłek wróci do przepisu — razem z makroskładnikami. Zmiany: {summary.join(', ')}.
+</ConfirmDialog>
 
 <ConfirmDialog
   open={uncheckOpen}

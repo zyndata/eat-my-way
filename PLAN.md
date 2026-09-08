@@ -1576,3 +1576,167 @@ settings screen.
 - [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
       `npm run docker:up`.
 - [ ] All UI text in Polish; code and comments in English.
+
+## Phase 14 — Poprawki posiłku
+
+A recipe says what the dish is. A day says what was actually eaten, and the two are not always
+the same dish. Two cases from daily use, both weekly, neither of them exotic:
+
+- the salad was planned, the ingredients for it were not in the house, and what was eaten was
+  the cucumbers out of it;
+- breakfast is bread, and the bread is home-baked on a good week and shop-bought on a bad one.
+
+Neither is a new recipe. The app's only answer today is to duplicate the recipe — which is the
+right answer for a **variant you will cook again**, and the wrong one for an improvisation you
+will never repeat. Doing it anyway turns the library into a list of near-identical cards, which
+is exactly why the user refuses it. The other workaround, dropping `portionsEaten`, scales all
+four macros by the same factor: eating cucumbers is not eating a third of a salad.
+
+This phase gives a planned meal **a layer of its own changes over the recipe it came from**,
+and nothing else. The recipe stays exactly as it was typed — the layer never travels back into
+the library, there is no „zapisz jako wariant", and the recipe screen never learns that any of
+this happened (STATE.md decision 303). This is a deliberate reversal of **decision 67**, which
+declined per-meal substitution in Phase 5; decision 302 records what changed and why.
+
+**One seam, not five.** Everything that today reads `recipe.items` for a planned meal reads
+`effectiveItems(recipe, meal.adjustments)` instead: the macro snapshot, the ingredient list on
+the meal screen, and the shopping list. Nothing else in the app changes shape.
+
+### Data model
+
+```ts
+/**
+ * One change made to a single planned meal. Never written back to the recipe.
+ *
+ * `replaces` names a recipe row BY INGREDIENT, not by position, so the layer survives an edit
+ * to the recipe underneath it. `item` is what is eaten instead — absent means nothing is:
+ *
+ *   { replaces: 'usda:1' }                          — skip that row
+ *   { replaces: 'usda:1', item: {…same id, 50 g} }  — eat a different amount of it
+ *   { replaces: 'usda:1', item: {…other id} }       — swap it for something else
+ *   { item: {…} }                                   — add something the recipe has not got
+ */
+interface MealAdjustment {
+  replaces?: string;
+  item?: RecipeItem;
+}
+
+interface PlannedMeal { /* … */ adjustments?: MealAdjustment[] }
+```
+
+`adjustments` is **optional**, for the same reason `sourceUrl`, `Ingredient.updatedAt` and
+`Profile.mealPlan` are: no schema version, no migration, and nothing in the transport. Drive
+keeps it because `readDaysDocument` spreads the day it parsed (`{ ...candidate, date }`), and a
+backup keeps it because `readBackup` validates meals rather than rebuilding them. A meal without
+the field is a meal exactly as it is today.
+
+`item` is a plain `RecipeItem`, reused verbatim — so a swap can carry its own `gramsPerUnit`
+and its own `macroOverride`, and can point at a custom ingredient scanned off a package.
+
+**Rules the layer obeys**, each of them a test:
+
+- Order of application is the order of the array; additions land at the end of the list.
+- `replaces` matches **every** row carrying that ingredient. A recipe that lists oil twice has
+  one oil as far as a person skipping it is concerned.
+- An adjustment whose `replaces` names a row the recipe no longer has goes **inert, not
+  deleted**: it applies to nothing while the row is absent, and applies again if a later recipe
+  edit brings the row back. An addition applies always.
+- `{}` — neither field — is not an adjustment and is dropped on write.
+
+### The snapshot rule, restated
+
+`macroSnapshot` stays frozen and is still never recomputed from a recipe behind the user's back.
+It is rewritten by exactly two things, both of them an explicit act by the user on that meal:
+`resnapshotMeals` („zaktualizuj przyszłe dni" after a recipe edit, decisions 49–50), and now
+`adjustMeal`. Both compute the same way — `recipePortionMacros` over `effectiveItems` — so a
+recipe edit re-applies the meal's own changes on top of the new recipe rather than discarding
+them (decision 306). The day's totals keep the invariant they have always had:
+`macroSnapshot × portionsEaten`.
+
+### Tasks
+
+1. **`src/lib/adjustments.ts` — the whole layer, pure.** No I/O, no clock, no ids, in the shape
+   `day.ts`, `macros.ts` and `shopping.ts` already established. It exports `MealAdjustment`,
+   `effectiveItems(recipe, adjustments)`, `isAdjusted(meal)`, `adjustmentSummary(...)` for the
+   „−ser, +oliwa" line, and the builders the UI writes through — skip, unskip, set amount, swap,
+   add, drop one change, drop all of them — each returning a new array and each collapsing a
+   second change to the same row rather than stacking two.
+
+2. **`PlannedMeal.adjustments` and one repository operation.** `adjustMeal(date, mealId,
+   adjustments)` writes the layer and re-freezes `macroSnapshot` through `effectiveItems` in the
+   same transaction, so a meal can never be stored with a snapshot that disagrees with its own
+   changes. `MealChanges` and `updateMeal` are left exactly as they are — the two numbers and the
+   layer are different concerns and stay in different operations.
+
+3. **The meal screen does the editing** (`src/routes/Meal.svelte`). „Składniki" already lists the
+   rows; each one gains „Pomiń", „Zmień" (the same `IngredientAutocomplete` the recipe editor
+   uses, keeping amount and unit — decision 66) and an amount field, plus „Zostaw tylko ten
+   składnik" for the cucumber case, which is one tap instead of five. Below the list: „Dodaj
+   składnik", and, when anything is changed, „Przywróć oryginał". Skipped rows stay visible,
+   struck through and dimmed, because a list that silently loses rows is a list nobody trusts.
+   Under the heading, one line in Polish: „Zmieniony wobec przepisu: bez sera żółtego, chleb
+   sklepowy zamiast domowego".
+
+4. **The drift banner has to stop lying.** `Meal.svelte` compares the snapshot with
+   `recipePortionMacros(recipe, …)` to say the recipe has changed since; against the layer that
+   comparison is true for every adjusted meal, permanently. It compares through `effectiveItems`
+   instead, so the banner keeps meaning „the *recipe* moved", not „you changed something".
+
+5. **The shopping list buys what is actually cooked.** `shoppingLines` iterates `recipe.items`;
+   it iterates `effectiveItems(recipe, meal.adjustments)` instead. Swapped-out ingredients leave
+   the list, added ones join it, and skipped ones stop being bought. `cookedScales` is untouched
+   — it is about pots and portions, not about rows. This is half the value of the phase: a list
+   that keeps buying home-baked bread you replaced is the Phase 9 over-buying bug wearing a new
+   hat (decision 281).
+
+6. **Copies carry the changes.** `clonePlannedMeal` deep-copies `adjustments` — it enumerates
+   fields by name, so this will not happen by itself. That covers „Dodaj też jutro"
+   (`cookAlsoOn`), „Powiel posiłek" (`duplicateMealInDay`) and every day- and week-level copy
+   (`copyMealsInto`), all of which go through it. A copy of a changed meal starts where its
+   source ended and is edited from there (decision 308). The planner writes fresh meals and has
+   no adjustments to carry, so `planner.ts` is not touched at all.
+
+7. **The day screen says which meals are not the plain recipe.** `MealCard` gets a quiet marker
+   („zmieniony") — a day whose numbers differ from its recipes has to say so on the screen where
+   the numbers are read, not only two taps deeper.
+
+8. **Tests.** `adjustments.test.ts` over every rule above: the four operations, ordering,
+   `replaces` hitting a repeated ingredient, an inert adjustment surviving a recipe edit and
+   waking up again, `{}` dropped, builders collapsing repeats. `macros`/`day` tests for the
+   re-freeze on `adjustMeal` and on `resnapshotMeals` with a layer present, and for
+   `clonePlannedMeal` carrying it. `shopping.test.ts` for a swapped, a skipped and an added
+   ingredient, including a batch cooked over two days. `backup` and `sync/documents` round-trip
+   tests proving the field survives both without a schema version. `e2e/adjustments.spec.ts`:
+   plan a meal, skip a row, watch the day total fall, open the shopping list and see the row
+   gone, copy the meal to tomorrow and see the change come with it, then „Przywróć oryginał".
+
+### Acceptance criteria
+
+- [ ] Skipping an ingredient on a planned meal lowers that meal's macros and the day's total,
+      and leaves the recipe in the library byte-for-byte unchanged.
+- [ ] „Zostaw tylko ten składnik" on the cucumber row of a salad leaves a meal whose macros are
+      the cucumbers' alone.
+- [ ] Swapping home-baked bread for shop-bought on one breakfast changes that meal only: the
+      recipe, every other planned meal from it, and every past day are untouched.
+- [ ] Adding an ingredient the recipe has not got raises the meal's macros and appears in the
+      ingredient list at the end.
+- [ ] Skipped rows stay visible and struck through; the header line names the changes in Polish.
+- [ ] The shopping list for the day, the week and the single meal reflects the changes: swapped
+      ingredients leave it, added ones join it, skipped ones stop being bought — and a two-day
+      batch of a changed recipe is still bought exactly once.
+- [ ] „Dodaj też jutro", „Powiel posiłek" and a copied day all carry the changes to the copy,
+      and editing the copy does not touch the original.
+- [ ] Editing the recipe and choosing „zaktualizuj przyszłe dni" re-applies each meal's own
+      changes on top of the new recipe rather than discarding them.
+- [ ] An adjustment naming a row a recipe edit removed changes nothing and is not deleted; the
+      row coming back brings the change back with it.
+- [ ] The „przepis się zmienił" banner does not appear on a meal that is merely adjusted.
+- [ ] The day screen marks adjusted meals.
+- [ ] „Przywróć oryginał" returns the meal to the recipe, macros included.
+- [ ] `adjustments` survives a Drive round trip and an export/import round trip with **no schema
+      version bump and no migration**, and a build without the feature leaves the field alone.
+- [ ] `macroSnapshot` is still written by exactly two operations, both explicit user acts, and
+      `adjustments.ts` imports nothing that touches the database, the network or the clock.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.

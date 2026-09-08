@@ -8,13 +8,14 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–13 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–14 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then five phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then six phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
-> the package instead of typing it (12), and a planner that proposes a day or a week that fits
-> your goals (13). The live app is
+> the package instead of typing it (12), a planner that proposes a day or a week that fits
+> your goals (13), and changing one planned meal without touching the recipe it came from (14).
+> The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
 > record of what was decided and what is still open.
@@ -55,6 +56,12 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   batch cooked today can be planned onto tomorrow with one checkbox — the same batch the
   planner writes — and anything the USDA subset does not know you add once to your own
   ingredient library.
+- **What you ate is allowed not to be the recipe.** The salad was planned and what was in the
+  house was the cucumbers; the bread is home-baked one week and shop-bought the next. On that
+  one meal you skip a row, change its amount, swap it for something else or add something the
+  recipe has not got — the macros and the shopping list follow, a copy of the meal carries the
+  changes, and the recipe in your library stays exactly as you typed it. There is no „save as a
+  variant": an improvisation you will never repeat does not earn a card in the library.
 - **Bring your own key.** The optional Gemini features — the recipe import and the package
   scan — use *your* API key, stored in a
   vault that is encrypted with Argon2id + AES-GCM behind a master password by default; the

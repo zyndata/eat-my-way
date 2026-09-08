@@ -1,3 +1,5 @@
+import type { Unit } from './types';
+
 /**
  * Text normalization shared by tag keys and the ingredient search index.
  *
@@ -114,4 +116,19 @@ export function sourceHost(url: string): string {
   } catch {
     return url;
   }
+}
+
+/** „szt." reads as a unit in Polish; `g` and `ml` do not take a full stop. */
+export function unitLabel(unit: Unit): string {
+  return unit === 'szt' ? 'szt.' : unit;
+}
+
+/** Two decimals at most, with the Polish decimal comma. */
+export function formatAmount(value: number): string {
+  return (Math.round(value * 100) / 100).toLocaleString('pl-PL');
+}
+
+/** An amount as it is written next to an ingredient: „200 g", „1,5 szt.". */
+export function formatAmountWithUnit(amount: number, unit: Unit): string {
+  return `${formatAmount(amount)} ${unitLabel(unit)}`;
 }

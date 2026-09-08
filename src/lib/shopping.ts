@@ -1,6 +1,8 @@
 import type { Ingredient, PlannedMeal, Recipe, Unit } from './types';
 import type { IngredientLookup } from './macros';
 import { displayedAmount, displayedGrams } from './macros';
+import { formatAmountWithUnit } from './text';
+import { effectiveItems } from './adjustments';
 
 /**
  * Shopping lists (PLAN.md Phase 9 task 7).
@@ -119,7 +121,7 @@ export function shoppingLines(
     const scale = scales[index] ?? meal.cookingScale;
     if (scale === 0) continue;
 
-    for (const item of recipe.items) {
+    for (const item of effectiveItems(recipe, meal.adjustments)) {
       if (item.ingredientId === '') continue;
 
       const key = `${item.ingredientId} ${item.unit}`;
@@ -147,19 +149,9 @@ export function shoppingLines(
   return [...lines.values()];
 }
 
-/** „szt." reads as a unit in Polish; `g` and `ml` do not take a full stop. */
-export function unitLabel(unit: Unit): string {
-  return unit === 'szt' ? 'szt.' : unit;
-}
-
-/** Two decimals at most, with the Polish decimal comma. */
-function formatAmount(value: number): string {
-  return (Math.round(value * 100) / 100).toLocaleString('pl-PL');
-}
-
 /** One line as the share sheet will show it: „Pierś z kurczaka — 400 g". */
 export function formatShoppingLine(line: ShoppingLine): string {
-  const amount = `${formatAmount(line.amount)} ${unitLabel(line.unit)}`;
+  const amount = formatAmountWithUnit(line.amount, line.unit);
   return showGrams(line)
     ? `${line.name} — ${amount} (${Math.round(line.grams)} g)`
     : `${line.name} — ${amount}`;
