@@ -21,8 +21,21 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 12    | Skanowanie opakowania       | done    | 2026-09-04 |
 | 13    | Planer posiłków             | done    | 2026-09-04 |
 | 14    | Poprawki posiłku            | done    | 2026-09-08 |
+| 15    | iPhone                      | pending | — |
+| 16    | Miary domowe                | pending | — |
+| 17    | Dział sklepu                | pending | — |
+| 18    | Trzy drobiazgi              | pending | — |
+| 19    | Cel dopowiedziany do końca  | pending | — |
+| 20    | Metryczka przepisu          | pending | — |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phases 15–20 are **planned, not built** (2026-09-11, decisions 318–340). Phase 15 is a defect
+found on a real iPhone and is deliberately first: the calendar's „Dodaj posiłek" button is cut
+off by the navigation bar on an installed iPhone, because a fixed bottom offset was written as
+a constant while the bar's height is not one. Phases 16–20 come from an analysis of two Polish
+Android diet apps (Fitatu and Diet &amp; Training by Ann) read as unpacked APKs; what survived
+that analysis is six ideas, and decisions 321–340 record the fork taken at each.
 
 Phase 14 is **built**, in the shape it was planned (2026-09-08, decisions 301–317). It answers
 one thing daily use kept running into: what was eaten was not quite the recipe — the salad
@@ -3964,6 +3977,176 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      unchanged tree as much as on this one — so the runs quoted above are the `--retries=1` runs
      CI itself uses. The four Phase 14 specs never needed a retry.
 
+
+### 2026-09-11 — an iPhone screenshot, and phases 15–20 planned
+
+318. **Phases 15–20 are new; PLAN.md ended at Phase 14.** Two unrelated sources, one day apart.
+     Phase 15 is a **defect**: a screenshot from an installed iPhone showed the calendar's
+     „Dodaj posiłek" button cut off along its bottom edge by the navigation bar. Phases 16–20
+     come from reading two Polish Android diet apps as unpacked APKs — Fitatu
+     (`com.fitatu.tracker`, Flutter, whose Dart snapshot still carries every source path) and
+     Diet &amp; Training by Ann 5.7.0 — and asking what they do better. Same situation as
+     phases 10 and 11 (decisions 175 and 198): planned after 1.0, from use rather than from the
+     original specification.
+
+319. **The iPhone defect is arithmetic, and the number 80 is not the bug.** `BottomNav` is
+     `py-2` + a `size-6` icon + `gap-1` + a `text-xs` line + `border-t` = **61 px**, and it pads
+     itself with `env(safe-area-inset-bottom)` — 34 px on an installed iPhone in portrait, so
+     the bar is 95 px tall. `DayScreen`'s FAB sits at `bottom-20` = 80 px and is 44 px tall, so
+     its lowest 15 px are behind the bar. On Android and on the desktop the inset is 0, the bar
+     is 61 px, and 80 px clears it — which is why fourteen phases and a release never saw this.
+     `UpdatePrompt.svelte` carries the same `bottom-20` and the same defect, unphotographed.
+     `main`'s `pb-24` is 96 px against a 95 px bar: correct today by one pixel and by luck.
+     The fix is that **no element clearing the bar may hold a literal offset** — `--nav-h` is
+     the only source of that number.
+
+320. **The inset reaches the stylesheet through a custom property, so that a test can move it.**
+     Chromium cannot be told to report a safe-area inset, and nothing in this repository has ever
+     rendered a viewport that has one: Playwright runs a single `Desktop Chrome` project and
+     `scripts/screenshots.mjs` uses 400×820. So the whole class of defect is invisible to CI by
+     construction, and a fix that does not change that is a fix that regresses. Hence
+     `--safe-bottom: env(safe-area-inset-bottom, 0px)` and `--nav-h` derived from it: an e2e spec
+     sets `--safe-bottom` to `34px` and asserts the boxes do not intersect. This is the reason
+     for the indirection — not tidiness. A WebKit Playwright project is added alongside, which
+     catches iOS layout behaviour Chromium forgives but does **not** emulate insets; the two
+     measures cover different things and neither replaces the other.
+
+321. **A user-supplied field on a bundled ingredient lives in the TSV, never on the row.**
+     `importBundledNutrition` writes bundled rows with `bulkPut`, so anything written onto a
+     `usda:*` row is erased wholesale by the next data refresh — which is exactly what
+     `Ingredient.updatedAt`'s „custom rows only" comment already says. Measures (phase 16) and
+     departments (phase 17) therefore come from `data/pl-ingredients.tsv` for bundled rows and
+     live on the row only for `custom:*`, which nothing overwrites. **Rejected:** a side table
+     keyed by ingredient id, on the model of `corrections`. It would let the user add „moja
+     miska = 320 g" to a USDA row, and costs schema version 4, a new section in
+     `ingredients.json`, a new section in the backup, a merge rule and orphan cleanup. Revive it
+     only if editing a bundled row's measures becomes a requirement rather than a wish.
+     **Rejected outright:** writing the field onto the bundled row, which fails silently, months
+     later, looking like a sync fault.
+
+322. **The TSV gains optional trailing columns, not a fixed six.** `build-nutrition.mjs` throws
+     on `columns.length !== 4`; it will accept 4 to 6. A four-column row stays valid, so the
+     1 420-row mapping can be filled in over months instead of blocking two phases on one
+     sitting of data entry.
+
+323. **A measure is a label on `szt`, not a fourth `Unit`.** `RecipeItem` gains an optional
+     `measureName`, and `gramsPerUnit` keeps its exact meaning as the single source of weight.
+     `macros.ts` is untouched, the three invariants stand, `shoppingLines` still keys by
+     `ingredientId + unit`, and the Drive format gains nothing that changes shape. **Rejected:**
+     a new `Unit` value, which would mean walking every `switch` on the unit, changing the
+     transport, and answering whether two different measures of one ingredient sum on a
+     shopping list.
+
+324. **The measure vocabulary is closed, about fifteen names in code.** Free text fragments into
+     „ząbek", „ząbeczek", „ząbek czosnku" within a week, which kills the suggestion list and
+     makes Polish plural agreement impossible. The plural table lives in `text.ts` and is the
+     one place that knows 1 ząbek / 2 ząbki / 5 ząbków.
+
+325. **Picking an ingredient does not change the unit.** The unit stays on `g`, as today;
+     measures appear as chips under the amount field and one tap sets unit, label and weight
+     together. Anyone who weighs everything sees one extra row and nothing else moves — in
+     particular, typing `100` after picking an ingredient still means 100 grams.
+
+326. **Measures are filled by hand, for the subset where a piece means something.** Egg, clove,
+     slice, banana, onion, tomato — on the order of 150–250 rows, not 1 344. **Rejected:** one
+     Gemini pass over the whole bundle. A measure is not a nutrition value, so it does not
+     break „AI never invents a nutrition value" outright — but it is a multiplier for all four
+     of them, and a wrong clove weight is wrong in every recipe that uses it, silently. If it is
+     ever done that way, every row is reviewed before the commit, and the saving is then smaller
+     than it looks.
+
+327. **Nine shopping departments, one level.** Fitatu's two-level taxonomy (17 categories over
+     96 subcategories) earns its keep because it filters their product search; ours does not
+     need it — ingredient search works on names and aliases and works well. Nine headings fit a
+     phone screen and match how a shop is walked.
+
+328. **Departments are derived from the USDA food category by the build script, not typed
+     1 344 times.** The mapping is a table of roughly twenty-five entries, committed and
+     reviewed by hand, with a TSV column overriding it per row where it is wrong. **To verify
+     before phase 17 starts:** that both pinned releases — SR Legacy 2018-04 and Foundation
+     2026-04-30 — expose the category in the same field. If not, the TSV column is the only
+     source and the fill becomes incremental, exactly as in phase 16.
+
+329. **The shopping list always groups by department. This reverses a stated intent.**
+     `shopping.ts` says in a comment that the order is the order the ingredients were first met
+     „so a list reads like the recipes it came from". That was right while the app knew nothing
+     about what an ingredient *is*; it is wrong in a shop, which is where the list is read.
+     Within a department the old order is kept, so a department still reads the way the whole
+     list used to. **Rejected:** a toggle — a second code path, a second test set and a stored
+     preference, for a choice nobody changes twice.
+
+330. **A missing department means „Inne", and the label scan proposes one.** The field is
+     optional and never blocks a save, consistent with `updatedAt`, `sourceUrl`, `mealPlan` and
+     `adjustments`. On top of that — this is the amendment asked for on 2026-09-11 —
+     `gemini/scan.ts` proposes the department while it is already reading the package:
+     one nullable, enumerated property on the existing `responseSchema`, one rule in the prompt.
+     **It must ride on the scan that is already being made.** A dedicated Gemini call on save was
+     considered and rejected on three counts: it spends a request from a free tier scarce enough
+     that Phase 12 built a usage counter for it; it breaks a form that works offline today; and
+     it needs a key the user may not have, so the „Inne" fallback has to exist regardless. A
+     classification into nine shelves is not a nutrition value, so this does not touch the rule
+     that AI never invents one — and like every scanned field it arrives as a proposal the user
+     sees, marked „ze zdjęcia", and can change.
+
+331. **The sanity check on per-100 g values warns; it never blocks.** Fibre, alcohol and
+     polyols miss Atwater honestly, and the form must never argue with a package. So it is a
+     new function beside `draftProblem`, not an extension of it: `draftProblem` keeps owning the
+     disabled button, and this owns a sentence under the fields. It matters most in the one
+     place the numbers are not typed by hand — the reading Gemini takes off a photographed
+     label, where a misplaced decimal point is silent.
+
+332. **The energy tolerance is 15% and at least 20 kcal.** The relative bound catches an
+     order-of-magnitude slip; the absolute floor stops a 15 kcal vegetable tripping on rounding.
+     Both are needed — either alone is wrong at one end of the range.
+
+333. **An ingredient match is a new, lowest `MatchTier`.** `searchRecipes` builds candidates with
+     `aliasKeys: []`, so filling that array with the recipe's ingredient names is a one-line
+     change — and the wrong one: `rankCandidates` sorts by tier, so „ser" would bury „Sernik"
+     under every recipe containing cheese. A name always wins. The ingredient names come from
+     the in-memory snapshot the autocomplete already holds (decision 39), so nothing is
+     denormalized onto the recipe.
+
+334. **The exported menu carries meals and day totals, not ingredients.** Ingredients are the
+     shopping list, which already exists; putting them here duplicates it and turns a week into
+     a wall of text nobody pastes into a message.
+
+335. **The goals calculator already exists — phase 19 is what surrounds it.** Recorded because
+     the analysis first claimed otherwise: `src/lib/goals.ts` has held Mifflin-St Jeor, five
+     activity levels and a macro split since Phase 5, wired into `GoalsForm.svelte` behind
+     „Policz za mnie", where it only ever *fills* the four fields. That design is right and does
+     not change. What is missing is that its inputs are component-local `$state` defaulting to
+     30/170/70 and evaporate on close, that `DEFAULT_SPLIT` is a hardcoded 25/45/30, and that
+     the result arrives without its derivation.
+
+336. **Body data goes into `Profile`, and the documentation is corrected in the same phase.**
+     Sex, age, height and weight become optional profile fields, which means they travel to
+     Drive and into the backup. That is acceptable — it is the user's own private
+     `appDataFolder` — but it changes **what the app is documented to store**, so README.md and
+     SECURITY.md are part of phase 19, not a follow-up. **Rejected:** keeping them device-local
+     in `meta`, like `theme` and `setupDone`; a second phone would then ask for everything again
+     and a restored backup would not bring them back.
+
+337. **No target weight and no rate of change.** Doing it honestly needs a weight log, a chart
+     and a goal that moves over time — three features, not one — and it turns a cooking calendar
+     into a weight-loss coach. A bare „deficit in kcal" field was considered: cheap, but without
+     a weight log nothing can tell whether the number is working, which makes it guessing with
+     a user interface.
+
+338. **Phase 20 ships preparation time only; `instructions` stays one string.** Splitting it into
+     a list of steps rewrites the editor, the Gemini response schema, the meal view and every
+     existing recipe, for something largely cosmetic. Preparation time is one optional integer,
+     one schema property, one prompt rule and one filter, and is useful the day it ships. Steps
+     are their own phase if they are ever wanted.
+
+339. **Preparation time does not become a planner criterion in phase 20.** `maxPrepMinutes` on
+     `MealSlot` is the obvious next step and probably the most useful thing in the area — and the
+     planner's nine weights are tuned, so a tenth criterion needs its own thinking and its own
+     tests. Recorded as deferred so phase 20 does not quietly become phase 13 again.
+
+340. **A recipe does not remember the source's portion count.** `gemini/parse.ts` already reads
+     `portions` and divides the amounts down to one before saving. „A recipe is always one
+     portion" carries the snapshot, the planner and the shopping list; a second field about
+     portions would invite the question of which one is true, at every open of the editor.
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -4318,3 +4501,27 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
 
     Waiting on the user, who will open a fresh conversation with the codes and label
     photographs. Until then stage B stays unbuilt and PLAN.md's description of it stands.
+30. **The iPhone has never been verified, and the README implies it has.** Open question 26
+    closed the install path on **Android** (decisions 219 and 220) and nothing has ever claimed
+    the same for iOS — yet the README lists iPhone beside Android as a way to install the app,
+    which a reader takes as a statement that it was tried. On 2026-09-11 the first screenshot
+    from an installed iPhone arrived and immediately showed a broken primary action
+    (decision 319), so the implication was wrong.
+
+    The static audit that followed found the install path itself sound: `apple-touch-icon.png`
+    is 180×180 with **no alpha channel** (a transparent one renders black on iOS),
+    `apple-mobile-web-app-capable` and `apple-mobile-web-app-title` are set,
+    `viewport-fit=cover` is set so `env()` resolves at all, `InstallSection` gives Apple's
+    current Polish wording („Udostępnij" → „Do ekranu początkowego"), and `pwa.svelte.ts`
+    detects iOS by `'standalone' in navigator` rather than a UA string. None of that is a
+    substitute for a device.
+
+    **The procedure, to be run once and written back here.** On the iPhone, installed from
+    Safari: (a) the calendar's „Dodaj posiłek" button is whole and tappable, in portrait and in
+    landscape; (b) the bottom navigation clears the home indicator and nothing sits under it;
+    (c) a bottom sheet — the recipe picker — opens, scrolls and closes; (d) the three dialogs
+    fit; (e) the app opens in airplane mode; (f) `navigator.share()` reaches the iOS share
+    sheet from the shopping list; (g) the camera opens from „Zeskanuj opakowanie", which is the
+    iOS half of open question 29's `capture` attribute; (h) Drive sign-in completes in the
+    in-app browser Safari hands it. Until (a)–(h) are recorded here, phase 15's own acceptance
+    criteria are proved by emulation only, and the README says exactly that.

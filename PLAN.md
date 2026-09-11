@@ -1740,3 +1740,478 @@ them (decision 306). The day's totals keep the invariant they have always had:
 - [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
       `npm run docker:up`.
 - [ ] All UI text in Polish; code and comments in English.
+
+## Phase 15 — iPhone
+
+A screenshot from an installed iPhone, 2026-09-11: the „Dodaj posiłek" button on the calendar
+screen is **cut off along its bottom edge by the navigation bar**. It is not a rendering
+curiosity — it is the primary action of the primary screen, partly unreachable, on a device the
+README claims to support.
+
+The arithmetic is exact and worth writing down, because the same mistake is in a second place
+and would have been in every place added after it.
+
+```
+BottomNav height   = py-2 (16) + icon size-6 (24) + gap-1 (4) + text-xs line (16)
+                   = 60 + border-t (1)
+                   = 61px  +  env(safe-area-inset-bottom)
+
+installed iPhone, portrait:  inset = 34px  →  nav is 95px tall
+DayScreen FAB:               bottom-20 = 80px, height 44px  →  occupies 80…124px
+```
+
+The FAB's lowest 15 px are behind the bar. On Android and on a desktop window the inset is 0,
+the nav is 61 px, and 80 px clears it by 19 px — which is why this has never been seen. The bug
+is not the number 80; **the bug is that a fixed bottom offset was written as a constant while
+the thing it clears is not one.**
+
+`UpdatePrompt.svelte` carries the identical `bottom-20` and therefore the identical defect; it
+has simply not been photographed yet. `main` in `AppShell.svelte` has `pb-24` — 96 px against a
+95 px bar, one pixel of clearance, correct today by luck rather than by construction.
+
+### Why no test caught it, and what changes
+
+Nothing in this repository has ever rendered a viewport with a safe-area inset. Playwright runs
+a single project, `Desktop Chrome`; `scripts/screenshots.mjs` uses a 400×820 viewport. Both have
+an inset of zero, so this entire class of defect is invisible to CI by construction — and it
+will stay invisible after this fix unless the fix changes that too.
+
+Chromium cannot be told to report a safe-area inset, so the inset enters the stylesheet through
+**one custom property** rather than being written inline wherever it is needed. A test can then
+set that property and assert the geometry. That is the reason for the shape below; it is not
+indirection for its own sake (STATE.md decision 320).
+
+```css
+:root {
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Height of BottomNav: its content box, plus the inset it pads itself with. */
+  --nav-h: calc(3.875rem + var(--safe-bottom));
+}
+@media (min-width: 48rem) { :root { --nav-h: 0px; } }   /* Sidebar takes over */
+```
+
+### Tasks
+
+1. **The two tokens, in `src/app.css`.** `--safe-bottom` and `--nav-h`, with the `md` override
+   that zeroes the bar when the sidebar replaces it. `BottomNav` keeps padding itself with the
+   inset and additionally asserts its own height from the token, so the token and the bar cannot
+   drift apart.
+
+2. **Every fixed bottom offset reads the token.** `DayScreen.svelte`'s FAB becomes
+   `bottom: calc(var(--nav-h) + 0.75rem)`; `UpdatePrompt.svelte` the same; `main`'s `pb-24`
+   becomes `padding-bottom: calc(var(--nav-h) + 1.5rem)`. No literal bottom offset survives in
+   any element that has to clear the bar.
+
+3. **The horizontal insets, which are used nowhere today.** `viewport-fit=cover` is set, so in
+   landscape on a notched iPhone the left or right inset is about 47 px and nothing in the app
+   accounts for it. Landscape on an iPhone is 844–956 px wide, which is **past the `md`
+   breakpoint**, so what is on screen there is the `Sidebar` — `fixed inset-y-0 left-0`, which
+   in landscape-left sits under the notch. `Sidebar`, `main` and `BottomNav` take their side
+   padding from `max(<current>, env(safe-area-inset-left/right))`.
+
+4. **The three dialogs stop measuring themselves against `100vw`.** `ConfirmDialog`,
+   `ConflictDialog` and `VaultUnlock` size with `calc(100vw - 2rem)`; with `viewport-fit=cover`
+   that spans the insets, so in landscape a dialog runs under the notch. They subtract the side
+   insets as well.
+
+5. **A phone-with-inset check that fails when this regresses.** An e2e spec sets `--safe-bottom`
+   to `34px` at a phone viewport and asserts that the FAB's bounding box and the update prompt's
+   bounding box do not intersect the nav's, and that the last meal card in a full day is fully
+   above it. This is the task that makes the phase worth more than a one-line edit.
+
+6. **A WebKit project in `playwright.config.ts`.** Playwright ships WebKit, which is the engine
+   Safari uses; it does not emulate insets — task 5 covers that — but it does catch the
+   iOS-specific CSS and layout behaviour that Chromium silently forgives. Run it over the
+   existing suite, not a new one.
+
+7. **The iPhone documentation, checked against what the app actually does.** The audit found the
+   install path itself sound: `apple-touch-icon.png` is 180×180 and **has no alpha channel**,
+   which is what iOS needs — a transparent one renders black; `apple-mobile-web-app-capable` and
+   `apple-mobile-web-app-title` are present; `viewport-fit=cover` is set; `InstallSection` says
+   „Udostępnij" → „Do ekranu początkowego", which is Apple's current Polish wording, and
+   `pwa.svelte.ts` detects iOS by `'standalone' in navigator` rather than a UA string. The
+   README's iPhone paragraph is accurate. **What is not accurate is the silence:** the README
+   presents Android and iPhone as equally supported, and until this screenshot no part of this
+   app had ever been seen running on an iPhone. That is a claim the README has to stop making
+   until a device says otherwise — see STATE.md open question 30.
+
+### Acceptance criteria
+
+- [ ] With `--safe-bottom` forced to `34px` at a phone viewport, the „Dodaj posiłek" button is
+      fully visible and fully tappable, and its box does not intersect the navigation bar's.
+- [ ] The same holds for the update prompt, and for the last meal card of a day that fills the
+      screen.
+- [ ] With `--safe-bottom` at `0px` every one of those positions is **unchanged from today**, to
+      the pixel — Android and the desktop must not move.
+- [ ] No literal bottom offset remains in any element that has to clear the navigation bar;
+      `--nav-h` is the only source of that number.
+- [ ] At `md` and above the token is `0px` and the sidebar layout is untouched.
+- [ ] In a landscape phone viewport with left and right insets, no text or control sits under
+      the inset, dialogs included.
+- [ ] The Playwright WebKit project runs the existing suite green.
+- [ ] The README no longer implies the iPhone is a verified platform, and says what actually
+      has been checked.
+- [ ] Screenshots re-taken if any of them moved.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
+
+## Phase 16 — Miary domowe
+
+A recipe says „2 ząbki czosnku". The app makes you say „2 szt., 5 g each" — and makes you say
+the second half again in the next recipe, and the one after that. `gramsPerUnit` lives on
+`RecipeItem`, so the weight of one clove, one egg, one slice of bread is retyped at every point
+of use, and a typo in one recipe is invisible from every other.
+
+The weight of a clove is a property of garlic, not of the dish. This phase moves it there, and
+gives it the name a person would say out loud.
+
+**What this phase is not.** It does not add a unit. The arithmetic in `macros.ts` is untouched,
+the three invariants stand, and `shoppingLines` still keys its lines by `ingredientId + unit`.
+A measure is a **label and a default weight** that an ingredient offers to a recipe row — what
+changes is what gets typed and what gets printed, not what gets computed (STATE.md decision 323).
+
+### Data model
+
+```ts
+/** A household measure an ingredient can be counted in: „ząbek", and what one weighs. */
+interface Measure {
+  /** One of MEASURE_NAMES — a closed vocabulary, not free text (decision 324). */
+  name: MeasureName;
+  /** Grams in one of them. Always > 0. */
+  grams: number;
+}
+
+interface Ingredient { /* … */ measures?: Measure[] }
+interface RecipeItem { /* … */ measureName?: MeasureName }
+```
+
+Both fields are **optional**, for the same reason `sourceUrl`, `Ingredient.updatedAt`,
+`Profile.mealPlan` and `PlannedMeal.adjustments` are: no schema version, no migration, nothing
+in the transport. A row without them is a row exactly as it is today.
+
+`measureName` on the item is only ever a **label for a `szt` row**. It does not participate in
+any calculation: `gramsPerUnit` remains the single source of weight, exactly as `macros.ts`
+documents it. An item carrying a `measureName` whose ingredient no longer offers that measure
+keeps printing the label and keeps its own `gramsPerUnit` — the recipe does not silently change
+because the library did.
+
+Measures on bundled rows come from `data/pl-ingredients.tsv` and **never** from the user
+(decision 321): `importBundledNutrition` writes bundled rows with `bulkPut`, so anything the
+app wrote onto a `usda:*` row would be erased by the next data refresh, months later and
+looking like a sync fault. Custom rows carry their measures on the row, where nothing overwrites
+them.
+
+### Tasks
+
+1. **`MEASURE_NAMES` and the grammar, in `src/lib/text.ts`.** A closed list of about fifteen:
+   `szt.`, `mała szt.`, `średnia szt.`, `duża szt.`, `ząbek`, `kromka`, `plaster`, `garść`,
+   `łyżka`, `łyżeczka`, `szklanka`, `kubek`, `pęczek`, `gałązka`, `opakowanie`, `porcja`.
+   Polish plurals are irregular and this is the one place that has to know it: 1 ząbek,
+   2 ząbki, 5 ząbków. One function, one table, unit-tested against the counts that actually
+   occur — `formatAmountWithUnit` grows a measure-aware sibling rather than a second spelling
+   of itself.
+
+2. **The TSV gains optional trailing columns** (decision 322). `build-nutrition.mjs` today
+   throws on `columns.length !== 4`; it accepts 4 to 6 instead, so a row that says nothing new
+   keeps working and the mapping can be filled in over months rather than in one sitting. The
+   measure column is `nazwa:gramy` pairs separated by `|`, parsed and validated in the build —
+   an unknown measure name or a non-positive weight fails the build, not the app.
+
+3. **Measures in the custom-ingredient form.** `CustomIngredientForm.svelte` gains a small
+   repeating row: a measure name from the closed list, and a weight in grams. Add, change,
+   remove. Optional in every direction — an ingredient with no measures is complete.
+
+4. **The recipe row offers them, and never takes over** (decision 325). Picking an ingredient
+   leaves the unit on `g`, as it does today. Under the amount field, one chip per measure the
+   ingredient offers; tapping „ząbek" sets `unit: 'szt'`, `measureName` and `gramsPerUnit` in
+   one go. Someone who weighs everything sees one more row of chips and nothing else changes —
+   in particular, typing `100` after picking an ingredient still means 100 grams.
+
+5. **Everything that prints a `szt` amount prints the measure instead.** The recipe editor, the
+   meal screen's ingredient list and `formatShoppingLine`: „2 ząbki (10 g)" where the row has a
+   measure, „2 szt." where it has not. The shopping list's grams parenthesis already exists for
+   exactly this reason and stays.
+
+6. **The mapping work, deliberately partial** (decision 326). Measures are filled by hand for
+   the subset where a piece means something — egg, clove, slice, banana, onion, tomato,
+   slice of cheese — not for all 1 344 rows. Task 2 is what makes a partial fill legal.
+
+7. **Tests.** The plural table and the measure-aware formatter are pure and get unit tests;
+   `shopping.test.ts` gains a measure line; `sync/documents.test.ts` and `backup.test.ts` prove
+   both new fields round-trip with no schema version bump.
+
+### Acceptance criteria
+
+- [ ] Adding garlic to a recipe and tapping „ząbek" fills the unit, the label and the weight in
+      one action, and the row's macros are identical to typing `szt` + `5` by hand.
+- [ ] The same recipe row reads „2 ząbki (10 g)" in the editor, on the meal screen and on the
+      shopping list.
+- [ ] Typing `100` straight after picking an ingredient still means 100 grams.
+- [ ] An ingredient with no measures behaves exactly as it does today, everywhere.
+- [ ] A recipe item whose ingredient has since lost that measure keeps its label, its weight
+      and its macros.
+- [ ] `npm run build:nutrition` accepts a four-column row and a six-column row in the same file,
+      and fails on an unknown measure name or a weight of zero.
+- [ ] A custom ingredient's measures survive a Drive round trip and an export/import round trip
+      with **no schema version bump and no migration**.
+- [ ] `macros.ts` is unchanged: the three invariants, and every existing macro test, still pass
+      untouched.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
+
+## Phase 17 — Dział sklepu
+
+The shopping list is ordered by the order the ingredients were first met, so that it „reads
+like the recipes it came from". That was the right behaviour while the app knew nothing about
+what an ingredient *is*. It is the wrong behaviour in a shop, where the list is actually read,
+and where flour between two vegetables costs a walk back across the building.
+
+This phase gives an ingredient a department and groups the list by it. It is a deliberate
+reversal of the ordering intent written into `shopping.ts`, and decision 329 records it.
+
+### Data model
+
+```ts
+/** Where the thing is bought. A closed list of nine, in the order a shop is walked. */
+type Department =
+  | 'warzywa'      // Warzywa i owoce
+  | 'nabial'       // Nabiał i jaja
+  | 'mieso'        // Mięso, ryby i wędliny
+  | 'pieczywo'     // Pieczywo
+  | 'sypkie'       // Sypkie i makarony
+  | 'przyprawy'    // Przyprawy i dodatki
+  | 'mrozonki'     // Mrożonki
+  | 'napoje'       // Napoje
+  | 'inne';        // Inne
+
+interface Ingredient { /* … */ department?: Department }
+```
+
+Optional, and a missing value means `inne` (decision 330). Nothing about saving an ingredient
+ever blocks on it — the form that takes this field is the same form that takes a reading off a
+photographed package, and it has to stay fast.
+
+Nine, one level, not Fitatu's seventeen-over-ninety-six (decision 327): a two-level taxonomy
+earns its keep when it filters a search, and ours does not — ingredient search works on names
+and aliases and works well.
+
+### Tasks
+
+1. **`src/lib/departments.ts`** — the list, the Polish labels, and the walk order. Pure, tiny,
+   and the only place the order of a shopping list is decided.
+
+2. **The build script derives the department from USDA** (decision 328). The FDC archives carry
+   a food category per `fdcId`; `build-nutrition.mjs` reads it and maps it through a table of
+   roughly twenty-five entries, committed and reviewed by hand. Twenty-five decisions, not
+   1 344. A sixth TSV column overrides the derived value per row, for the entries the mapping
+   gets wrong. **Verify before building:** that both pinned releases — SR Legacy 2018-04 and
+   Foundation 2026-04-30 — expose the category in the same field. If they do not, the column
+   is the only source and the fill becomes incremental, exactly as in Phase 16 task 6.
+
+3. **A department picker in the custom-ingredient form**, defaulting to nothing, showing „Inne"
+   as the effective value when nothing is chosen.
+
+4. **The label scan proposes one** (decision 330, the amendment to 16.4). `gemini/scan.ts`
+   already reads the product name off the front of the package; its `responseSchema` gains one
+   nullable, enumerated `category` property and its prompt gains one rule. This costs **no extra
+   request** — it rides on the scan that is already being made, which is the whole reason it is
+   acceptable here and a dedicated call is not. The value lands in the draft as a proposal the
+   user sees and can change, marked „ze zdjęcia" like every other scanned field, and a scan that
+   returns nothing leaves the field alone.
+
+5. **`shoppingLines` groups, and `formatShoppingList` prints headings.** Within a department the
+   existing order — order first met — is kept, so a department reads the way the whole list used
+   to. An empty department is not printed.
+
+6. **Tests.** `departments.test.ts` for the mapping; `shopping.test.ts` for grouping, for the
+   `inne` fallback and for a list that touches one department only; `gemini/scan.test.ts` for a
+   response with a category, without one, and with a category outside the enum.
+
+### Acceptance criteria
+
+- [ ] A week's shopping list comes out grouped under nine headings in shop order, with empty
+      headings absent.
+- [ ] Within a heading, the order is the order the ingredients were first met.
+- [ ] An ingredient with no department appears under „Inne" and saving it never required one.
+- [ ] Photographing a package fills the department alongside the macros, marked as coming from
+      the photo, in the **same single request** the scan already costs — verified against the
+      live usage counter.
+- [ ] A scan that cannot tell the department leaves the field empty rather than guessing „Inne".
+- [ ] `npm run build:nutrition` assigns a department to every bundled row, and a TSV override
+      beats the derived value.
+- [ ] `department` survives a Drive round trip and an export/import round trip with **no schema
+      version bump and no migration**.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
+
+## Phase 18 — Trzy drobiazgi
+
+Three small things that daily use and the Android teardown agree on. None of them touches the
+data model; all three are a function and a screen.
+
+### Task A — the numbers have to be possible
+
+`draftProblem` checks that the four values are present and not negative. It does not check that
+they are *possible*: 100 g of anything cannot hold more than 100 g of protein, carbohydrate and
+fat together, and its calories cannot be far from what those three imply. The form that takes
+these numbers is also the form that takes a reading off a photographed label, where a decimal
+point in the wrong place is a real and silent failure.
+
+**It warns; it never blocks** (decision 331). Fibre, alcohol and polyols break Atwater honestly,
+and a form must never argue with a package. So this is a new function beside `draftProblem`,
+not an extension of it — `draftProblem` still owns the disabled button, and this owns a sentence
+under the fields.
+
+Two rules:
+
+- **Sum.** protein + carbs + fat > 100 g per 100 g is impossible, full stop.
+- **Energy.** |kcal − (4·protein + 4·carbs + 9·fat)| beyond **15%, and beyond 20 kcal**
+  (decision 332). The relative bound catches an order-of-magnitude slip; the absolute floor
+  keeps lettuce from tripping on rounding.
+
+Where a scanned field is implicated, the warning names it — the form already knows which fields
+the scan filled.
+
+### Task B — finding a recipe by what is in the house
+
+`searchRecipes` ranks recipes by name only: it builds its candidates with `aliasKeys: []`. So
+„soczewica" finds a recipe called „Soczewica z curry" and misses the four other recipes that
+contain lentils.
+
+Filling `aliasKeys` with the recipe's ingredient names is a one-line change and the wrong one:
+`rankCandidates` sorts by match tier, so an ingredient hit would rank level with a name hit and
+„ser" would bury „Sernik" under every recipe containing cheese. Instead, `MatchTier` gains a
+new **lowest** tier for ingredient matches (decision 333). A name always wins; recipes that
+merely contain the thing list underneath.
+
+The ingredient names come from the in-memory snapshot the autocomplete already holds (decision
+39) — no denormalized copy on the recipe, no data change.
+
+### Task C — the menu as text
+
+`formatShoppingList` turns a scope into plain text and `shareText` gets it out of the app.
+The same two moves, for meals: pick a range of days, get date, meals, portions and each day's
+totals against its goals. **Not ingredients** (decision 334) — that is the shopping list, which
+already exists and would only be duplicated here.
+
+### Acceptance criteria
+
+- [ ] Typing 40 g protein, 40 g carbs and 40 g fat warns about the sum and the button still saves.
+- [ ] A high-fibre product whose label genuinely misses Atwater warns and saves.
+- [ ] A 15 kcal vegetable does not warn.
+- [ ] A scanned value ten times too large warns and the sentence names the scanned field.
+- [ ] „soczewica" lists recipes with lentils in them, below every recipe with lentils in its name.
+- [ ] „Sernik" is the first result for „sernik", ahead of recipes merely containing cheese.
+- [ ] Ingredient aliases match too: „kurczak" finds a recipe using „Pierś z kurczaka".
+- [ ] Exporting a week produces text that pastes readably into a message, with a day's totals
+      next to that day's goals.
+- [ ] `navigator.share()` where it exists, the clipboard elsewhere, and the text is shown to be
+      copied by hand if both fail.
+- [ ] No data-model change of any kind: no new field, no schema version, no transport change.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
+
+## Phase 19 — Cel dopowiedziany do końca
+
+The calculator is already there. `src/lib/goals.ts` holds Mifflin-St Jeor, five activity levels
+and a macro split, and `GoalsForm.svelte` folds it behind „Policz za mnie" where it fills the
+four fields and saves nothing itself. That design is right and does not change (decision 335).
+
+Three things around it are missing, and each of them is why the calculator gets used once and
+then never again.
+
+### Tasks
+
+1. **The inputs stop evaporating.** Sex, age, height and weight are component-local `$state`
+   with 30/170/70 as their defaults, so reopening the panel asks for them again. They move to
+   `Profile` as optional fields (decision 336). This is the one task in these six phases that
+   changes **what the app is documented to store**: the fields travel to Drive and into the
+   backup, so README.md and SECURITY.md are corrected in this phase, not after it.
+
+2. **The split becomes editable.** `DEFAULT_SPLIT` is a hardcoded 25/45/30 — useless to anyone
+   eating high-protein. Three percentage fields, the sum pinned at 100, the default unchanged
+   for anyone who never opens it.
+
+3. **The derivation is shown.** One small block under the result: BMR, the activity factor, the
+   product, and the split into grams. The difference between a number and a number someone
+   trusts is being able to see where it came from.
+
+**Not in this phase** (decision 337): a target weight and a rate of change. Doing that honestly
+needs a weight log, a chart and a goal that moves over time — three features, not one — and it
+turns a cooking calendar into a weight-loss coach.
+
+### Acceptance criteria
+
+- [ ] Entering body data, closing Settings and reopening the calculator shows the same data.
+- [ ] A 40/30/30 split produces gram goals that match the kcal, and 40/30/40 cannot be saved.
+- [ ] The derivation block shows BMR, factor, product and grams, and matches the saved goals.
+- [ ] The calculator still only *fills* the four fields; nothing saves without the user pressing
+      save.
+- [ ] The body fields survive a Drive round trip and an export/import round trip with **no
+      schema version bump and no migration**.
+- [ ] README.md and SECURITY.md describe what the profile now holds, and the export screen's
+      warning about what it is about to write is still true.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
+
+## Phase 20 — Metryczka przepisu
+
+„What can I cook in twenty minutes" is a question the library cannot answer, and it is the
+question that gets asked on a Wednesday at six. A recipe gains a preparation time, the editor
+takes it, the Gemini import reads it, and the library filters by it.
+
+**Preparation time only** (decision 338). Splitting `instructions` from one string into a list
+of steps rewrites the editor, the response schema, the meal view and every existing recipe, and
+buys something largely cosmetic. Preparation time is one optional number and is useful the day
+it ships. If steps are ever wanted, they are their own phase.
+
+### Data model
+
+```ts
+interface Recipe { /* … */ prepMinutes?: number }
+```
+
+Optional, integer, greater than zero. Absent means unknown — never zero, and never filtered out
+unless the filter is on.
+
+The recipe does **not** gain the source's portion count (decision 340). `gemini/parse.ts`
+already reads `portions` and divides the amounts down to one before saving; „a recipe is always
+one portion" carries the snapshot, the planner and the shopping list, and a second field about
+portions would invite the question of which one is true.
+
+### Tasks
+
+1. **The field, and the editor row.** One number input beside the name, in minutes.
+
+2. **One property in the Gemini schema, one rule in the prompt.** `prepMinutes`, nullable, and
+   a rule saying to read it from the page and leave it out rather than estimate. The import
+   only ever fills a blank, as it already does for the name and the instructions.
+
+3. **A time filter in the library**, beside the tag chips: „do 15 min", „do 30 min", „do 60 min".
+   Recipes with no time are shown when the filter is off and hidden when it is on — and the
+   empty state says so, rather than looking like an empty library.
+
+**Not in this phase** (decision 339): preparation time as a planner criterion. A
+`maxPrepMinutes` on `MealSlot` is the obvious next step and would be the most useful thing here
+— and the planner's nine weights are tuned, so a tenth criterion needs its own thinking, its
+own tests and its own phase.
+
+### Acceptance criteria
+
+- [ ] A recipe saves with and without a time; a time of zero or a negative is refused.
+- [ ] Importing a page that states a preparation time fills the field; importing one that does
+      not leaves it empty rather than guessing.
+- [ ] An import never overwrites a time the user has already typed.
+- [ ] „do 30 min" filters the library, combines with the tag chips, and its empty state explains
+      that recipes without a time are hidden.
+- [ ] The planner is untouched: its proposals for a given seed are byte-identical to before.
+- [ ] `prepMinutes` survives a Drive round trip and an export/import round trip with **no schema
+      version bump and no migration**.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
