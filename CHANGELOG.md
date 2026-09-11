@@ -6,6 +6,16 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+
+- Plan phases 15-20 — the iPhone defect first, then six ideas
+
+### Features
+
+- Phase 15 — iPhone
+
 ## [1.11.0] - 2026-09-08
 
 ### Features
