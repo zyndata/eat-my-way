@@ -421,7 +421,7 @@
 
   <button
     type="button"
-    class="fixed right-4 bottom-20 z-20 flex items-center gap-1.5 rounded-full bg-(--color-accent) px-4 py-3 text-sm font-medium text-(--color-accent-ink) shadow-lg md:bottom-6"
+    class="fixed right-[max(1rem,var(--safe-right))] bottom-[calc(var(--nav-h)+1.1875rem)] z-20 flex items-center gap-1.5 rounded-full bg-(--color-accent) px-4 py-3 text-sm font-medium text-(--color-accent-ink) shadow-lg md:bottom-6"
     onclick={() => (pickerOpen = true)}
   >
     <NavIcon path={PLUS} class="size-5" />

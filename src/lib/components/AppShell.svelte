@@ -17,7 +17,13 @@
   <div class="mx-auto w-full max-w-3xl">
     <SyncIndicator />
   </div>
-  <main class="mx-auto w-full max-w-3xl px-4 pt-4 pb-24 md:pb-8">
+  <!--
+    The bottom padding is what keeps the last card above BottomNav: `--nav-h` plus the gap
+    that `pb-24` used to include, so at a zero inset this is the same 6rem it always was.
+  -->
+  <main
+    class="mx-auto w-full max-w-3xl pt-4 pr-[max(1rem,var(--safe-right))] pb-[calc(var(--nav-h)+2.1875rem)] pl-[max(1rem,var(--safe-left))] md:pb-8"
+  >
     {@render children()}
   </main>
   <BottomNav />

@@ -54,7 +54,7 @@
       </button>
     </header>
 
-    <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,var(--safe-bottom))]">
       {#if children}{@render children()}{/if}
     </div>
   </div>

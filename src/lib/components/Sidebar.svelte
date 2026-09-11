@@ -7,7 +7,7 @@
 
 <!-- Desktop navigation. Hidden below md, where BottomNav takes over. -->
 <nav
-  class="fixed inset-y-0 left-0 z-20 hidden w-56 shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface-raised) px-3 py-4 md:flex"
+  class="fixed inset-y-0 left-0 z-20 hidden w-56 shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface-raised) py-4 pr-3 pl-[max(0.75rem,var(--safe-left))] md:flex"
   aria-label="Nawigacja główna"
 >
   <a href="#/" class="px-2 text-lg font-semibold tracking-tight">Eat My Way</a>

@@ -8,13 +8,14 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–14 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–15 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
 > and the installable offline PWA for 1.0, then six phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
-> your goals (13), and changing one planned meal without touching the recipe it came from (14).
+> your goals (13), changing one planned meal without touching the recipe it came from (14), and
+> the safe-area fix an installed iPhone asked for (15).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -115,11 +116,22 @@ na urządzeniu*:
 - **Android / Chrome, Edge:** the „Zainstaluj aplikację" button, or the browser menu's *Install
   app* / *Add to Home screen*.
 - **Desktop Chrome / Edge:** the install icon in the address bar, or the same button in settings.
-- **iPhone / Safari:** *Share* → *Add to Home Screen*. iOS offers no install prompt to a page,
-  so the app can only point at the menu item.
+- **iPhone / Safari — not verified on a device:** *Share* → *Add to Home Screen*. iOS offers no
+  install prompt to a page, so the app can only point at the menu item.
 
 Installed, it launches in its own window and opens without a connection. The data is the same
 data — an installed app and a browser tab share one IndexedDB on that device.
+
+**What „not verified" means.** Android and desktop were installed and used; the iPhone was not.
+The first screenshot from an installed iPhone arrived on 2026-09-11 and showed the calendar's
+main button cut off by the navigation bar, which Phase 15 fixed. What has been checked since is
+the arithmetic, not the device: the safe-area insets are driven through CSS custom properties
+that an end-to-end test moves, so the layout is proved against an emulated home indicator and
+notch. The install metadata was read and is correct. The suite can also be run under WebKit, the
+engine Safari uses, and the first time it was, it found a storage bug that has nothing to do
+with layout — [STATE.md](STATE.md) open question 31. Nobody has yet confirmed on an actual iPhone that the camera, the share
+sheet, Drive sign-in and offline start all behave — [STATE.md](STATE.md) open question 30 lists
+exactly what is still unanswered.
 
 ## Getting your data back
 

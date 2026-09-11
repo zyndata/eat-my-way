@@ -240,6 +240,13 @@ falls. „The two are indistinguishable, keep the one with 500 requests a day" i
 | `backup.spec.ts` | „Zapisz kopię" on one device, „Wczytaj kopię" on a fresh one |
 | `swipe.spec.ts` | The meal card's swipe-left, as a real touch gesture on a phone context |
 | `screens.spec.ts` | Every route in one session, asserting no CSP violation and no console error |
+| `safe-area.spec.ts` | The layout with an iPhone's home indicator and notch, moved from the test |
+
+A second Playwright project runs the same specs under **WebKit**, the engine Safari uses. It
+is behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — because the first run of
+it found a WebKit-only defect in the data layer that hangs a large part of the suite, and CI
+should not be red about a bug nobody is fixing yet. That command *is* the reproduction; STATE.md
+open question 31 says what is known about it.
 
 The Drive flow is the deepest of them: connecting, the silent renewal on reload, a revoked
 grant, a foreign account, two devices merging, the same-day conflict prompt, and the debounced

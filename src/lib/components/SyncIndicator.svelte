@@ -19,7 +19,12 @@
 </script>
 
 {#if visible}
-  <div class="px-4 pt-2" role="status" aria-live="polite">
+  <!-- Same side padding as `main`: in landscape it has to clear the notch too (Phase 15). -->
+  <div
+    class="pt-2 pr-[max(1rem,var(--safe-right))] pl-[max(1rem,var(--safe-left))]"
+    role="status"
+    aria-live="polite"
+  >
     {#if syncState.phase === 'syncing'}
       <p class="flex items-center gap-2 text-xs text-(--color-ink-muted)">
         <Spinner class="size-3" />

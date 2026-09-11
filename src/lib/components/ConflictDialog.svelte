@@ -52,7 +52,7 @@
 
 <dialog
   bind:this={dialog}
-  class="m-auto w-[min(34rem,calc(100vw-2rem))] rounded-2xl border border-(--color-border) bg-(--color-surface-raised) p-5 text-(--color-ink) shadow-xl backdrop:bg-black/40"
+  class="m-auto w-[min(34rem,calc(100vw-2rem-var(--safe-left)-var(--safe-right)))] rounded-2xl border border-(--color-border) bg-(--color-surface-raised) p-5 text-(--color-ink) shadow-xl backdrop:bg-black/40"
   aria-labelledby="conflict-dialog-title"
   oncancel={(event) => {
     event.preventDefault();

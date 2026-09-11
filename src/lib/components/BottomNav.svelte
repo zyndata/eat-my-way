@@ -4,9 +4,16 @@
   import NavIcon from './NavIcon.svelte';
 </script>
 
-<!-- Mobile navigation. Hidden from md up, where Sidebar takes over. -->
+<!--
+  Mobile navigation. Hidden from md up, where Sidebar takes over.
+
+  The bar pads itself with the bottom inset and, on top of that, takes its height from
+  `--nav-h` — the same token every element that has to clear it reads. If the padding and the
+  icons ever add up to something else, the bar is the thing that gives way, so the token stays
+  true and nothing ends up behind the bar (Phase 15).
+-->
 <nav
-  class="fixed inset-x-0 bottom-0 z-20 border-t border-(--color-border) bg-(--color-surface-raised) pb-[env(safe-area-inset-bottom)] md:hidden"
+  class="fixed inset-x-0 bottom-0 z-20 min-h-(--nav-h) border-t border-(--color-border) bg-(--color-surface-raised) pr-(--safe-right) pb-(--safe-bottom) pl-(--safe-left) md:hidden"
   aria-label="Nawigacja główna"
 >
   <ul class="flex">

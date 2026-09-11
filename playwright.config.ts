@@ -27,7 +27,25 @@ export default defineConfig({
   retries: process.env.CI !== undefined ? 1 : 0,
   reporter: process.env.CI !== undefined ? 'github' : 'list',
   use: { baseURL, trace: 'retain-on-failure' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  /*
+   * Two engines, one of them opt-in. Chromium is what every assertion was written against;
+   * WebKit is the engine Safari uses, and Phase 15 added it because nothing in this repository
+   * had ever run the app on anything an iPhone would recognise. It does not emulate a
+   * safe-area inset — no browser does, which is what `e2e/safe-area.spec.ts` exists for — but
+   * it does run the iOS layout and storage behaviour Chromium silently forgives.
+   *
+   * It is behind `E2E_WEBKIT=1` because the first run of it found a WebKit-only defect in the
+   * data layer, not in the layout: a write that overlaps the first-run bundled nutrition
+   * import never completes, so a large part of the suite hangs (STATE.md open question 31).
+   * Putting it in CI today would make CI red about a bug nobody is fixing this phase. Run it
+   * with `E2E_WEBKIT=1 npm run test:e2e` — that is the reproduction.
+   */
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    ...(process.env.E2E_WEBKIT === undefined
+      ? []
+      : [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }])
+  ],
   ...(usesOwnServer
     ? {
         webServer: {

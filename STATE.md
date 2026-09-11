@@ -21,7 +21,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 12    | Skanowanie opakowania       | done    | 2026-09-04 |
 | 13    | Planer posiłków             | done    | 2026-09-04 |
 | 14    | Poprawki posiłku            | done    | 2026-09-08 |
-| 15    | iPhone                      | pending | — |
+| 15    | iPhone                      | done    | 2026-09-11 |
 | 16    | Miary domowe                | pending | — |
 | 17    | Dział sklepu                | pending | — |
 | 18    | Trzy drobiazgi              | pending | — |
@@ -30,12 +30,18 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
-Phases 15–20 are **planned, not built** (2026-09-11, decisions 318–340). Phase 15 is a defect
-found on a real iPhone and is deliberately first: the calendar's „Dodaj posiłek" button is cut
-off by the navigation bar on an installed iPhone, because a fixed bottom offset was written as
-a constant while the bar's height is not one. Phases 16–20 come from an analysis of two Polish
-Android diet apps (Fitatu and Diet &amp; Training by Ann) read as unpacked APKs; what survived
-that analysis is six ideas, and decisions 321–340 record the fork taken at each.
+Phase 15 is **built** (2026-09-11, decisions 341–347). The calendar's „Dodaj posiłek" button
+was cut off by the navigation bar on an installed iPhone, because a fixed bottom offset was
+written as a constant while the bar's height is not one. It is now derived from `--nav-h` —
+along with every other offset that has to clear the bar — and an e2e spec moves the safe-area
+insets and asserts the boxes do not intersect, so the whole class of defect is visible to CI
+for the first time. The phase's WebKit half is the part that did **not** land green: it found a
+data-layer defect instead of a layout one, and that is open question 31.
+
+Phases 16–20 are **planned, not built** (2026-09-11, decisions 318–340). They come from an
+analysis of two Polish Android diet apps (Fitatu and Diet &amp; Training by Ann) read as
+unpacked APKs; what survived that analysis is six ideas, and decisions 321–340 record the fork
+taken at each.
 
 Phase 14 is **built**, in the shape it was planned (2026-09-08, decisions 301–317). It answers
 one thing daily use kept running into: what was eaten was not quite the recipe — the salad
@@ -4147,6 +4153,86 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      `portions` and divides the amounts down to one before saving. „A recipe is always one
      portion" carries the snapshot, the planner and the shopping list; a second field about
      portions would invite the question of which one is true, at every open of the editor.
+### 2026-09-11 — Phase 15 built: the safe area, and what WebKit found behind it
+
+341. **Four tokens, not two.** PLAN.md named `--safe-bottom` and `--nav-h`; the horizontal
+     insets (task 3) needed the same treatment for the same reason — a test can move a custom
+     property and cannot move `env()`. So `app.css` defines `--safe-bottom`, `--safe-left`,
+     `--safe-right` and `--nav-h`, and the landscape assertions are possible at all.
+     `BottomSheet` was changed from a bare `env(safe-area-inset-bottom)` to `var(--safe-bottom)`
+     for the same reason: one source, one thing to move.
+
+342. **The derived offsets reproduce today's pixels exactly, which PLAN.md's own example did
+     not.** Task 2 wrote `bottom: calc(var(--nav-h) + 0.75rem)`, which at a zero inset is 73px
+     where `bottom-20` was 80px — and the acceptance criterion three lines below it says every
+     position must be **unchanged to the pixel** on Android and the desktop. The criterion wins:
+     the gap is `1.1875rem`, so `--nav-h` (3.8125rem) + gap = 5rem = the old `bottom-20`, and
+     `main`'s is `2.1875rem`, so bar + gap = 6rem = the old `pb-24`. The split is the fix; the
+     sum is the promise that nothing moved. An e2e assertion pins both numbers.
+
+343. **The side offsets of the two floating elements take the inset too.** PLAN.md's task 3
+     listed `Sidebar`, `main` and `BottomNav`; it did not list the calendar's button or the
+     update bar, which are `right-4` and `inset-x-3` and would sit under the notch in
+     landscape-right exactly as the dialogs would. The acceptance criterion says „no text or
+     control sits under the inset", so they read `max(<current>, var(--safe-right/left))` as
+     well. Nothing at a zero inset moves: `max(1rem, 0px)` is `1rem`.
+
+344. **The spec moves the insets through the CSSOM, not `addStyleTag`.** `style-src 'self'`
+     (decision 44) blocks an injected `<style>` element and a `style` attribute alike, so either
+     of the obvious ways to set a custom property would have made the spec mean one thing under
+     `vite preview` and nothing at all under `npm run test:e2e:csp`. A rule inserted into a
+     stylesheet the page already loaded is not an inline style and CSP does not govern it; it is
+     also unlayered, so it beats `app.css`'s `@layer base` block without a specificity fight.
+     Verified: the whole spec passes against the Caddy container.
+
+345. **`--nav-h` is asserted from the bar's own `min-height`, not from `:root`.** A custom
+     property's computed value is the text that was written — `calc(3.8125rem + 34px)` — so
+     reading it off `:root` would assert the source, not the result. The bar takes the token as
+     its `min-height`, so reading the resolved `min-height` asserts the number *and* that the
+     bar and the token are the same number. That is what keeps the two from drifting apart when
+     someone adds a row of padding to the navigation.
+
+346. **The WebKit project is opt-in, and it found a defect that has nothing to do with
+     layout.** PLAN.md task 6 asked for a WebKit project run over the existing suite, and the
+     acceptance criterion asked for it green. It is not green. The run was stopped
+     once the cause was isolated; of the 34 tests it had reached by then, **20 failed** — all
+     fifteen of `connect.spec.ts`, all four of `adjustments.spec.ts`, `backup.spec.ts`'s restore
+     and `comfort.spec.ts`'s one syncing test — while the fourteen that passed are the ones that
+     do nothing to the database in their first seconds. The failure is
+     not iOS CSS — it is the data layer, and it is the same one every time. **Reproduction, by
+     bisection:** a fresh browser starts the bundled nutrition import (1 344 rows, written 250
+     at a time, about six seconds). Connect Drive inside that window and the sync stops for
+     good at „Odczyt i zapis plików na Dysku…". Instrumented, it gets past `applyMergedData`
+     and then never returns from the next write; probing each table shows `meta`, `recipes` and
+     `days` answering normally and **`ingredients` never answering at all**. Wait for the import
+     to reach 1 344 rows before connecting and the same sync completes in under a second.
+     Chromium queues those transactions and is fine; WebKit is not.
+
+     So the project stays in `playwright.config.ts` but behind `E2E_WEBKIT=1`, and CI keeps
+     installing Chromium alone. Committing a red CI to prove a bug nobody is fixing this phase
+     would trade a permanent cost for a fact this entry already records. Open question 31 holds
+     the defect. **Rejected:** a `testIgnore` listing the specs that hang — it would freeze
+     today's failures into config, and it would exclude most of the suite anyway, since nearly
+     every spec writes something in its first seconds. **Also rejected:** fixing it here. It is
+     a real defect and probably an iPhone one, but it is a data-layer fix with its own design
+     question (who waits for whom), and this phase is about geometry.
+
+347. **`SyncIndicator` was added to the list of things that take the side inset.** Not in
+     PLAN.md's task 3, found while checking the landscape criterion: it sits outside `main`, in
+     a wrapper with no padding of its own, so in landscape its text would have run under the
+     notch exactly as `main`'s would. Same `max(1rem, var(--safe-…))` as `main`.
+
+348. **The container run is not green on `dev` either, and it was that way before this phase.**
+     Noticed while verifying „no CSP change, verified under `npm run docker:up`":
+     `E2E_BASE_URL=http://localhost:8080 npx playwright test` fails all fifteen of
+     `connect.spec.ts` plus `comfort.spec.ts`'s syncing test. **Checked against a stash of this
+     phase's work:** the same fifteen fail on unmodified `dev`, so it is not Phase 15. The
+     specs that the criterion is actually about — `safe-area.spec.ts` and the `screens.spec.ts`
+     walk that asserts zero CSP violations — pass against the container with this phase's code,
+     and that is what was verified. Somebody should find out why the Drive flow behaves
+     differently on :8080 than on :4173; it is not recorded as an open question because nothing
+     yet says whether it is the policy, the port or this machine.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -4525,3 +4611,29 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     iOS half of open question 29's `capture` attribute; (h) Drive sign-in completes in the
     in-app browser Safari hands it. Until (a)–(h) are recorded here, phase 15's own acceptance
     criteria are proved by emulation only, and the README says exactly that.
+
+    **Amended 2026-09-11, after phase 15.** The layout half is now proved by emulation and the
+    README says so. (a) and (b) are asserted at a 34 px home indicator and a 47 px notch by
+    `e2e/safe-area.spec.ts`; (d) is asserted for the confirmation dialog in landscape. What
+    still needs the device is unchanged, and (h) now has a reason to be suspicious rather than
+    merely unverified — see open question 31.
+
+31. **WebKit hangs on a write that overlaps the first-run nutrition import, and nobody knows
+    yet whether an iPhone does.** Found by phase 15 task 6, the first time this app was ever
+    run on Safari's engine. Decision 346 has the bisection; the short form is that for the six
+    seconds in which a fresh browser writes the 1 344 bundled ingredients, any other write that
+    touches the `ingredients` table never returns, and the app is then stuck at „Odczyt i zapis
+    plików na Dysku…" until it is reloaded. On Chromium the same overlap is queued and works.
+
+    **Why it matters beyond the test suite:** this is exactly the first minute of a first
+    install — open the app, go to *Ustawienia*, tap „Połącz Dysk Google". If Safari on iOS
+    behaves like Playwright's WebKit, the very first sync on an iPhone hangs, which would also
+    explain nothing, because nobody has tried it. The same window covers „Wczytaj kopię".
+
+    **What would answer it, cheapest first:** (a) run `E2E_WEBKIT=1 npm run test:e2e` and read
+    the failures — they are all this; (b) reproduce it in a two-page script with Dexie alone, to
+    tell a WebKit IndexedDB scheduling bug from a Dexie one; (c) on a real iPhone, install the
+    app and connect Drive within the first five seconds. **Candidate fixes, none chosen:** make
+    the writers that touch `ingredients` await the bundled import; give the import a lock the
+    others respect; or narrow `applyMergedData`'s transaction to the tables it actually writes.
+    The choice is a data-layer design call and belongs in its own phase.

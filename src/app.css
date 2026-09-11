@@ -61,6 +61,35 @@
     --color-danger-solid-ink: oklch(97% 0.01 27);
   }
 
+  /*
+   * Safe-area geometry (Phase 15). An installed iPhone reserves a strip at the bottom of the
+   * screen for the home indicator and, in landscape, a strip at the side for the notch. The
+   * app asks for that space with `viewport-fit=cover`, so every element that has to clear the
+   * bottom navigation has to know how tall the bar actually is — which is not a constant.
+   *
+   * The insets reach the stylesheet through these properties rather than being written as
+   * `env()` at each use site for one reason: Chromium cannot be told to report an inset, so
+   * nothing in this repository could ever render a viewport that has one. A test can set a
+   * custom property (STATE.md decision 320); it cannot set `env()`.
+   *
+   * `--nav-h` is BottomNav's own height: 3.8125rem is its content box (py-2 + a size-6 icon +
+   * gap-1 + a text-xs line + border-t = 61px), plus the inset the bar pads itself with. The
+   * bar asserts this as its `min-height`, so the token and the bar cannot drift apart.
+   */
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --nav-h: calc(3.8125rem + var(--safe-bottom));
+  }
+
+  /* From md up Sidebar replaces BottomNav, so there is no bar left to clear. */
+  @media (min-width: 48rem) {
+    :root {
+      --nav-h: 0px;
+    }
+  }
+
   html {
     /* Avoid layout shift when a view is long enough to scroll and the next is not. */
     scrollbar-gutter: stable;
