@@ -4888,15 +4888,23 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      cases that cost 47–50 s on Windows cost 24.6 s and 30.8 s here, and no test behaves
      differently on Linux than it does on Windows.
 
-     **Proposed, not done in this conversation** (this was a measurement, not a phase): add the
-     `webkit` project to the `e2e` job in `ci.yml` — extend the `Install Chromium` /
-     `install-deps` steps to `chromium webkit`, set `E2E_WEBKIT=1` on the `End-to-end tests`
-     step, and let the existing browser cache key cover both. The cost is roughly a 1.5×
-     multiplier on one job that already exists, and the return is that the engine Safari uses
-     stops being tested only when somebody remembers to ask for it — which is how open question
-     31's defect survived to phase 21. What this measurement does **not** establish is the wall
-     clock on a GitHub runner; that is worth reading off the first green run rather than
-     predicting here.
+     **Done, 2026-09-12, immediately after the measurement.** The `e2e` job in `ci.yml` now
+     installs `chromium webkit` and sets `E2E_WEBKIT=1`, so both engines run on every push. The
+     return is that the engine Safari uses stops being tested only when somebody remembers to
+     ask for it — which is how open question 31's defect survived to phase 21.
+
+     **One trap was in the way, and it would have failed silently.** The browser cache key was
+     `playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}`, and the install step
+     is skipped on a cache hit. Adding WebKit does not change the lockfile, so the next run
+     would have restored a Chromium-only cache, skipped the install and started a suite with no
+     WebKit on disk — a failure that looks like the engine rather than the cache. The key now
+     carries the browser set (`-browsers-chromium-webkit-`) and the comment says to change it
+     whenever that set changes. `install-deps` also runs on a cache hit, because a cached
+     browser directory carries no apt packages and WebKit needs rather more of them than
+     Chromium.
+
+     What this measurement does **not** establish is the wall clock on a GitHub runner; that is
+     worth reading off the first green run rather than predicting here.
 
 398. **Correction to 386, the same day: the twenty seconds are Windows, not Safari, and not
      IndexedDB.** Decision 386 concluded „the cost is per row and it is the engine's". The first

@@ -235,7 +235,7 @@ falls. „The two are indistinguishable, keep the one with 500 requests a day" i
 
 ## End-to-end tests
 
-`e2e/` drives the built app in Chromium:
+`e2e/` drives the built app in Chromium and, since 2026-09-12, in WebKit on every CI run:
 
 | Spec | What it covers |
 |---|---|
@@ -271,10 +271,11 @@ build, only the operating system changed: the 15 ms quantum is gone. The 1 344-r
 the same machine — 1.5×, not the ~8× Windows showed** — and passes 125 of 127 with nothing
 behaving differently than it does on Windows (STATE.md decisions 398 and 397).
 
-It stays behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — but the reason that
-kept it out of CI was Windows arithmetic and no longer applies; adding it to `ci.yml` is proposed
-in STATE.md decision 397. Two things follow for anyone writing a spec, and both are in
-`e2e/fixtures.ts`:
+**CI runs both engines** — the `e2e` job sets `E2E_WEBKIT=1`, so nothing about Safari's engine
+now depends on somebody remembering to ask for it. Locally the flag still gates it, because a
+one-engine run is the faster loop: `npm run test:e2e` is Chromium only, `E2E_WEBKIT=1 npm run
+test:e2e` is both, and `E2E_WEBKIT=1 npx playwright test --project=webkit` is WebKit alone. Two
+things follow for anyone writing a spec, and both are in `e2e/fixtures.ts`:
 
 - **The fixture waits for `<html data-nutrition="ready">`** before a test acts, so no test
   races the import. `e2e/import-race.spec.ts` is the one that opts out, on purpose.

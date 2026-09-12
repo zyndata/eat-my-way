@@ -36,15 +36,17 @@ export default defineConfig({
    *
    * The defect it found — a write overlapping the first-run bundled nutrition import never
    * completes — was fixed in phase 21 (STATE.md open question 31, decisions 386–391). It stays
-   * behind `E2E_WEBKIT=1` all the same, though the reason has now expired: this build takes
-   * about 15 ms over every task the event loop dispatches **on Windows**, so the first-run
-   * import of 1 344 ingredients costs 21 s there against 0.2 s on Chromium and the run takes
-   * minutes rather than seconds. That is the Windows message-timer tick its run loop is bound
-   * to, not a property of Safari, which no Apple platform shares (STATE.md decision 398). The
-   * same build on Linux does that import in 198 ms and the whole suite in 1.5x the Chromium
-   * time, so decision 397's „too expensive for CI" no longer holds and adding this project to
-   * `ci.yml` is proposed there. Treat it as a correctness check and never as a performance
-   * measurement. Run it by hand with `E2E_WEBKIT=1 npm run test:e2e`.
+   * behind `E2E_WEBKIT=1`, but **CI now sets that variable**, so this project runs on every
+   * push (STATE.md decision 397). The flag is what keeps a local `npm run test:e2e` to one
+   * engine and a fast loop; it is no longer a way of avoiding the cost.
+   *
+   * That cost was misread for a while, and the comment stays because the misreading is easy:
+   * this build takes about 15 ms over every task the event loop dispatches **on Windows**, so
+   * the first-run import of 1 344 ingredients costs 21 s there against 0.2 s on Chromium. That
+   * is the Windows message-timer tick its run loop is bound to, not a property of Safari, which
+   * no Apple platform shares (STATE.md decision 398). The same build on Linux — what CI runs —
+   * does that import in 198 ms and the whole suite in 1.5x the Chromium time. Treat this
+   * project as a correctness check and never as a performance measurement.
    */
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
