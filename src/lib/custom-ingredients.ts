@@ -1,6 +1,14 @@
-import type { Ingredient, IngredientState, Macros, RecipeItem } from './types';
+import type {
+  Ingredient,
+  IngredientState,
+  Macros,
+  Measure,
+  MeasureName,
+  RecipeItem
+} from './types';
 import { COPY_SUFFIX } from './recipes';
-import { newCustomIngredientId, type IdFactory } from './ids';
+import { newCustomIngredientId, newId, type IdFactory } from './ids';
+import { MEASURE_NAMES } from './text';
 
 /**
  * The rules behind „Składniki" (PLAN.md Phase 10). Pure: no IndexedDB, no clock, no Svelte —
@@ -13,7 +21,8 @@ import { newCustomIngredientId, type IdFactory } from './ids';
  *   because `syncSnapshot` uploads custom rows only (STATE.md decision 176).
  * - **Every macro must be entered, and `0` counts as entered.** The old form mapped an
  *   untouched field to `0`, so an ingredient saved „to finish later" read as 0 kcal in every
- *   recipe using it and nothing ever said so (decision 178).
+ *   recipe using it and nothing ever said so (decision 178). A household measure's weight is
+ *   held to the same rule from Phase 16 on: a measure weighing nothing is not a measure.
  */
 
 /** True for an ingredient this app is allowed to edit or delete. */
@@ -35,13 +44,52 @@ export interface IngredientDraft {
   protein: number | null;
   carbs: number | null;
   fat: number | null;
+  /** Household measures this ingredient offers (Phase 16). Empty is a complete ingredient. */
+  measures: MeasureDraft[];
 }
+
+/**
+ * One measure row while it is being edited. `grams` is `number | null` for the same reason
+ * the macros are: `null` is „not typed yet" and an emptied number input reads back as exactly
+ * that, so the field must not fight the user mid-typing (decision 54).
+ */
+export interface MeasureDraft {
+  /** Local row identity for the `{#each}` block. Never stored. */
+  id: string;
+  name: MeasureName;
+  grams: number | null;
+}
+
+/** The first measure a fresh row offers — the one nearly every ingredient can be counted in. */
+export const DEFAULT_MEASURE_NAME: MeasureName = MEASURE_NAMES[0];
 
 export function emptyIngredientDraft(name = ''): IngredientDraft {
-  return { name, state: 'raw', aliases: '', kcal: null, protein: null, carbs: null, fat: null };
+  return {
+    name,
+    state: 'raw',
+    aliases: '',
+    kcal: null,
+    protein: null,
+    carbs: null,
+    fat: null,
+    measures: []
+  };
 }
 
-export function draftFromIngredient(ingredient: Ingredient): IngredientDraft {
+/** A measure row to append: the first name nothing on the draft already uses. */
+export function emptyMeasureDraft(draft: IngredientDraft, id: string): MeasureDraft {
+  const used = new Set(draft.measures.map((measure) => measure.name));
+  return {
+    id,
+    name: MEASURE_NAMES.find((name) => !used.has(name)) ?? DEFAULT_MEASURE_NAME,
+    grams: null
+  };
+}
+
+export function draftFromIngredient(
+  ingredient: Ingredient,
+  nextId: IdFactory = newId
+): IngredientDraft {
   return {
     name: ingredient.name,
     state: ingredient.state,
@@ -49,7 +97,12 @@ export function draftFromIngredient(ingredient: Ingredient): IngredientDraft {
     kcal: ingredient.per100g.kcal,
     protein: ingredient.per100g.protein,
     carbs: ingredient.per100g.carbs,
-    fat: ingredient.per100g.fat
+    fat: ingredient.per100g.fat,
+    measures: (ingredient.measures ?? []).map((measure) => ({
+      id: nextId(),
+      name: measure.name,
+      grams: measure.grams
+    }))
   };
 }
 
@@ -59,8 +112,18 @@ export function draftFromIngredient(ingredient: Ingredient): IngredientDraft {
  * would put both into one autocomplete and into Gemini's candidate list, which is the
  * ambiguity this screen exists to reduce (STATE.md decision 177).
  */
-export function draftForCopy(ingredient: Ingredient): IngredientDraft {
-  return { ...draftFromIngredient(ingredient), name: `${ingredient.name}${COPY_SUFFIX}`, aliases: '' };
+export function draftForCopy(
+  ingredient: Ingredient,
+  nextId: IdFactory = newId
+): IngredientDraft {
+  return {
+    // Measures come along with the macros: they describe the food, and „Kopiuj i edytuj" on a
+    // bundled row exists precisely so the copy starts as that food. Only the aliases are
+    // dropped, for decision 177's reason — two rows answering to one alias.
+    ...draftFromIngredient(ingredient, nextId),
+    name: `${ingredient.name}${COPY_SUFFIX}`,
+    aliases: ''
+  };
 }
 
 /** One alias per comma, trimmed, without blanks or duplicates. */
@@ -96,6 +159,13 @@ export function draftProblem(draft: IngredientDraft): string | null {
   if (MACRO_FIELDS.some((field) => (draft[field] as number) < 0)) {
     return 'Wartości na 100 g nie mogą być ujemne.';
   }
+  if (draft.measures.some((measure) => !entered(measure.grams) || measure.grams <= 0)) {
+    return 'Miara domowa musi ważyć więcej niż 0 g. Usuń wiersz albo podaj wagę.';
+  }
+  const names = draft.measures.map((measure) => measure.name);
+  if (new Set(names).size !== names.length) {
+    return 'Każdą miarę domową można podać tylko raz.';
+  }
   return null;
 }
 
@@ -121,14 +191,36 @@ export function draftToIngredient(
   draft: IngredientDraft,
   options: { id?: string; nextId?: IdFactory } = {}
 ): Ingredient {
+  const measures = draftMeasures(draft);
   return {
     id: options.id ?? newCustomIngredientId(options.nextId),
     name: draft.name.trim(),
     aliases: parseAliases(draft.aliases),
     state: draft.state,
     per100g: draftMacros(draft),
-    source: 'custom'
+    source: 'custom',
+    // Omitted rather than written as `[]`, like every other optional field: an ingredient
+    // offering no measure must look exactly like one from before measures existed.
+    ...(measures.length === 0 ? {} : { measures })
   };
+}
+
+/**
+ * The measures this draft describes, once `draftProblem` has confirmed each has a weight.
+ * A row that somehow still has none is dropped rather than written as 0 g, which `Measure`
+ * forbids — the form cannot reach this, and a caller skipping it must not corrupt the row.
+ */
+export function draftMeasures(draft: IngredientDraft): Measure[] {
+  const measures: Measure[] = [];
+  const seen = new Set<MeasureName>();
+  for (const measure of draft.measures) {
+    const grams = measure.grams;
+    if (grams === null || !Number.isFinite(grams) || grams <= 0) continue;
+    if (seen.has(measure.name)) continue;
+    seen.add(measure.name);
+    measures.push({ name: measure.name, grams });
+  }
+  return measures;
 }
 
 /** True when the two sets of per-100 g values differ in any field. */
@@ -150,7 +242,14 @@ export function replaceIngredientInItems(
   to: string
 ): RecipeItem[] {
   if (!items.some((item) => item.ingredientId === from)) return items as RecipeItem[];
-  return items.map((item) => (item.ingredientId === from ? { ...item, ingredientId: to } : item));
+  return items.map((item) => {
+    if (item.ingredientId !== from) return item;
+    // The one field that does NOT survive: a measure name is not a measurement, it is a claim
+    // about the ingredient, and „2 ząbki" of yoghurt is nonsense (STATE.md decision 354). The
+    // weight stays, because that is what was actually put in.
+    const { measureName: _measureName, ...rest } = item;
+    return { ...rest, ingredientId: to };
+  });
 }
 
 /**

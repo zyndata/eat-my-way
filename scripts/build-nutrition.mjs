@@ -6,7 +6,8 @@
  *
  * Inputs
  *   - data/pl-ingredients.tsv  the hand-curated Polish name -> fdcId mapping. It decides
- *     BOTH which USDA entries are bundled and what they are called in the UI.
+ *     BOTH which USDA entries are bundled and what they are called in the UI, and carries
+ *     the household measures they offer (Phase 16). Four to six columns per row.
  *   - two pinned USDA FoodData Central releases, downloaded into data/usda/ (gitignored)
  *     and verified against the SHA-256 digests below.
  *
@@ -29,6 +30,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCsv } from './csv.mjs';
+import { parseMeasures } from './measures.mjs';
 import { readZipIndex, readZipMemberByBaseName } from './usda-zip.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -41,7 +43,7 @@ const META_FILE = path.join(ROOT, 'src', 'lib', 'nutrition', 'meta.ts');
  * Bump when the shape of the output changes or a release below is replaced. The app stores
  * it in IndexedDB and re-imports only when the stored value is lower.
  */
-const DATA_VERSION = 2;
+const DATA_VERSION = 3;
 
 /**
  * Pinned USDA releases. SR Legacy has been frozen since 2018 and will not move again;
@@ -106,11 +108,16 @@ async function readMapping() {
 
     const where = `${path.relative(ROOT, MAPPING_FILE)}:${index + 1}`;
     const columns = line.split('\t');
-    if (columns.length !== 4) {
-      throw new Error(`${where}: expected 4 tab-separated columns, got ${columns.length}`);
+    // Four to six, not exactly six: a row that has nothing new to say stays valid, so the
+    // 1 344-row mapping can be filled in over months rather than in one sitting (decision 322).
+    // Column 5 is the measures; column 6 is reserved for the shopping department (Phase 17).
+    if (columns.length < 4 || columns.length > 6) {
+      throw new Error(`${where}: expected 4 to 6 tab-separated columns, got ${columns.length}`);
     }
 
-    const [fdcId, name, aliasField, state] = columns.map((column) => column.trim());
+    const [fdcId, name, aliasField, state, measureField = ''] = columns.map((column) =>
+      column.trim()
+    );
     if (!/^\d+$/.test(fdcId)) throw new Error(`${where}: fdcId must be digits, got "${fdcId}"`);
     if (name === '') throw new Error(`${where}: name is empty`);
     if (state !== 'raw' && state !== 'cooked') throw new Error(`${where}: bad state "${state}"`);
@@ -121,7 +128,9 @@ async function readMapping() {
       .map((alias) => alias.trim())
       .filter((alias) => alias !== '');
 
-    entries.set(fdcId, { fdcId, name, aliases, state });
+    const measures = parseMeasures(measureField, where);
+
+    entries.set(fdcId, { fdcId, name, aliases, state, measures });
   });
 
   return entries;
@@ -273,7 +282,10 @@ async function main() {
       aliases: entry.aliases,
       state: entry.state,
       per100g: macros.get(entry.fdcId),
-      source: 'usda'
+      source: 'usda',
+      // Omitted rather than written as `[]`, like every optional field in the wire shapes: a
+      // row offering no measure must look exactly like one from before measures existed.
+      ...(entry.measures.length === 0 ? {} : { measures: entry.measures })
     }));
 
   const document = {

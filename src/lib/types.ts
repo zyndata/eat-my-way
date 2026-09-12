@@ -1,6 +1,8 @@
 import type { MealAdjustment } from './adjustments';
+import type { MeasureName } from './text';
 
 export type { MealAdjustment };
+export type { MeasureName };
 
 /**
  * Data model. These are the *wire* shapes: exactly what PLAN.md specifies and exactly
@@ -25,6 +27,20 @@ export type IngredientSource = 'usda' | 'off' | 'custom';
 /** Unit a recipe item is measured in. `szt` is Polish for "pieces". */
 export type Unit = 'g' | 'ml' | 'szt';
 
+/**
+ * A household measure an ingredient can be counted in: „ząbek", and what one of them weighs.
+ *
+ * Deliberately NOT a unit (STATE.md decision 323). A measure is a label and a default weight
+ * that an ingredient offers to a recipe row; `macros.ts` never sees one, and `gramsPerUnit`
+ * stays the single source of weight.
+ */
+export interface Measure {
+  /** One of `MEASURE_NAMES` — a closed vocabulary, not free text (decision 324). */
+  name: MeasureName;
+  /** Grams in one of them. Always > 0. */
+  grams: number;
+}
+
 export interface Ingredient {
   /** Namespaced: `usda:1097473`, `off:...`, `custom:<uuid>`. */
   id: string;
@@ -44,6 +60,16 @@ export interface Ingredient {
    * decision 182).
    */
   updatedAt?: string;
+  /**
+   * Household measures this ingredient offers to a recipe row (Phase 16): one clove of garlic
+   * is 5 g, one slice of bread is 35 g. Optional for the same reason `updatedAt` is — no
+   * schema version, no migration, nothing new in the transport — and absent on most rows,
+   * because a measure is only filled in where a piece means something (decision 326).
+   *
+   * On a `usda:*` row these come from `data/pl-ingredients.tsv` and are rewritten wholesale by
+   * every data refresh; only a `custom:*` row carries measures the user typed (decision 321).
+   */
+  measures?: Measure[];
 }
 
 export interface RecipeItem {
@@ -54,6 +80,15 @@ export interface RecipeItem {
   gramsPerUnit?: number;
   /** Manual per-100 g values used at this point of use instead of the ingredient's own. */
   macroOverride?: Macros;
+  /**
+   * The household measure this row is counted in — „2 ząbki" rather than „2 szt." — and
+   * nothing more than that. It is only ever a **label for a `szt` row**: it takes part in no
+   * calculation, because `gramsPerUnit` remains the single source of weight (decision 323).
+   *
+   * An item carrying a name the ingredient no longer offers keeps printing the label and keeps
+   * its own `gramsPerUnit`: the recipe does not change because the library did.
+   */
+  measureName?: MeasureName;
 }
 
 export interface Recipe {

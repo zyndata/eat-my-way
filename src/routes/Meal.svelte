@@ -22,7 +22,7 @@
     type MealAdjustment
   } from '../lib/adjustments';
   import { findMeal } from '../lib/day';
-  import { portionWord, sourceHost } from '../lib/text';
+  import { measureWord, portionWord, sourceHost } from '../lib/text';
   import {
     addDays,
     formatDayLong,
@@ -218,7 +218,10 @@
   /**
    * „Zmień": the row is eaten as another ingredient, keeping its amount and unit (STATE.md
    * decision 66). A `macroOverride` does not travel — it described the ingredient that is
-   * leaving.
+   * leaving. Neither does a `measureName`: a measure is a claim about the ingredient, not a
+   * measurement of the plate, and „2 ząbki" of yoghurt is nonsense (decision 354). The weight
+   * per piece does travel, because that is what was actually eaten — which is why `swapped` is
+   * built field by field rather than spread.
    */
   async function pickIngredient(ingredient: Ingredient): Promise<void> {
     const target = pickerFor;
@@ -361,7 +364,16 @@
                             void setRowAmount(row, event.currentTarget.valueAsNumber)}
                         />
                       </label>
-                      <span>{row.item.unit === 'szt' ? 'szt.' : row.item.unit}</span>
+                      <!-- The measure replaces „szt." and agrees with the number in the box,
+                           so the row reads „2 ząbki (10 g)" and „1 ząbek (5 g)". -->
+                      <span>
+                        {row.item.unit === 'szt'
+                          ? measureWord(
+                              row.item.measureName ?? 'szt.',
+                              displayedAmount(row.item, scale)
+                            )
+                          : row.item.unit}
+                      </span>
                       {#if row.item.unit !== 'g'}
                         <span class="font-normal text-(--color-ink-muted)">
                           ({Math.round(displayedGrams(row.item, scale))} g)

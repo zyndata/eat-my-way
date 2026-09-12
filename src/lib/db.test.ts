@@ -143,6 +143,23 @@ describe('ingredient records', () => {
     await db.delete();
   });
 
+  it('carry household measures out again — the read names its fields (Phase 16)', async () => {
+    const db = freshDb();
+    await db.open();
+    // `fromIngredientRecord` builds the wire shape by naming properties, so a new optional
+    // field is dropped unless it is listed there — right on disk, gone in the app.
+    const withMeasures = {
+      ...salmon,
+      measures: [{ name: 'plaster' as const, grams: 28 }]
+    };
+    await db.ingredients.put(toIngredientRecord(withMeasures));
+
+    const stored = await db.ingredients.get(salmon.id);
+    expect(fromIngredientRecord(stored!)).toEqual(withMeasures);
+
+    await db.delete();
+  });
+
   it('index an alias list into a multi-entry index', async () => {
     const db = freshDb();
     await db.open();

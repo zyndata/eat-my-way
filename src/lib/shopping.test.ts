@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatShoppingLine, formatShoppingList, shoppingLines, type ShoppingMeal } from './shopping';
 import { ingredientLookup } from './macros';
-import { chicken, egg, ingredients, item, macros, makeRecipe, oil } from '../test/fixtures';
+import { chicken, egg, garlic, ingredients, item, macros, makeRecipe, oil } from '../test/fixtures';
 import type { PlannedMeal } from './types';
 
 const lookup = ingredientLookup(ingredients);
@@ -240,5 +240,70 @@ describe('formatting', () => {
 
   it('says so when there is nothing to buy', () => {
     expect(formatShoppingList('Lista zakupów — środa', [])).toContain('Brak składników');
+  });
+});
+
+describe('household measures on a shopping line (Phase 16)', () => {
+  it('prints the measure and keeps the grams parenthesis', () => {
+    const recipe = makeRecipe({
+      id: 'r1',
+      items: [item(garlic.id, 2, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+
+    const [line] = shoppingLines([{ meal: meal(), recipe }], lookup);
+    expect(line).toEqual({
+      ingredientId: garlic.id,
+      name: garlic.name,
+      unit: 'szt',
+      amount: 2,
+      grams: 10,
+      measureName: 'ząbek'
+    });
+    expect(formatShoppingLine(line!)).toBe('Czosnek — 2 ząbki (10 g)');
+  });
+
+  it('sums two recipes that agree on the measure and keeps the label', () => {
+    const one = makeRecipe({
+      id: 'r1',
+      items: [item(garlic.id, 2, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+    const two = makeRecipe({
+      id: 'r2',
+      items: [item(garlic.id, 3, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+
+    const [line] = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: one },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: two }
+      ],
+      lookup
+    );
+    expect(formatShoppingLine(line!)).toBe('Czosnek — 5 ząbków (25 g)');
+  });
+
+  it('drops the label when the rows disagree, rather than claiming one of them', () => {
+    // Keyed by `ingredientId + unit`, so these merge — and neither label is true of both.
+    const cloves = makeRecipe({
+      id: 'r1',
+      items: [item(garlic.id, 2, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+    const heads = makeRecipe({ id: 'r2', items: [item(garlic.id, 1, 'szt', { gramsPerUnit: 45 })] });
+
+    const [line] = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: cloves },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: heads }
+      ],
+      lookup
+    );
+    expect(line?.measureName).toBeUndefined();
+    expect(formatShoppingLine(line!)).toBe('Czosnek — 3 szt. (55 g)');
+  });
+
+  it('leaves a line without a measure exactly as it was', () => {
+    expect(
+      formatShoppingLine({ ingredientId: egg.id, name: 'Jajko', unit: 'szt', amount: 3, grams: 174 })
+    ).toBe('Jajko — 3 szt. (174 g)');
   });
 });

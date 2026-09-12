@@ -245,3 +245,41 @@ describe('reading a backup', () => {
     expect(() => readBackup(JSON.stringify(withoutRecipes))).toThrow(/przepisy/);
   });
 });
+
+describe('household measures round-trip (Phase 16)', () => {
+  const withMeasures: Ingredient = {
+    ...custom,
+    measures: [
+      { name: 'łyżka', grams: 28 },
+      { name: 'opakowanie', grams: 250 }
+    ]
+  };
+  const labelled: Recipe = {
+    ...recipe,
+    items: [
+      { ingredientId: 'usda-1', amount: 2, unit: 'szt', gramsPerUnit: 5, measureName: 'ząbek' }
+    ]
+  };
+
+  it('survives export and import with no schema version bump and no migration', () => {
+    const built = buildBackup(
+      { ...input, customIngredients: [withMeasures], recipes: [labelled] },
+      new Date('2026-09-11T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]?.measures).toEqual(withMeasures.measures);
+    expect(read.recipes[0]?.items[0]?.measureName).toBe('ząbek');
+    // The point of the phase: nothing about the file's version changed.
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+    expect(read.version).toBe(BACKUP_VERSION);
+  });
+
+  it('reads a file written before measures existed, unchanged', () => {
+    const built = buildBackup(input, new Date('2026-09-11T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]?.measures).toBeUndefined();
+    expect(read.recipes[0]?.items[0]).not.toHaveProperty('measureName');
+  });
+});

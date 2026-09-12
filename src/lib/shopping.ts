@@ -1,7 +1,7 @@
-import type { Ingredient, PlannedMeal, Recipe, Unit } from './types';
+import type { Ingredient, MeasureName, PlannedMeal, Recipe, Unit } from './types';
 import type { IngredientLookup } from './macros';
 import { displayedAmount, displayedGrams } from './macros';
-import { formatAmountWithUnit } from './text';
+import { formatMeasureAmount } from './text';
 import { effectiveItems } from './adjustments';
 
 /**
@@ -27,6 +27,16 @@ export interface ShoppingLine {
   amount: number;
   /** The same amount in grams, so a `szt` line can still be weighed. */
   grams: number;
+  /**
+   * The household measure this line prints itself in — „2 ząbki" rather than „2 szt.".
+   *
+   * Kept only while every row that merged into the line agrees (STATE.md decision 351). Lines
+   * are still keyed by `ingredientId + unit` and nothing about that changes, so a recipe
+   * counting cloves and one counting plain pieces land together; printing either label would
+   * be a claim about the other recipe's row, so the line falls back to „szt." instead, which
+   * is what it said before measures existed and is true of both.
+   */
+  measureName?: MeasureName;
 }
 
 /** A planned meal paired with the recipe it came from, which is what a list is built out of. */
@@ -136,22 +146,25 @@ export function shoppingLines(
           name: ingredient?.name ?? 'Nieznany składnik',
           unit: item.unit,
           amount,
-          grams
+          grams,
+          ...(item.measureName === undefined ? {} : { measureName: item.measureName })
         });
         continue;
       }
 
       existing.amount += amount;
       existing.grams += grams;
+      // Disagreement drops the label for good — see `ShoppingLine.measureName`.
+      if (existing.measureName !== item.measureName) delete existing.measureName;
     }
   }
 
   return [...lines.values()];
 }
 
-/** One line as the share sheet will show it: „Pierś z kurczaka — 400 g". */
+/** One line as the share sheet will show it: „Pierś z kurczaka — 400 g", „Czosnek — 2 ząbki (10 g)". */
 export function formatShoppingLine(line: ShoppingLine): string {
-  const amount = formatAmountWithUnit(line.amount, line.unit);
+  const amount = formatMeasureAmount(line.amount, line.unit, line.measureName);
   return showGrams(line)
     ? `${line.name} — ${amount} (${Math.round(line.grams)} g)`
     : `${line.name} — ${amount}`;

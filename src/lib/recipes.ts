@@ -1,4 +1,13 @@
-import type { Ingredient, Macros, Recipe, RecipeItem, Tag, Unit } from './types';
+import type {
+  Ingredient,
+  Macros,
+  Measure,
+  MeasureName,
+  Recipe,
+  RecipeItem,
+  Tag,
+  Unit
+} from './types';
 import { addYears } from './dates';
 import { itemMacros, sumMacros, type IngredientLookup } from './macros';
 import { rankCandidates } from './search';
@@ -261,6 +270,12 @@ export interface DraftItem {
   amount: number | null;
   unit: Unit;
   gramsPerUnit: number | null;
+  /**
+   * The household measure this row is counted in, or `null` for a plain „szt." row. Only ever
+   * a label: tapping a measure chip writes `unit`, `gramsPerUnit` and this together, and from
+   * then on the three move independently — re-weighing a clove keeps it a clove.
+   */
+  measureName: MeasureName | null;
   /** Per-100 g values typed by hand at this point of use; `null` means "use the database". */
   macroOverride: Macros | null;
   /**
@@ -289,6 +304,7 @@ export function emptyDraftItem(id: string): DraftItem {
     amount: null,
     unit: 'g',
     gramsPerUnit: null,
+    measureName: null,
     macroOverride: null,
     sourceName: null
   };
@@ -310,6 +326,7 @@ export function draftFromRecipeItem(item: RecipeItem, id: string): DraftItem {
     amount: item.amount,
     unit: item.unit,
     gramsPerUnit: item.gramsPerUnit ?? null,
+    measureName: item.measureName ?? null,
     macroOverride: item.macroOverride === undefined ? null : { ...item.macroOverride },
     sourceName: null
   };
@@ -343,6 +360,9 @@ export function toRecipeItem(draft: DraftItem): RecipeItem {
   };
   const grams = toNumber(draft.gramsPerUnit);
   if (draft.unit !== 'g' && grams > 0) item.gramsPerUnit = grams;
+  // A measure only ever labels a `szt` row (decision 323), so switching the unit to `g` or
+  // `ml` drops the label rather than storing one that nothing would ever print.
+  if (draft.unit === 'szt' && draft.measureName !== null) item.measureName = draft.measureName;
   if (draft.macroOverride !== null) item.macroOverride = { ...draft.macroOverride };
   return item;
 }
@@ -398,6 +418,39 @@ export function draftToRecipe(
     // source and an empty one must not be two different things in the Drive JSON.
     ...(source === '' ? {} : { sourceUrl: source })
   };
+}
+
+/**
+ * Apply a household measure to an editor row: the unit, the label and the weight in one act.
+ *
+ * The weight is the ingredient's default for that measure and is a *starting point* — the
+ * grams field stays editable, and editing it does not take the label away, because a clove
+ * re-weighed at 7 g is still a clove (PLAN.md Phase 16 task 4).
+ */
+export function applyMeasure(draft: DraftItem, measure: Measure): void {
+  draft.unit = 'szt';
+  draft.measureName = measure.name;
+  draft.gramsPerUnit = measure.grams;
+}
+
+/**
+ * The measures a row can offer: the ingredient's own, plus the one the row already carries
+ * when the library has since dropped it.
+ *
+ * That second half is what keeps a recipe from changing because the library did — the chip
+ * stays on screen, selected, with the row's own weight, rather than vanishing and leaving
+ * „2 ząbki" unexplained.
+ */
+export function measureChoices(
+  draft: DraftItem,
+  ingredient: Ingredient | undefined
+): Measure[] {
+  const offered = ingredient?.measures ?? [];
+  const current = draft.measureName;
+  if (current === null || offered.some((measure) => measure.name === current)) {
+    return [...offered];
+  }
+  return [...offered, { name: current, grams: toNumber(draft.gramsPerUnit) }];
 }
 
 /** Per-100 g values a row starts an override from: the ingredient's own, or zeros. */

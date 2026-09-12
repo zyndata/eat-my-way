@@ -161,6 +161,7 @@ describe('importing pasted text', () => {
         amount: 1,
         unit: 'szt',
         gramsPerUnit: 55,
+        measureName: null,
         macroOverride: null,
         sourceName: 'Jajko'
       },
@@ -170,6 +171,7 @@ describe('importing pasted text', () => {
         amount: 100,
         unit: 'g',
         gramsPerUnit: null,
+        measureName: null,
         macroOverride: null,
         sourceName: 'mąka pszenna'
       },
@@ -180,6 +182,7 @@ describe('importing pasted text', () => {
         amount: 10,
         unit: 'g',
         gramsPerUnit: null,
+        measureName: null,
         macroOverride: null,
         sourceName: 'oliwa do smażenia'
       }

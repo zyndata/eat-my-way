@@ -4,9 +4,17 @@
 # bundled nutrition subset AND what they are called in the Polish UI. `scripts/build-nutrition.mjs`
 # joins it against the FDC Foundation + SR Legacy downloads and writes src/lib/nutrition/ingredients.json.
 #
-# Tab-separated, four columns; `#` starts a comment, blank lines are ignored.
+# Tab-separated, FOUR TO SIX columns; `#` starts a comment, blank lines are ignored.
 #
-#   fdcId  name (Polish)  aliases (| separated, may be empty)  state (raw|cooked, default raw)
+#   fdcId  name (Polish)  aliases (| separated)  state (raw|cooked)  [measures]
+#
+# The fifth column is optional and holds the household measures this ingredient offers to a
+# recipe row (Phase 16): `nazwa:gramy` pairs separated by `|`, e.g. `ząbek:5` or
+# `średnia szt.:150|duża szt.:200`. The name must be one of the sixteen in
+# `scripts/measures.mjs`, and the weight must be greater than zero, or the build fails. A row
+# with four columns stays valid and always will: measures are filled in only where a piece
+# means something (STATE.md decisions 322 and 326). The sixth column is reserved for the
+# shopping department (Phase 17) and is ignored for now.
 #
 # `state` follows the USDA entry, not the shopping basket: "cooked" means the per-100 g values
 # describe the food after cooking. 300 g of raw rice is not 300 g of cooked rice, so both exist
@@ -17,141 +25,141 @@
 
 ## Nabial i jaja / Dairy and eggs
 
-173430	Masło	maslo	raw
-173410	Masło solone	maslo solone	raw
-171314	Masło klarowane	ghee|maslo klarowane	raw
+173430	Masło	maslo	raw	łyżka:14|łyżeczka:5
+173410	Masło solone	maslo solone	raw	łyżka:14|łyżeczka:5
+171314	Masło klarowane	ghee|maslo klarowane	raw	łyżka:13|łyżeczka:4
 172175	Ser pleśniowy blue	ser plesniowy|gorgonzola|lazur	raw
 172177	Ser brie	brie	raw
 172178	Ser camembert	camembert	raw
-328637	Ser żółty cheddar	cheddar|ser zolty	raw
-173419	Ser żółty edamski	edam|ser zolty	raw
-171241	Ser żółty gouda	gouda|ser zolty	raw
-171242	Ser żółty gruyère	gruyere|ser zolty	raw
-171251	Ser żółty ementaler	ementaler|szwajcarski|ser zolty	raw
-170850	Ser żółty provolone	provolone|ser zolty	raw
+328637	Ser żółty cheddar	cheddar|ser zolty	raw	plaster:23
+173419	Ser żółty edamski	edam|ser zolty	raw	plaster:23
+171241	Ser żółty gouda	gouda|ser zolty	raw	plaster:23
+171242	Ser żółty gruyère	gruyere|ser zolty	raw	plaster:23
+171251	Ser żółty ementaler	ementaler|szwajcarski|ser zolty	raw	plaster:28
+170850	Ser żółty provolone	provolone|ser zolty	raw	plaster:23
 171245	Ser żółty munster	munster|ser zolty	raw
-173416	Ser żółty colby	colby|ser zolty	raw
+173416	Ser żółty colby	colby|ser zolty	raw	plaster:23
 172176	Ser żółty brick	ser zolty brick	raw
-170844	Ser żółty monterey jack	monterey jack|ser zolty	raw
+170844	Ser żółty monterey jack	monterey jack|ser zolty	raw	plaster:23
 170849	Ser żółty port salut	port salut|ser zolty	raw
-170852	Ser żółty tilsit	tylzycki|ser zolty	raw
+170852	Ser żółty tilsit	tylzycki|ser zolty	raw	plaster:23
 173415	Ser żółty cheshire	cheshire|ser zolty	raw
 173420	Ser feta	feta	raw
 173435	Ser kozi miękki	ser kozi|serek kozi	raw
 172197	Ser kozi twardy	ser kozi dojrzewajacy	raw
-170845	Ser mozzarella	mozzarella	raw
+170845	Ser mozzarella	mozzarella	raw	plaster:28
 170847	Ser mozzarella light	mozzarella light	raw
-170848	Ser parmezan	parmezan|parmigiano	raw
-171249	Ser pecorino romano	pecorino|romano	raw
+170848	Ser parmezan	parmezan|parmigiano	raw	łyżka:5
+171249	Ser pecorino romano	pecorino|romano	raw	łyżka:5
 171250	Ser roquefort	roquefort	raw
 170851	Ser ricotta	ricotta	raw
-173418	Serek śmietankowy	serek kremowy|philadelphia|cream cheese	raw
-169079	Serek śmietankowy light	serek kremowy light|philadelphia light	raw
+173418	Serek śmietankowy	serek kremowy|philadelphia|cream cheese	raw	łyżka:15
+169079	Serek śmietankowy light	serek kremowy light|philadelphia light	raw	łyżka:15
 172207	Serek śmietankowy 0%	serek kremowy 0|serek smietankowy bez tluszczu	raw
 171246	Ser neufchatel	neufchatel	raw
-172179	Serek wiejski	twarog ziarnisty|cottage cheese	raw
+172179	Serek wiejski	twarog ziarnisty|cottage cheese	raw	łyżka:28|szklanka:226
 173417	Serek wiejski light	twarog ziarnisty light	raw
 172181	Serek wiejski odsączony	twarog ziarnisty odsaczony|cottage cheese odsaczony	raw
-171254	Ser topiony	serek topiony	raw
+171254	Ser topiony	serek topiony	raw	plaster:21
 2647443	Ser cotija	cotija	raw
 172223	Ser queso fresco	queso fresco	raw
 171240	Ser brunost	gjetost|brunost	raw
 171243	Ser limburski	limburger	raw
 170843	Ser fontina	fontina	raw
-170859	Śmietanka kremówka 36%	smietanka kremowka|smietana 36	raw
-170858	Śmietanka 30%	smietanka 30	raw
-170857	Śmietanka 18%	smietanka 18|smietanka do kawy	raw
-171255	Śmietanka 12%	smietanka 12	raw
-171257	Śmietana 18%	smietana|smietana kwasna	raw
-171256	Śmietana 12%	smietana 12	raw
+170859	Śmietanka kremówka 36%	smietanka kremowka|smietana 36	raw	łyżka:15|szklanka:238
+170858	Śmietanka 30%	smietanka 30	raw	łyżka:15|szklanka:240
+170857	Śmietanka 18%	smietanka 18|smietanka do kawy	raw	łyżka:15|szklanka:240
+171255	Śmietanka 12%	smietanka 12	raw	łyżka:15|szklanka:242
+171257	Śmietana 18%	smietana|smietana kwasna	raw	łyżka:12|szklanka:230
+171256	Śmietana 12%	smietana 12	raw	łyżka:15|szklanka:240
 170860	Bita śmietana w sprayu	bita smietana	raw
-171265	Mleko 3,2%	mleko|mleko pelnotluste	raw
-171267	Mleko 2%	mleko 2	raw
-170872	Mleko 1%	mleko 1	raw
-171269	Mleko odtłuszczone	mleko 0|mleko chude	raw
-171278	Mleko kozie	mleko kozie	raw
+171265	Mleko 3,2%	mleko|mleko pelnotluste	raw	szklanka:244|kubek:250
+171267	Mleko 2%	mleko 2	raw	szklanka:244|kubek:250
+170872	Mleko 1%	mleko 1	raw	szklanka:244|kubek:250
+171269	Mleko odtłuszczone	mleko 0|mleko chude	raw	szklanka:245|kubek:250
+171278	Mleko kozie	mleko kozie	raw	szklanka:244|kubek:250
 170882	Mleko owcze	mleko owcze	raw
-172225	Maślanka	maslanka	raw
+172225	Maślanka	maslanka	raw	szklanka:245|kubek:250
 170874	Maślanka light	maslanka light	raw
-171275	Mleko skondensowane słodzone	mleko skondensowane|kajmak baza	raw
+171275	Mleko skondensowane słodzone	mleko skondensowane|kajmak baza	raw	łyżka:19|szklanka:306
 171276	Mleko zagęszczone niesłodzone	mleko zageszczone	raw
-170877	Mleko w proszku odtłuszczone	mleko w proszku chude	raw
-173454	Mleko pełne w proszku	mleko w proszku	raw
-170904	Kefir	kefir	raw
-171284	Jogurt naturalny	jogurt	raw
-170886	Jogurt naturalny light	jogurt light	raw
-171304	Jogurt grecki	jogurt grecki	raw
-330137	Jogurt grecki 0%	jogurt grecki chudy	raw
-171285	Jogurt owocowy	jogurt owocowy	raw
+170877	Mleko w proszku odtłuszczone	mleko w proszku chude	raw	łyżka:7
+173454	Mleko pełne w proszku	mleko w proszku	raw	łyżka:8
+170904	Kefir	kefir	raw	szklanka:243|kubek:250
+171284	Jogurt naturalny	jogurt	raw	szklanka:245|kubek:250|opakowanie:150
+170886	Jogurt naturalny light	jogurt light	raw	szklanka:245|kubek:250|opakowanie:150
+171304	Jogurt grecki	jogurt grecki	raw	szklanka:245|kubek:250|opakowanie:150
+330137	Jogurt grecki 0%	jogurt grecki chudy	raw	szklanka:245|kubek:250|opakowanie:150
+171285	Jogurt owocowy	jogurt owocowy	raw	opakowanie:150|kubek:245
 171283	Serwatka w proszku	serwatka	raw
-171287	Jajko kurze	jajko|jaja|jajka	raw
-172183	Białko jaja	bialko jajka	raw
-172184	Żółtko jaja	zoltko	raw
-173424	Jajko gotowane na twardo	jajko na twardo	cooked
-172186	Jajko w koszulce	jajko poszetowe	cooked
-173423	Jajko sadzone	jajko smazone	cooked
+171287	Jajko kurze	jajko|jaja|jajka	raw	szt.:58|mała szt.:48|duża szt.:68
+172183	Białko jaja	bialko jajka	raw	szt.:33
+172184	Żółtko jaja	zoltko	raw	szt.:17
+173424	Jajko gotowane na twardo	jajko na twardo	cooked	szt.:50
+172186	Jajko w koszulce	jajko poszetowe	cooked	szt.:50
+173423	Jajko sadzone	jajko smazone	cooked	szt.:46
 172187	Jajecznica	jajecznica	cooked
 172185	Omlet	omlet	cooked
-172189	Jajko kacze	jajko kacze	raw
-172191	Jajko przepiórcze	jajko przepiorcze	raw
+172189	Jajko kacze	jajko kacze	raw	szt.:70
+172191	Jajko przepiórcze	jajko przepiorcze	raw	szt.:9
 172204	Białko jaja w proszku	bialko w proszku	raw
 172188	Jajko w proszku	jajko suszone	raw
 
 ## Warzywa / Vegetables
 
 168384	Kiełki lucerny	kielki lucerny|alfalfa	raw
-169387	Rukola	rukola|rokietta	raw
+169387	Rukola	rukola|rokietta	raw	garść:20|opakowanie:100
 168389	Szparagi	szparagi	raw
 168390	Szparagi gotowane	szparagi gotowane	cooked
 169205	Karczochy	karczochy	raw
 168386	Karczochy gotowane	karczochy gotowane	cooked
-169228	Bakłażan	baklazan|oberzyna	raw
+169228	Bakłażan	baklazan|oberzyna	raw	szt.:458
 169229	Bakłażan gotowany	baklazan gotowany	cooked
-169145	Buraki	burak|buraki czerwone	raw
+169145	Buraki	burak|buraki czerwone	raw	szt.:82
 169146	Buraki gotowane	buraki gotowane	cooked
 170375	Botwina	botwinka|liscie burakow	raw
 170377	Bób	bob	raw
 170378	Bób gotowany	bob gotowany	cooked
-170379	Brokuły	brokul|brokuly	raw
+170379	Brokuły	brokul|brokuly	raw	szt.:608|garść:70
 169967	Brokuły gotowane	brokuly gotowane	cooked
 169968	Brokuły mrożone	brokuly mrozone	raw
-170383	Brukselka	brukselka	raw
+170383	Brukselka	brukselka	raw	szt.:19|garść:88
 169971	Brukselka gotowana	brukselka gotowana	cooked
 168454	Brukiew	brukiew|karpiel	raw
 168455	Brukiew gotowana	brukiew gotowana	cooked
-169975	Kapusta biała	kapusta|kapusta biala	raw
+169975	Kapusta biała	kapusta|kapusta biala	raw	szt.:908|garść:70
 169976	Kapusta biała gotowana	kapusta gotowana	cooked
-169977	Kapusta czerwona	kapusta czerwona	raw
+169977	Kapusta czerwona	kapusta czerwona	raw	szt.:908
 169978	Kapusta czerwona gotowana	kapusta czerwona gotowana	cooked
 170388	Kapusta włoska	kapusta wloska|savoy	raw
 170389	Kapusta włoska gotowana	kapusta wloska gotowana	cooked
-169979	Kapusta pekińska	kapusta pekinska	raw
+169979	Kapusta pekińska	kapusta pekinska	raw	szt.:840
 170390	Kapusta pak choi	pak choi|bok choy	raw
-169279	Kapusta kiszona	kapusta kiszona|kiszonka	raw
+169279	Kapusta kiszona	kapusta kiszona|kiszonka	raw	łyżka:9|szklanka:142
 170392	Kimchi	kimchi	raw
-170393	Marchew	marchewka|marchew	raw
+170393	Marchew	marchewka|marchew	raw	szt.:61|mała szt.:50|duża szt.:72
 170394	Marchew gotowana	marchewka gotowana	cooked
-168568	Marchewka mini	marchewka baby|mini marchewka	raw
+168568	Marchewka mini	marchewka baby|mini marchewka	raw	szt.:10|garść:85
 170500	Marchew suszona	marchew suszona	raw
 170491	Sok marchwiowy	sok z marchwi	raw
-169986	Kalafior	kalafior	raw
+169986	Kalafior	kalafior	raw	szt.:588|garść:60
 170397	Kalafior gotowany	kalafior gotowany	cooked
 170398	Kalafior mrożony	kalafior mrozony	raw
-170400	Seler korzeniowy	seler|seler korzeniowy	raw
+170400	Seler korzeniowy	seler|seler korzeniowy	raw	szt.:450
 169987	Seler korzeniowy gotowany	seler gotowany	cooked
-169988	Seler naciowy	seler naciowy|selery	raw
+169988	Seler naciowy	seler naciowy|selery	raw	szt.:40|gałązka:40
 169989	Seler naciowy gotowany	seler naciowy gotowany	cooked
 169991	Boćwina	bocwina|burak lisciowy	raw
 170401	Boćwina gotowana	bocwina gotowana	cooked
 169992	Cykoria liście	cykoria zielona	raw
 170404	Cykoria	cykoria|endywia belgijska	raw
 169993	Korzeń cykorii	korzen cykorii	raw
-169994	Szczypiorek	szczypiorek	raw
+169994	Szczypiorek	szczypiorek	raw	łyżka:3|pęczek:25
 169997	Kolendra świeża	kolendra|kolendra swieza	raw
-169998	Kukurydza	kukurydza|kukurydza slodka	raw
+169998	Kukurydza	kukurydza|kukurydza slodka	raw	szt.:90|garść:75
 169999	Kukurydza gotowana	kukurydza gotowana	cooked
-169214	Kukurydza konserwowa	kukurydza z puszki	cooked
-168409	Ogórek	ogorek|ogorek zielony	raw
+169214	Kukurydza konserwowa	kukurydza z puszki	cooked	łyżka:20|szklanka:165
+168409	Ogórek	ogorek|ogorek zielony	raw	szt.:301|plaster:7
 169225	Ogórek obrany	ogorek obrany	raw
 169379	Ogórki kiszone	ogorki kiszone|ogorek kiszony	raw
 168558	Ogórki konserwowe	ogorki konserwowe|korniszony	raw
@@ -160,18 +168,18 @@
 170077	Szczaw gotowany	szczaw gotowany	cooked
 168411	Edamame	edamame|zielona soja	cooked
 169385	Koper włoski	koper wloski|fenkul	raw
-169230	Czosnek	czosnek	raw
+169230	Czosnek	czosnek	raw	ząbek:5|szt.:45
 169231	Imbir	imbir|korzen imbiru	raw
 169236	Topinambur	topinambur|slonecznik bulwiasty	raw
 168421	Jarmuż	jarmuz	raw
 169238	Jarmuż gotowany	jarmuz gotowany	cooked
-168424	Kalarepa	kalarepa	raw
+168424	Kalarepa	kalarepa	raw	szt.:140
 168425	Kalarepa gotowana	kalarepa gotowana	cooked
-169246	Por	por	raw
+169246	Por	por	raw	szt.:89
 168426	Por gotowany	por gotowany	cooked
-168429	Sałata masłowa	salata maslowa	raw
-169247	Sałata rzymska	salata rzymska	raw
-169248	Sałata lodowa	salata lodowa|salata	raw
+168429	Sałata masłowa	salata maslowa	raw	szt.:163|garść:35
+169247	Sałata rzymska	salata rzymska	raw	szt.:623|garść:35
+169248	Sałata lodowa	salata lodowa|salata	raw	szt.:539|garść:35
 169249	Sałata zielona liściasta	salata lisciasta|salata zielona	raw
 168431	Sałata czerwona liściasta	salata czerwona	raw
 168564	Radicchio	radicchio|cykoria salatowa	raw
@@ -182,11 +190,11 @@
 168427	Kiełki soczewicy	kielki soczewicy	raw
 170095	Kiełki rzodkiewki	kielki rzodkiewki	raw
 169284	Kiełki soi	kielki soi	raw
-169251	Pieczarki	pieczarki|pieczarka	raw
+169251	Pieczarki	pieczarki|pieczarka	raw	szt.:18|garść:70
 169252	Pieczarki gotowane	pieczarki gotowane	cooked
 169253	Pieczarki smażone	pieczarki smazone	cooked
-168434	Pieczarki brązowe	pieczarki brazowe|cremini	raw
-169255	Portobello	portobello	raw
+168434	Pieczarki brązowe	pieczarki brazowe|cremini	raw	szt.:18|garść:70
+169255	Portobello	portobello	raw	szt.:84
 169243	Portobello grillowane	portobello grillowane	cooked
 168580	Boczniaki	boczniak|boczniaki	raw
 169242	Shiitake	shiitake	raw
@@ -200,31 +208,31 @@
 169256	Liście gorczycy	liscie gorczycy	raw
 169260	Okra	okra|ketmia jadalna	raw
 169261	Okra gotowana	okra gotowana	cooked
-170000	Cebula	cebula	raw
+170000	Cebula	cebula	raw	szt.:110|mała szt.:70|duża szt.:150
 170001	Cebula gotowana	cebula gotowana	cooked
 170004	Cebula smażona	cebula smazona|cebulka smazona	cooked
-790577	Cebula czerwona	cebula czerwona	raw
-1104962	Cebula biała	cebula biala	raw
-170005	Cebula dymka	dymka|cebulka dymka|szczypior	raw
+790577	Cebula czerwona	cebula czerwona	raw	szt.:110
+1104962	Cebula biała	cebula biala	raw	szt.:110
+170005	Cebula dymka	dymka|cebulka dymka|szczypior	raw	szt.:15|pęczek:75
 170002	Cebula suszona	cebula suszona|cebula w platkach	raw
 170499	Szalotka	szalotka	raw
 170415	Krążki cebulowe	krazki cebulowe	cooked
-170416	Natka pietruszki	natka|natka pietruszki|pietruszka nac	raw
+170416	Natka pietruszki	natka|natka pietruszki|pietruszka nac	raw	łyżka:4|pęczek:60|gałązka:2
 170417	Pasternak	pasternak	raw
 170009	Pasternak gotowany	pasternak gotowany	cooked
-170419	Groszek zielony	groszek|groszek zielony	raw
+170419	Groszek zielony	groszek|groszek zielony	raw	garść:70|szklanka:145
 170420	Groszek zielony gotowany	groszek gotowany	cooked
 170017	Groszek zielony mrożony	groszek mrozony	cooked
-170013	Groszek konserwowy	groszek z puszki	cooked
+170013	Groszek konserwowy	groszek z puszki	cooked	łyżka:17|szklanka:170
 170010	Groszek cukrowy	groszek cukrowy	raw
 170011	Groszek cukrowy gotowany	groszek cukrowy gotowany	cooked
 170018	Marchewka z groszkiem	marchewka z groszkiem	cooked
-170427	Papryka zielona	papryka zielona	raw
+170427	Papryka zielona	papryka zielona	raw	szt.:119
 170428	Papryka zielona gotowana	papryka zielona gotowana	cooked
-170108	Papryka czerwona	papryka|papryka czerwona	raw
+170108	Papryka czerwona	papryka|papryka czerwona	raw	szt.:119|duża szt.:164
 170110	Papryka czerwona gotowana	papryka czerwona gotowana	cooked
-169383	Papryka żółta	papryka zolta	raw
-170106	Papryka chili czerwona	chili|papryczka chili	raw
+169383	Papryka żółta	papryka zolta	raw	szt.:186
+170106	Papryka chili czerwona	chili|papryczka chili	raw	szt.:45
 170497	Papryka chili zielona	chili zielone	raw
 168576	Papryczki jalapeño	jalapeno	raw
 168570	Papryczki chili suszone	chili suszone	raw
@@ -235,7 +243,7 @@
 169963	Fasolka szparagowa mrożona	fasolka szparagowa mrozona	cooked
 169320	Fasolka szparagowa żółta	fasolka zolta	raw
 169322	Fasolka szparagowa żółta gotowana	fasolka zolta gotowana	cooked
-170026	Ziemniaki	ziemniak|ziemniaki|kartofle	raw
+170026	Ziemniaki	ziemniak|ziemniaki|kartofle	raw	szt.:173|mała szt.:110|duża szt.:290
 170440	Ziemniaki gotowane	ziemniaki gotowane|kartofle gotowane	cooked
 170438	Ziemniaki gotowane w mundurkach	ziemniaki w mundurkach	cooked
 170093	Ziemniaki pieczone	ziemniaki pieczone	cooked
@@ -245,9 +253,9 @@
 168442	Frytki mrożone	frytki mrozone	raw
 170036	Placki hash brown	hash brown	cooked
 170444	Ziemniaki konserwowe	ziemniaki z puszki	cooked
-170029	Ziemniaki czerwone	ziemniaki czerwone	raw
-170027	Ziemniaki russet	ziemniaki russet	raw
-168446	Mąka ziemniaczana	maka ziemniaczana|skrobia ziemniaczana	raw
+170029	Ziemniaki czerwone	ziemniaki czerwone	raw	szt.:173
+170027	Ziemniaki russet	ziemniaki russet	raw	szt.:213
+168446	Mąka ziemniaczana	maka ziemniaczana|skrobia ziemniaczana	raw	łyżka:10|łyżeczka:3
 168448	Dynia	dynia	raw
 168449	Dynia gotowana	dynia gotowana	cooked
 168450	Dynia z puszki	dynia z puszki	cooked
@@ -255,7 +263,7 @@
 169296	Dynia piżmowa pieczona	dynia butternut pieczona	cooked
 169298	Dynia makaronowa	dynia makaronowa	raw
 169299	Dynia makaronowa gotowana	dynia makaronowa gotowana	cooked
-169276	Rzodkiewka	rzodkiewka|rzodkiewki	raw
+169276	Rzodkiewka	rzodkiewka|rzodkiewki	raw	szt.:5|garść:50
 168451	Rzodkiew biała	rzodkiew biala|daikon	raw
 170465	Rzepa	rzepa	raw
 170058	Rzepa gotowana	rzepa gotowana	cooked
@@ -263,7 +271,7 @@
 168462	Szpinak	szpinak	raw
 168463	Szpinak gotowany	szpinak gotowany	cooked
 169288	Szpinak mrożony	szpinak mrozony	cooked
-169291	Cukinia	cukinia	raw
+169291	Cukinia	cukinia	raw	szt.:196
 169292	Cukinia gotowana	cukinia gotowana	cooked
 168464	Kabaczek żółty	kabaczek zolty	raw
 170487	Kabaczek	kabaczek	raw
@@ -272,20 +280,20 @@
 168482	Bataty	batat|bataty|slodkie ziemniaki	raw
 168483	Bataty pieczone	bataty pieczone	cooked
 168484	Bataty gotowane	bataty gotowane	cooked
-170457	Pomidory	pomidor|pomidory	raw
+170457	Pomidory	pomidor|pomidory	raw	szt.:123|mała szt.:90|duża szt.:180
 170050	Pomidory gotowane	pomidory gotowane	cooked
-321360	Pomidorki koktajlowe	pomidorki koktajlowe|pomidorki cherry	raw
-1999634	Pomidory roma	pomidory roma	raw
+321360	Pomidorki koktajlowe	pomidorki koktajlowe|pomidorki cherry	raw	szt.:17|garść:85
+1999634	Pomidory roma	pomidory roma	raw	szt.:62
 170456	Pomidory zielone	pomidory zielone	raw
 170051	Pomidory z puszki	pomidory z puszki	cooked
 170501	Pomidory krojone z puszki	pomidory krojone|pomidory rozdrobnione	cooked
 170460	Passata pomidorowa	passata|przecier pomidorowy	cooked
-170459	Koncentrat pomidorowy	koncentrat pomidorowy	cooked
+170459	Koncentrat pomidorowy	koncentrat pomidorowy	cooked	łyżka:16
 169074	Sos pomidorowy	sos pomidorowy	cooked
-168567	Pomidory suszone	pomidory suszone	raw
+168567	Pomidory suszone	pomidory suszone	raw	szt.:2|garść:15
 169384	Pomidory suszone w oleju	pomidory suszone w oleju	raw
 170545	Sok pomidorowy	sok pomidorowy	raw
-168556	Ketchup	keczup|ketchup	raw
+168556	Ketchup	keczup|ketchup	raw	łyżka:17|łyżeczka:6
 168566	Tomatillo	tomatillo	raw
 169308	Taro	taro	raw
 168486	Taro gotowane	taro gotowane	cooked
@@ -310,37 +318,37 @@
 
 ## Owoce / Fruits
 
-171688	Jabłko	jablko|jablka	raw
+171688	Jabłko	jablko|jablka	raw	szt.:182|mała szt.:149|duża szt.:223
 171689	Jabłko obrane	jablko obrane	raw
-168203	Jabłko granny smith	jablko granny smith	raw
-168204	Jabłko gala	jablko gala	raw
-167793	Jabłko fuji	jablko fuji	raw
-168202	Jabłko golden delicious	jablko golden	raw
-168201	Jabłko red delicious	jablko czerwone	raw
+168203	Jabłko granny smith	jablko granny smith	raw	szt.:165
+168204	Jabłko gala	jablko gala	raw	szt.:165
+167793	Jabłko fuji	jablko fuji	raw	szt.:200
+168202	Jabłko golden delicious	jablko golden	raw	szt.:170
+168201	Jabłko red delicious	jablko czerwone	raw	szt.:170
 173928	Jabłko gotowane	jablko gotowane	cooked
-171691	Jabłka suszone	jablka suszone	raw
+171691	Jabłka suszone	jablka suszone	raw	garść:30
 171695	Mus jabłkowy niesłodzony	mus jablkowy|przecier jablkowy	cooked
 171696	Mus jabłkowy słodzony	mus jablkowy slodzony	cooked
 173933	Sok jabłkowy	sok jablkowy	raw
-171697	Morele	morela|morele	raw
-173941	Morele suszone	morele suszone	raw
+171697	Morele	morela|morele	raw	szt.:35
+173941	Morele suszone	morele suszone	raw	szt.:4|garść:35
 173937	Morele z puszki	morele z puszki	cooked
-171705	Awokado	awokado	raw
-171706	Awokado kalifornijskie	awokado kalifornijskie|hass	raw
-173944	Banan	banan|banany	raw
+171705	Awokado	awokado	raw	szt.:201
+171706	Awokado kalifornijskie	awokado kalifornijskie|hass	raw	szt.:136
+173944	Banan	banan|banany	raw	szt.:118|mała szt.:101|duża szt.:136
 173945	Banan w proszku	banan suszony|banan w proszku	raw
-173946	Jeżyny	jezyny|jezyna	raw
+173946	Jeżyny	jezyny|jezyna	raw	garść:70|szklanka:144
 171710	Jeżyny mrożone	jezyny mrozone	raw
-171711	Borówki amerykańskie	borowki|jagody amerykanskie|jagoda	raw
+171711	Borówki amerykańskie	borowki|jagody amerykanskie|jagoda	raw	garść:70|szklanka:148
 173950	Borówki mrożone	borowki mrozone	raw
 168158	Borówki suszone	borowki suszone	raw
 171714	Chlebowiec	chlebowiec|owoc chlebowca	raw
 171715	Karambola	karambola|owoc gwiazdy	raw
-173954	Wiśnie	wisnie|wisnia	raw
-171719	Czereśnie	czeresnie|czeresnia	raw
+173954	Wiśnie	wisnie|wisnia	raw	szt.:8|garść:75
+171719	Czereśnie	czeresnie|czeresnia	raw	szt.:8|garść:75
 171718	Wiśnie mrożone	wisnie mrozone	raw
 171708	Wiśnie suszone	wisnie suszone	raw
-168195	Klementynki	klementynka|klementynki	raw
+168195	Klementynki	klementynka|klementynki	raw	szt.:74
 171722	Żurawina	zurawina	raw
 171723	Żurawina suszona	zurawina suszona	raw
 173961	Sos żurawinowy	sos zurawinowy	cooked
@@ -348,83 +356,83 @@
 173963	Porzeczki czarne	porzeczki czarne|czarna porzeczka	raw
 173964	Porzeczki czerwone	porzeczki czerwone|czerwona porzeczka	raw
 171724	Porzeczki suszone koryntki	koryntki|porzeczki suszone	raw
-171726	Daktyle deglet noor	daktyle	raw
-168191	Daktyle medjool	daktyle medjool	raw
+171726	Daktyle deglet noor	daktyle	raw	szt.:7|garść:40
+168191	Daktyle medjool	daktyle medjool	raw	szt.:24
 171727	Czarny bez owoce	czarny bez|bez owoce	raw
-173021	Figi	figi|figa	raw
-174665	Figi suszone	figi suszone	raw
+173021	Figi	figi|figa	raw	szt.:50
+174665	Figi suszone	figi suszone	raw	szt.:8|garść:40
 173026	Koktajl owocowy z puszki	koktajl owocowy	cooked
 173032	Jagody goji	goji|jagody goji	raw
 173030	Agrest	agrest	raw
-174683	Winogrona	winogrona|winogrono	raw
+174683	Winogrona	winogrona|winogrono	raw	szt.:5|garść:80|szklanka:151
 174682	Winogrona ciemne	winogrona ciemne	raw
 173042	Sok winogronowy	sok winogronowy	raw
-173033	Grejpfrut	grejpfrut	raw
+173033	Grejpfrut	grejpfrut	raw	szt.:246
 174673	Grejpfrut czerwony	grejpfrut czerwony	raw
 173039	Sok grejpfrutowy	sok grejpfrutowy	raw
 173044	Guawa	guawa	raw
 174687	Jackfruit	jackfruit|dzakfrut	raw
-168153	Kiwi	kiwi	raw
+168153	Kiwi	kiwi	raw	szt.:76
 168211	Kiwi złote	kiwi zlote|kiwi sungold	raw
 168154	Kumkwat	kumkwat	raw
-167746	Cytryna	cytryna|cytryny	raw
-167747	Sok z cytryny	sok cytrynowy|sok z cytryny	raw
+167746	Cytryna	cytryna|cytryny	raw	szt.:58|mała szt.:48|duża szt.:84
+167747	Sok z cytryny	sok cytrynowy|sok z cytryny	raw	łyżka:15|łyżeczka:5
 167749	Skórka cytrynowa	skorka cytrynowa	raw
-168155	Limonka	limonka|limonki	raw
-168156	Sok z limonki	sok z limonki	raw
+168155	Limonka	limonka|limonki	raw	szt.:67
+168156	Sok z limonki	sok z limonki	raw	łyżka:15|łyżeczka:5
 169086	Liczi	liczi	raw
 169089	Longan	longan	raw
 169908	Nieszpułka japońska	nieszpulka	raw
-169910	Mango	mango	raw
+169910	Mango	mango	raw	szt.:207
 169091	Mango suszone	mango suszone	raw
-169092	Melon kantalupa	melon kantalupa|kantalupa	raw
-169911	Melon miodowy	melon miodowy|melon	raw
+169092	Melon kantalupa	melon kantalupa|kantalupa	raw	szt.:552|plaster:69
+169911	Melon miodowy	melon miodowy|melon	raw	szt.:1000|plaster:160
 169093	Melon casaba	melon casaba	raw
 169913	Morwa	morwa|morwy	raw
-169914	Nektarynka	nektarynka|nektarynki	raw
-169096	Oliwki zielone	oliwki zielone|oliwki	raw
-169094	Oliwki czarne	oliwki czarne	raw
+169914	Nektarynka	nektarynka|nektarynki	raw	szt.:142
+169096	Oliwki zielone	oliwki zielone|oliwki	raw	szt.:4|garść:35
+169094	Oliwki czarne	oliwki czarne	raw	szt.:4|garść:35
 332791	Oliwki nadziewane papryką	oliwki nadziewane	raw
-169097	Pomarańcza	pomarancza|pomarancze	raw
-169917	Pomarańcza pępkowa	pomarancza pepkowa|navel	raw
+169097	Pomarańcza	pomarancza|pomarancze	raw	szt.:131
+169917	Pomarańcza pępkowa	pomarancza pepkowa|navel	raw	szt.:140
 169098	Sok pomarańczowy	sok pomaranczowy	raw
 169103	Skórka pomarańczowa	skorka pomaranczowa	raw
 169926	Papaja	papaja	raw
 169108	Marakuja	marakuja|passiflora	raw
-169928	Brzoskwinia	brzoskwinia|brzoskwinie	raw
+169928	Brzoskwinia	brzoskwinia|brzoskwinie	raw	szt.:150
 169930	Brzoskwinie z puszki	brzoskwinie z puszki	cooked
 169934	Brzoskwinie suszone	brzoskwinie suszone	raw
-169118	Gruszka	gruszka|gruszki	raw
+169118	Gruszka	gruszka|gruszki	raw	szt.:178
 168177	Gruszka azjatycka	gruszka azjatycka|nashi	raw
 169936	Gruszki z puszki	gruszki z puszki	cooked
 169121	Gruszki suszone	gruszki suszone	raw
 169941	Kaki	kaki|persymona	raw
-169124	Ananas	ananas	raw
+169124	Ananas	ananas	raw	szt.:905|plaster:84
 169126	Ananas z puszki	ananas z puszki	cooked
 169947	Sok ananasowy	sok ananasowy	raw
 168215	Platan zielony	platan zielony|banan platan	raw
-169130	Platan dojrzały	platan dojrzaly	raw
+169130	Platan dojrzały	platan dojrzaly	raw	szt.:179
 168216	Platan gotowany	platan gotowany	cooked
-169949	Śliwki	sliwki|sliwka	raw
+169949	Śliwki	sliwki|sliwka	raw	szt.:66
 169951	Śliwki z puszki	sliwki z puszki	cooked
-168162	Śliwki suszone	sliwki suszone|suszone sliwki	raw
+168162	Śliwki suszone	sliwki suszone|suszone sliwki	raw	szt.:9|garść:40
 167753	Sok ze śliwek	sok sliwkowy	raw
-169134	Granat	granat|owoc granatu	raw
+169134	Granat	granat|owoc granatu	raw	szt.:282
 167787	Sok z granatu	sok z granatu	raw
 167750	Opuncja	opuncja	raw
 168163	Pigwa	pigwa	raw
-168165	Rodzynki	rodzynki	raw
+168165	Rodzynki	rodzynki	raw	łyżka:10|garść:40|szklanka:145
 168164	Rodzynki złote	rodzynki zlote	raw
-167755	Maliny	maliny|malina	raw
+167755	Maliny	maliny|malina	raw	garść:60|szklanka:123
 168209	Maliny mrożone	maliny mrozone	raw
-167758	Rabarbar	rabarbar	raw
+167758	Rabarbar	rabarbar	raw	gałązka:51
 168169	Rabarbar gotowany z cukrem	rabarbar gotowany	cooked
-167762	Truskawki	truskawki|truskawka	raw
+167762	Truskawki	truskawki|truskawka	raw	szt.:12|garść:75|szklanka:144
 168173	Truskawki mrożone	truskawki mrozone	raw
 167763	Tamarynd	tamarynd|tamaryndowiec	raw
-169105	Mandarynki	mandarynka|mandarynki	raw
+169105	Mandarynki	mandarynka|mandarynki	raw	szt.:76
 169106	Mandarynki z puszki	mandarynki z puszki	cooked
-167765	Arbuz	arbuz	raw
+167765	Arbuz	arbuz	raw	plaster:286|garść:80
 167791	Kiwano	kiwano	raw
 168176	Fejchoa	fejchoa|feijoa	raw
 167759	Sapodilla	sapodilla	raw
@@ -440,17 +448,17 @@
 170683	Amarantus gotowany	amarantus gotowany	cooked
 2512371	Mąka amarantusowa	maka amarantusowa	raw
 170283	Jęczmień	jeczmien	raw
-170284	Kasza jęczmienna perłowa	kasza jeczmienna|perlowka	raw
+170284	Kasza jęczmienna perłowa	kasza jeczmienna|perlowka	raw	szklanka:200
 170285	Kasza jęczmienna gotowana	kasza jeczmienna gotowana	cooked
 169739	Mąka jęczmienna	maka jeczmienna	raw
 170286	Gryka	gryka	raw
-170685	Kasza gryczana	kasza gryczana	raw
+170685	Kasza gryczana	kasza gryczana	raw	szklanka:170
 170686	Kasza gryczana gotowana	kasza gryczana gotowana	cooked
 170687	Mąka gryczana	maka gryczana	raw
 170688	Bulgur	bulgur|kasza bulgur	raw
 170287	Bulgur gotowany	bulgur gotowany	cooked
-2710819	Nasiona chia	chia|nasiona chia	raw
-170290	Mąka kukurydziana	maka kukurydziana	raw
+2710819	Nasiona chia	chia|nasiona chia	raw	łyżka:12|łyżeczka:4
+170290	Mąka kukurydziana	maka kukurydziana	raw	łyżka:9|szklanka:138
 169697	Mąka kukurydziana pełnoziarnista	maka kukurydziana pelnoziarnista	raw
 169698	Skrobia kukurydziana	skrobia kukurydziana|maizena	raw
 168867	Kasza kukurydziana	kasza kukurydziana|polenta	raw
@@ -461,22 +469,22 @@
 2003589	Mąka semolinowa	semolina|maka semolinowa	raw
 2261421	Mąka owsiana	maka owsiana	raw
 2512372	Mąka z komosy ryżowej	maka z komosy	raw
-2512375	Mąka żytnia	maka zytnia	raw
-2003587	Mąka orkiszowa pełnoziarnista	maka orkiszowa	raw
-168894	Mąka pszenna biała	maka pszenna|maka	raw
-168896	Mąka pszenna chlebowa	maka chlebowa	raw
-169723	Mąka pszenna tortowa	maka tortowa	raw
-168893	Mąka pszenna pełnoziarnista	maka pelnoziarnista|maka razowa	raw
+2512375	Mąka żytnia	maka zytnia	raw	łyżka:7|szklanka:102
+2003587	Mąka orkiszowa pełnoziarnista	maka orkiszowa	raw	łyżka:8|szklanka:120
+168894	Mąka pszenna biała	maka pszenna|maka	raw	łyżka:8|szklanka:125
+168896	Mąka pszenna chlebowa	maka chlebowa	raw	łyżka:8|szklanka:127
+169723	Mąka pszenna tortowa	maka tortowa	raw	łyżka:7|szklanka:114
+168893	Mąka pszenna pełnoziarnista	maka pelnoziarnista|maka razowa	raw	łyżka:8|szklanka:120
 168895	Mąka pszenna z proszkiem do pieczenia	maka samorosnaca	raw
 168898	Mąka ryżowa brązowa	maka ryzowa brazowa	raw
 169714	Mąka ryżowa biała	maka ryzowa	raw
-2515382	Mąka kokosowa	maka kokosowa	raw
-2261420	Mąka migdałowa	maka migdalowa	raw
+2515382	Mąka kokosowa	maka kokosowa	raw	łyżka:7|szklanka:112
+2261420	Mąka migdałowa	maka migdalowa	raw	łyżka:6|szklanka:96
 2515377	Mąka kasztanowa	maka kasztanowa	raw
 168147	Gluten pszenny	gluten pszenny|seitan suchy	raw
 169702	Proso	proso	raw
 168871	Kasza jaglana gotowana	kasza jaglana gotowana	cooked
-2512379	Kasza jaglana	kasza jaglana|jaglanka	raw
+2512379	Kasza jaglana	kasza jaglana|jaglanka	raw	szklanka:200
 168905	Makaron chow mein	makaron chow mein	cooked
 169731	Makaron jajeczny	makaron jajeczny|kluski jajeczne	raw
 169732	Makaron jajeczny gotowany	makaron jajeczny gotowany	cooked
@@ -533,45 +541,45 @@
 
 ## Orzechy i nasiona / Nuts and seeds
 
-170567	Migdały	migdaly|migdal	raw
+170567	Migdały	migdaly|migdal	raw	szt.:1.2|garść:30|szklanka:143
 170568	Migdały blanszowane	migdaly blanszowane	raw
 170158	Migdały prażone	migdaly prazone	cooked
-168588	Masło migdałowe	maslo migdalowe	raw
+168588	Masło migdałowe	maslo migdalowe	raw	łyżka:16|łyżeczka:5
 170160	Marcepan	marcepan|masa migdalowa	raw
-170569	Orzechy brazylijskie	orzechy brazylijskie	raw
-170162	Nerkowce	nerkowce|orzechy nerkowca	raw
+170569	Orzechy brazylijskie	orzechy brazylijskie	raw	szt.:5|garść:30
+170162	Nerkowce	nerkowce|orzechy nerkowca	raw	garść:30|szklanka:137
 170571	Nerkowce prażone	nerkowce prazone	cooked
-170163	Masło z nerkowców	maslo z nerkowcow	raw
+170163	Masło z nerkowców	maslo z nerkowcow	raw	łyżka:16|łyżeczka:5
 170574	Kasztany jadalne	kasztany jadalne|kasztan jadalny	raw
 170190	Kasztany jadalne pieczone	kasztany pieczone	cooked
 170168	Kasztany jadalne gotowane	kasztany gotowane	cooked
 170169	Miąższ kokosa	kokos|miazsz kokosa	raw
-170170	Wiórki kokosowe	wiorki kokosowe	raw
+170170	Wiórki kokosowe	wiorki kokosowe	raw	łyżka:5|szklanka:80
 168586	Wiórki kokosowe słodzone	wiorki kokosowe slodzone	raw
-170173	Mleko kokosowe z puszki	mleko kokosowe	raw
+170173	Mleko kokosowe z puszki	mleko kokosowe	raw	łyżka:15|szklanka:240|opakowanie:400
 170580	Śmietanka kokosowa	smietanka kokosowa	raw
 170174	Woda kokosowa	woda kokosowa	raw
-170581	Orzechy laskowe	orzechy laskowe|laskowe	raw
+170581	Orzechy laskowe	orzechy laskowe|laskowe	raw	garść:30|szklanka:135
 170583	Orzechy laskowe prażone	orzechy laskowe prazone	cooked
-170178	Orzechy makadamia	makadamia	raw
+170178	Orzechy makadamia	makadamia	raw	garść:30|szklanka:134
 170585	Mieszanka orzechów	mieszanka orzechow	cooked
-170182	Orzechy pekan	pekan|orzechy pekan	raw
-170591	Orzeszki piniowe	orzeszki piniowe|pinia	raw
-170184	Pistacje	pistacje	raw
+170182	Orzechy pekan	pekan|orzechy pekan	raw	garść:30|szklanka:109
+170591	Orzeszki piniowe	orzeszki piniowe|pinia	raw	łyżka:9|garść:30
+170184	Pistacje	pistacje	raw	garść:30|szklanka:123
 170185	Pistacje prażone	pistacje prazone	cooked
-170187	Orzechy włoskie	orzechy wloskie	raw
+170187	Orzechy włoskie	orzechy wloskie	raw	garść:30|szklanka:117
 170186	Orzechy czarne	orzechy czarne	raw
 170175	Miłorząb nasiona suszone	milorzab|ginkgo	raw
 170554	Nasiona chia suszone	nasiona chia suszone	raw
-169414	Siemię lniane	siemie lniane|len	raw
-2262075	Siemię lniane mielone	siemie lniane mielone	raw
+169414	Siemię lniane	siemie lniane|len	raw	łyżka:10|łyżeczka:3
+2262075	Siemię lniane mielone	siemie lniane mielone	raw	łyżka:7|łyżeczka:2
 170148	Nasiona konopi łuskane	nasiona konopi|konopie	raw
-170556	Pestki dyni	pestki dyni	raw
+170556	Pestki dyni	pestki dyni	raw	łyżka:10|garść:30
 170557	Pestki dyni prażone	pestki dyni prazone	cooked
-170150	Sezam	sezam|nasiona sezamu	raw
+170150	Sezam	sezam|nasiona sezamu	raw	łyżka:9|łyżeczka:3
 170151	Sezam prażony	sezam prazony	cooked
-170189	Tahini	tahini|pasta sezamowa	raw
-170562	Nasiona słonecznika	slonecznik|pestki slonecznika	raw
+170189	Tahini	tahini|pasta sezamowa	raw	łyżka:15|łyżeczka:5
+170562	Nasiona słonecznika	slonecznik|pestki slonecznika	raw	łyżka:9|garść:30
 170563	Słonecznik prażony	slonecznik prazony	cooked
 170155	Masło słonecznikowe	maslo slonecznikowe	raw
 169407	Pestki arbuza	pestki arbuza	raw
@@ -661,17 +669,17 @@
 
 ## Tłuszcze i sosy / Fats, oils and dressings
 
-171413	Oliwa z oliwek	oliwa|oliwa z oliwek	raw
-172336	Olej rzepakowy	olej rzepakowy|olej canola	raw
-171017	Olej słonecznikowy	olej slonecznikowy	raw
-171411	Olej sojowy	olej sojowy	raw
+171413	Oliwa z oliwek	oliwa|oliwa z oliwek	raw	łyżka:13.5|łyżeczka:4.5
+172336	Olej rzepakowy	olej rzepakowy|olej canola	raw	łyżka:14|łyżeczka:4.5
+171017	Olej słonecznikowy	olej slonecznikowy	raw	łyżka:14|łyżeczka:4.5
+171411	Olej sojowy	olej sojowy	raw	łyżka:14|łyżeczka:4.5
 171410	Olej arachidowy	olej arachidowy	raw
-171016	Olej sezamowy	olej sezamowy	raw
-171412	Olej kokosowy	olej kokosowy	raw
+171016	Olej sezamowy	olej sezamowy	raw	łyżka:13.6|łyżeczka:4.5
+171412	Olej kokosowy	olej kokosowy	raw	łyżka:13.6|łyżeczka:4.5
 171015	Olej palmowy	olej palmowy	raw
 171028	Olej z pestek winogron	olej z pestek winogron	raw
 171030	Olej z orzechów włoskich	olej z orzechow wloskich	raw
-167702	Olej lniany	olej lniany|olej z siemienia lnianego	raw
+167702	Olej lniany	olej lniany|olej z siemienia lnianego	raw	łyżka:13.6|łyżeczka:4.5
 171014	Olej z zarodków pszenicy	olej z zarodkow pszenicy	raw
 173573	Olej z awokado	olej z awokado	raw
 171031	Olej migdałowy	olej migdalowy	raw
@@ -680,86 +688,86 @@
 172337	Olej gorczycowy	olej gorczycowy	raw
 171026	Olej krokoszowy	olej krokoszowy	raw
 173577	Tran z wątroby dorsza	tran	raw
-171401	Smalec	smalec	raw
+171401	Smalec	smalec	raw	łyżka:12.8|łyżeczka:4.3
 171400	Łój wołowy	loj wolowy	raw
 173564	Tłuszcz z kurczaka	tluszcz z kurczaka	raw
 173572	Tłuszcz gęsi	smalec gesi|tluszcz gesi	raw
 172345	Tłuszcz z boczku	tluszcz z boczku	raw
 173584	Tłuszcz piekarski	tluszcz piekarski|shortening	raw
-172346	Margaryna	margaryna	raw
-172349	Margaryna miękka	margaryna miekka	raw
-173589	Margaryna light	margaryna light	raw
-172344	Masło light	maslo light	raw
-171009	Majonez	majonez	raw
-173594	Majonez light	majonez light	raw
+172346	Margaryna	margaryna	raw	łyżka:14|łyżeczka:5
+172349	Margaryna miękka	margaryna miekka	raw	łyżka:14|łyżeczka:5
+173589	Margaryna light	margaryna light	raw	łyżka:11|łyżeczka:4
+172344	Masło light	maslo light	raw	łyżka:14|łyżeczka:5
+171009	Majonez	majonez	raw	łyżka:14|łyżeczka:5
+173594	Majonez light	majonez light	raw	łyżka:15|łyżeczka:5
 167736	Majonez bez cholesterolu	majonez bez cholesterolu	raw
 171443	Majonez z oliwą light	majonez z oliwa	raw
-173592	Sos ranch	sos ranch	raw
-169055	Sos cezar	sos cezar|dressing cezar	raw
+173592	Sos ranch	sos ranch	raw	łyżka:15
+169055	Sos cezar	sos cezar|dressing cezar	raw	łyżka:15
 171019	Sos winegret włoski	sos wloski|dressing wloski	raw
 171414	Sos francuski	sos francuski|dressing francuski	raw
 171402	Sos tysiąca wysp	sos tysiaca wysp	raw
-171417	Winegret	winegret|ocet z oliwa	raw
+171417	Winegret	winegret|ocet z oliwa	raw	łyżka:15
 173562	Sos z serem pleśniowym	sos z serem plesniowym	raw
 171006	Sos sezamowy	sos sezamowy	raw
 171043	Sos miodowo-musztardowy	sos miodowo musztardowy	raw
 
 ## Przyprawy i zioła / Spices and herbs
 
-172232	Bazylia świeża	bazylia swieza	raw
-171317	Bazylia suszona	bazylia	raw
+172232	Bazylia świeża	bazylia swieza	raw	łyżka:3|pęczek:20|gałązka:1
+171317	Bazylia suszona	bazylia	raw	łyżeczka:0.7|łyżka:2.1
 172238	Kapary	kapary	raw
-172233	Koperek świeży	koperek|koper swiezy	raw
+172233	Koperek świeży	koperek|koper swiezy	raw	łyżka:3|pęczek:50|gałązka:1
 171322	Koperek suszony	koperek suszony	raw
-173472	Chrzan tarty	chrzan	raw
-172234	Musztarda	musztarda	raw
-173474	Mięta świeża	mieta|mieta swieza	raw
+173472	Chrzan tarty	chrzan	raw	łyżka:15|łyżeczka:5
+172234	Musztarda	musztarda	raw	łyżka:15|łyżeczka:5
+173474	Mięta świeża	mieta|mieta swieza	raw	łyżka:3|pęczek:20|gałązka:1
 172239	Mięta suszona	mieta suszona	raw
-173473	Rozmaryn świeży	rozmaryn swiezy	raw
-171333	Rozmaryn suszony	rozmaryn	raw
-173470	Tymianek świeży	tymianek swiezy	raw
-170938	Tymianek suszony	tymianek	raw
-173468	Sól	sol|sol kuchenna	raw
+173473	Rozmaryn świeży	rozmaryn swiezy	raw	łyżeczka:1|gałązka:2
+171333	Rozmaryn suszony	rozmaryn	raw	łyżeczka:1.2|łyżka:3.3
+173470	Tymianek świeży	tymianek swiezy	raw	łyżeczka:1|gałązka:1
+170938	Tymianek suszony	tymianek	raw	łyżeczka:1|łyżka:2.7
+173468	Sól	sol|sol kuchenna	raw	łyżeczka:6|łyżka:18
 171315	Ziele angielskie	ziele angielskie	raw
 171316	Anyż	anyz	raw
-170917	Liść laurowy	liscie laurowe|listek laurowy	raw
+170917	Liść laurowy	liscie laurowe|listek laurowy	raw	szt.:0.2
 170918	Kminek	kminek	raw
 170919	Kardamon	kardamon	raw
 170920	Nasiona selera	nasiona selera	raw
-171319	Chili w proszku	chili w proszku|przyprawa chili	raw
-171320	Cynamon	cynamon	raw
+171319	Chili w proszku	chili w proszku|przyprawa chili	raw	łyżeczka:2.6|łyżka:7.5
+171320	Cynamon	cynamon	raw	łyżeczka:2.6|łyżka:7.8
 171321	Goździki mielone	gozdziki	raw
 170921	Kolendra suszona	kolendra suszona	raw
 170922	Kolendra nasiona	kolendra nasiona	raw
-170923	Kmin rzymski	kmin rzymski|kumin	raw
-170924	Curry w proszku	curry|przyprawa curry	raw
+170923	Kmin rzymski	kmin rzymski|kumin	raw	łyżeczka:2.1|łyżka:6
+170924	Curry w proszku	curry|przyprawa curry	raw	łyżeczka:2|łyżka:6.3
 170925	Nasiona kopru	nasiona kopru	raw
 171323	Nasiona kopru włoskiego	nasiona fenkulu	raw
 171324	Kozieradka	kozieradka	raw
-171325	Czosnek granulowany	czosnek granulowany|czosnek w proszku	raw
-170926	Imbir mielony	imbir mielony	raw
+171325	Czosnek granulowany	czosnek granulowany|czosnek w proszku	raw	łyżeczka:2.8|łyżka:8.4
+170926	Imbir mielony	imbir mielony	raw	łyżeczka:1.8|łyżka:5.4
 170927	Kwiat muszkatołowy	kwiat muszkatolowy|macis	raw
-170928	Majeranek	majeranek	raw
+170928	Majeranek	majeranek	raw	łyżeczka:0.6|łyżka:1.7
 170929	Gorczyca mielona	gorczyca	raw
 171326	Gałka muszkatołowa	galka muszkatolowa	raw
-171327	Cebula w proszku	cebula w proszku	raw
-171328	Oregano	oregano	raw
-171329	Papryka słodka mielona	papryka slodka|papryka mielona	raw
+171327	Cebula w proszku	cebula w proszku	raw	łyżeczka:2.4|łyżka:6.9
+171328	Oregano	oregano	raw	łyżeczka:1|łyżka:3
+171329	Papryka słodka mielona	papryka slodka|papryka mielona	raw	łyżeczka:2.1|łyżka:6.4
 170930	Pietruszka suszona	pietruszka suszona	raw
-170931	Pieprz czarny	pieprz|pieprz czarny	raw
-170932	Papryka ostra mielona	papryka ostra|cayenne	raw
+170931	Pieprz czarny	pieprz|pieprz czarny	raw	łyżeczka:2.3|łyżka:6.9
+170932	Papryka ostra mielona	papryka ostra|cayenne	raw	łyżeczka:1.8|łyżka:5.3
 170933	Pieprz biały	pieprz bialy	raw
-171330	Mak	mak|nasiona maku	raw
+171330	Mak	mak|nasiona maku	raw	łyżeczka:2.8|łyżka:8.8
 171332	Przyprawa do piernika	przyprawa do piernika	raw
 170934	Szafran	szafran	raw
 170935	Szałwia mielona	szalwia	raw
 170936	Cząber	czaber	raw
 170937	Estragon	estragon	raw
-172231	Kurkuma	kurkuma	raw
-173471	Ekstrakt waniliowy	ekstrakt waniliowy|wanilia	raw
-172241	Ocet balsamiczny	ocet balsamiczny	raw
-173469	Ocet jabłkowy	ocet jablkowy	raw
-172237	Ocet spirytusowy	ocet|ocet spirytusowy	raw
+172231	Kurkuma	kurkuma	raw	łyżeczka:3|łyżka:9
+173471	Ekstrakt waniliowy	ekstrakt waniliowy|wanilia	raw	łyżeczka:4.2|łyżka:13
+172241	Ocet balsamiczny	ocet balsamiczny	raw	łyżka:16|łyżeczka:5
+173469	Ocet jabłkowy	ocet jablkowy	raw	łyżka:15|łyżeczka:5
+172237	Ocet spirytusowy	ocet|ocet spirytusowy	raw	łyżka:15|łyżeczka:5
 172240	Ocet winny czerwony	ocet winny	raw
 172243	Przyprawa taco	przyprawa taco	raw
 
@@ -1086,7 +1094,7 @@
 
 ## Wędliny i kiełbasy / Sausages and cold cuts
 
-173879	Kiełbasa polska	kielbasa|kielbasa polska	cooked
+173879	Kiełbasa polska	kielbasa|kielbasa polska	cooked	szt.:100
 173877	Kiełbasa polska grillowana	kielbasa grillowana	cooked
 173878	Kiełbasa polska smażona	kielbasa smazona	cooked
 174577	Kiełbasa wieprzowa	kielbasa wieprzowa	cooked
@@ -1094,7 +1102,7 @@
 174607	Kiełbasa z indyka	kielbasa z indyka	cooked
 174584	Kiełbasa podwędzana	kielbasa podwedzana	cooked
 171618	Kaszanka	kaszanka	cooked
-171621	Pasztetowa	pasztetowa|braunschweiger	cooked
+171621	Pasztetowa	pasztetowa|braunschweiger	cooked	plaster:20
 173870	Wątrobianka	watrobianka|liverwurst	cooked
 171630	Salceson	salceson	cooked
 172969	Kiszka pasztetowa	kiszka	cooked
@@ -1110,102 +1118,102 @@
 173871	Kiełbaski z indyka smażone	kielbaski z indyka	cooked
 173862	Parówki wołowe	parowki wolowe	raw
 174614	Parówki wołowe podgrzane	parowki wolowe podgrzane	cooked
-172964	Parówki wieprzowe	parowki|parowki wieprzowe	cooked
-171624	Parówki drobiowe	parowki drobiowe	cooked
-171625	Parówki z indyka	parowki z indyka	cooked
+172964	Parówki wieprzowe	parowki|parowki wieprzowe	cooked	szt.:38
+171624	Parówki drobiowe	parowki drobiowe	cooked	szt.:38
+171625	Parówki z indyka	parowki z indyka	cooked	szt.:38
 169866	Parówki light	parowki light	cooked
 172942	Parówki konserwowe	parowki z puszki	cooked
-172013	Mortadela	mortadela|bolonka	cooked
+172013	Mortadela	mortadela|bolonka	cooked	plaster:14
 174573	Mortadela wołowo-wieprzowa	mortadela wolowa	cooked
 173857	Mortadela z indyka	mortadela z indyka	cooked
-172938	Salami	salami	raw
-174603	Salami włoskie	salami wloskie	raw
+172938	Salami	salami	raw	plaster:10
+174603	Salami włoskie	salami wloskie	raw	plaster:10
 172935	Salami wołowe	salami wolowe	cooked
 172937	Salami z indyka	salami z indyka	cooked
-174575	Pepperoni	pepperoni	raw
+174575	Pepperoni	pepperoni	raw	plaster:5
 172940	Kiełbasa serwolatka	serwolatka|cervelat	cooked
 171617	Kiełbasa berlińska	kielbasa berlinska	cooked
-170204	Pastrami	pastrami	cooked
+170204	Pastrami	pastrami	cooked	plaster:28
 172959	Pastrami chude	pastrami chude	cooked
 172927	Pastrami z indyka	pastrami z indyka	cooked
 170604	Wołowina suszona	wolowina suszona|jerky	raw
 170607	Wołowina wędzona	wolowina wedzona	cooked
-174570	Rostbef w plastrach	rostbef w plastrach	cooked
-173863	Szynka w plastrach chuda	szynka w plastrach|szynka kanapkowa	cooked
-173864	Szynka w plastrach	szynka zwykla	cooked
-173881	Szynka wędzona chuda	szynka wedzona	cooked
-174611	Szynka miodowa	szynka miodowa	cooked
-168092	Szynka z indyka	szynka z indyka	cooked
+174570	Rostbef w plastrach	rostbef w plastrach	cooked	plaster:28
+173863	Szynka w plastrach chuda	szynka w plastrach|szynka kanapkowa	cooked	plaster:28
+173864	Szynka w plastrach	szynka zwykla	cooked	plaster:28
+173881	Szynka wędzona chuda	szynka wedzona	cooked	plaster:28
+174611	Szynka miodowa	szynka miodowa	cooked	plaster:28
+168092	Szynka z indyka	szynka z indyka	cooked	plaster:28
 174571	Mielonka konserwowa	mielonka|spam	cooked
 171626	Szynka mielona konserwowa	szynka mielona	cooked
 171628	Ser z szynką w plastrach	ser z szynka	cooked
-172941	Pierś z indyka w plastrach	piers z indyka w plastrach	cooked
-173874	Pierś z kurczaka w plastrach	piers z kurczaka w plastrach	cooked
+172941	Pierś z indyka w plastrach	piers z indyka w plastrach	cooked	plaster:28
+173874	Pierś z kurczaka w plastrach	piers z kurczaka w plastrach	cooked	plaster:28
 174608	Rolada z kurczaka	rolada z kurczaka	cooked
 172928	Pasztet z wątróbek drobiowych	pasztet drobiowy	cooked
 172929	Pasztet z gęsich wątróbek	pasztet gesi	cooked
-172930	Pasztet	pasztet	cooked
+172930	Pasztet	pasztet	cooked	łyżka:13
 174592	Bekon z indyka	bekon z indyka	raw
 171639	Bekon z indyka smażony	bekon z indyka smazony	cooked
 171638	Klopsiki mrożone	klopsiki mrozone|pulpety mrozone	cooked
-174602	Kabanosy wołowo-wieprzowe	kabanosy	raw
+174602	Kabanosy wołowo-wieprzowe	kabanosy	raw	szt.:25
 
 ## Pieczywo i wypieki / Bread and baked goods
 
-174924	Chleb pszenny	chleb|chleb bialy|chleb pszenny	raw
-174925	Chleb pszenny opiekany	chleb opiekany|tost	cooked
-172688	Chleb pełnoziarnisty	chleb pelnoziarnisty|chleb razowy	raw
-172689	Chleb pełnoziarnisty opiekany	chleb razowy opiekany	cooked
-172684	Chleb żytni	chleb zytni	raw
-172685	Chleb żytni opiekany	chleb zytni opiekany	cooked
-174918	Chleb pumpernikiel	pumpernikiel	raw
-168013	Chleb wieloziarnisty	chleb wieloziarnisty	raw
-172686	Chleb pszenny mieszany	chleb pszenny mieszany	raw
+174924	Chleb pszenny	chleb|chleb bialy|chleb pszenny	raw	kromka:29
+174925	Chleb pszenny opiekany	chleb opiekany|tost	cooked	kromka:24
+172688	Chleb pełnoziarnisty	chleb pelnoziarnisty|chleb razowy	raw	kromka:32
+172689	Chleb pełnoziarnisty opiekany	chleb razowy opiekany	cooked	kromka:26
+172684	Chleb żytni	chleb zytni	raw	kromka:32
+172685	Chleb żytni opiekany	chleb zytni opiekany	cooked	kromka:26
+174918	Chleb pumpernikiel	pumpernikiel	raw	kromka:32
+168013	Chleb wieloziarnisty	chleb wieloziarnisty	raw	kromka:32
+172686	Chleb pszenny mieszany	chleb pszenny mieszany	raw	kromka:29
 172672	Chleb z pękanego ziarna	chleb z pekanego ziarna	raw
-172678	Chleb owsiany	chleb owsiany	raw
+172678	Chleb owsiany	chleb owsiany	raw	kromka:27
 172676	Chleb z otrębami owsianymi	chleb z otrebami	raw
 167943	Chleb ziemniaczany	chleb ziemniaczany	raw
-172680	Chleb z rodzynkami	chleb z rodzynkami	raw
+172680	Chleb z rodzynkami	chleb z rodzynkami	raw	kromka:27
 171850	Chleb z kiełkowanej pszenicy	chleb z kielkow	raw
-174913	Chleb włoski	chleb wloski|ciabatta	raw
-172675	Bagietka	bagietka|chleb francuski	raw
+174913	Chleb włoski	chleb wloski|ciabatta	raw	kromka:57
+172675	Bagietka	bagietka|chleb francuski	raw	szt.:110|kromka:35
 174091	Bagietka pełnoziarnista	bagietka pelnoziarnista	raw
-174099	Chleb bezglutenowy	chleb bezglutenowy	raw
-174922	Chleb niskokaloryczny	chleb niskokaloryczny	raw
-174915	Pita	pita|chlebek pita	raw
-174916	Pita pełnoziarnista	pita pelnoziarnista	raw
-171845	Naan	naan	raw
-171844	Chapati	chapati|roti	raw
-174928	Bułka tarta	bulka tarta	raw
+174099	Chleb bezglutenowy	chleb bezglutenowy	raw	kromka:28
+174922	Chleb niskokaloryczny	chleb niskokaloryczny	raw	kromka:23
+174915	Pita	pita|chlebek pita	raw	szt.:60
+174916	Pita pełnoziarnista	pita pelnoziarnista	raw	szt.:64
+171845	Naan	naan	raw	szt.:90
+171844	Chapati	chapati|roti	raw	szt.:45
+174928	Bułka tarta	bulka tarta	raw	łyżka:7|szklanka:108
 172806	Bułka tarta przyprawiona	bulka tarta przyprawiona	raw
-172793	Bułka pszenna	bulka|bulka pszenna|kajzerka	raw
+172793	Bułka pszenna	bulka|bulka pszenna|kajzerka	raw	szt.:57
 175030	Bułka pszenna razowa	bulka razowa	raw
-172794	Bułka pełnoziarnista	bulka pelnoziarnista	raw
-175029	Bułka żytnia	bulka zytnia	raw
-175027	Bułka jajeczna	bulka jajeczna	raw
-172796	Bułka do hamburgera	bulka do hamburgera	raw
-174090	Bułka do hamburgera pełnoziarnista	bulka do hamburgera razowa	raw
-174899	Bajgiel	bajgiel	raw
+172794	Bułka pełnoziarnista	bulka pelnoziarnista	raw	szt.:57
+175029	Bułka żytnia	bulka zytnia	raw	szt.:57
+175027	Bułka jajeczna	bulka jajeczna	raw	szt.:57
+172796	Bułka do hamburgera	bulka do hamburgera	raw	szt.:52
+174090	Bułka do hamburgera pełnoziarnista	bulka do hamburgera razowa	raw	szt.:52
+174899	Bajgiel	bajgiel	raw	szt.:98
 171852	Bajgiel wieloziarnisty	bajgiel wieloziarnisty	raw
-174994	Muffin angielski	muffin angielski	raw
+174994	Muffin angielski	muffin angielski	raw	szt.:58
 172762	Muffin angielski pełnoziarnisty	muffin angielski pelnoziarnisty	raw
 174929	Paluszki chlebowe	paluszki chlebowe|grissini	raw
 174977	Tosty melba	tosty melba	raw
-174981	Sucharki	sucharki|suchary	raw
-172746	Krakersy solone	krakersy|krakersy solone	raw
+174981	Sucharki	sucharki|suchary	raw	szt.:10
+172746	Krakersy solone	krakersy|krakersy solone	raw	szt.:3|garść:30
 174985	Krakersy pszenne	krakersy pszenne	raw
 172749	Krakersy pełnoziarniste	krakersy pelnoziarniste	raw
 174975	Krakersy serowe	krakersy serowe	raw
-172739	Pieczywo chrupkie żytnie	pieczywo chrupkie|chrupkie zytnie	raw
+172739	Pieczywo chrupkie żytnie	pieczywo chrupkie|chrupkie zytnie	raw	szt.:10
 172744	Wafle żytnie	wafle zytnie	raw
 172740	Maca	maca	raw
 174957	Krakersy grahamki	grahamki	raw
 174982	Krakersy przekąskowe	krakersy przekaskowe	raw
-174987	Croissant maślany	croissant|rogalik maslany	raw
+174987	Croissant maślany	croissant|rogalik maslany	raw	szt.:57
 174989	Croissant z serem	croissant z serem	raw
 172753	Ciastko duńskie cynamonowe	ciastko dunskie	raw
 172755	Ciastko duńskie owocowe	ciastko dunskie owocowe	raw
-174990	Pączek	paczek|donut	raw
+174990	Pączek	paczek|donut	raw	szt.:60
 174992	Pączek lukrowany	paczek lukrowany	raw
 172758	Pączek drożdżowy glazurowany	paczek drozdzowy	raw
 172759	Pączek z nadzieniem	paczek z nadzieniem	raw
@@ -1215,11 +1223,11 @@
 172790	Ciasto francuskie	ciasto francuskie	raw
 172791	Ciasto filo	ciasto filo	raw
 172670	Bułeczki maślane	buleczki maslane|biscuits	raw
-175009	Naleśniki	nalesniki|pancakes	cooked
-175039	Gofry	gofry	cooked
-175036	Tortilla kukurydziana	tortilla kukurydziana	raw
-175037	Tortilla pszenna	tortilla|tortilla pszenna	raw
-174081	Tortilla pełnoziarnista	tortilla pelnoziarnista	raw
+175009	Naleśniki	nalesniki|pancakes	cooked	szt.:38
+175039	Gofry	gofry	cooked	szt.:75
+175036	Tortilla kukurydziana	tortilla kukurydziana	raw	szt.:26
+175037	Tortilla pszenna	tortilla|tortilla pszenna	raw	szt.:49
+174081	Tortilla pełnoziarnista	tortilla pelnoziarnista	raw	szt.:49
 172800	Muszle taco	muszle taco|taco	cooked
 172802	Ciasto na wontony	ciasto na wontony	raw
 175026	Kruche ciasto na tartę	kruche ciasto|spod do tarty	cooked
@@ -1239,8 +1247,8 @@
 175002	Muffinka kukurydziana	muffinka kukurydziana	raw
 172769	Muffinka z otrębami owsianymi	muffinka otrebowa	raw
 174906	Chlebek bananowy	chlebek bananowy	raw
-172716	Ciastka z kawałkami czekolady	ciastka czekoladowe|cookies	raw
-172725	Ciastka owsiane	ciastka owsiane	raw
+172716	Ciastka z kawałkami czekolady	ciastka czekoladowe|cookies	raw	szt.:16
+172725	Ciastka owsiane	ciastka owsiane	raw	szt.:18
 174950	Ciastka maślane	ciastka maslane	raw
 172718	Ciastka z kremem kakaowe	ciastka z kremem	raw
 174956	Pierniczki	pierniczki	raw
@@ -1252,21 +1260,21 @@
 171867	Herbatniki maria	herbatniki maria	raw
 172819	Ciastka maślane niewzbogacane	ciastka maslane zwykle	raw
 174986	Ptysie	ptysie|ciasto parzone	cooked
-167534	Eklerka	eklerka|eklerki	raw
+167534	Eklerka	eklerka|eklerki	raw	szt.:100
 
 ## Słodycze i słodziki / Sweets and sweeteners
 
-169655	Cukier	cukier|cukier bialy	raw
-168833	Cukier brązowy	cukier brazowy	raw
-169656	Cukier puder	cukier puder	raw
+169655	Cukier	cukier|cukier bialy	raw	łyżka:12.5|łyżeczka:4.2|szklanka:200
+168833	Cukier brązowy	cukier brazowy	raw	łyżka:13.8|łyżeczka:4.6|szklanka:220
+169656	Cukier puder	cukier puder	raw	łyżka:8|łyżeczka:2.5|szklanka:120
 169658	Cukier klonowy	cukier klonowy	raw
-169640	Miód	miod	raw
-169661	Syrop klonowy	syrop klonowy	raw
-168820	Melasa	melasa	raw
+169640	Miód	miod	raw	łyżka:21|łyżeczka:7
+169661	Syrop klonowy	syrop klonowy	raw	łyżka:20|łyżeczka:6.7
+168820	Melasa	melasa	raw	łyżka:20|łyżeczka:6.7
 168837	Syrop glukozowy	syrop glukozowy|syrop kukurydziany	raw
 169660	Syrop słodowy	syrop slodowy|syrop maltozowy	raw
 169578	Syrop naleśnikowy	syrop nalesnikowy	raw
-168835	Sos czekoladowy	sos czekoladowy|polewa czekoladowa	raw
+168835	Sos czekoladowy	sos czekoladowy|polewa czekoladowa	raw	łyżka:19
 168841	Sos karmelowy	sos karmelowy	raw
 169896	Fruktoza	fruktoza	raw
 170257	Sukraloza stołowa	sukraloza|splenda	raw

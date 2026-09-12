@@ -36,7 +36,21 @@ export const oil: Ingredient = {
   source: 'usda'
 };
 
-export const ingredients: Ingredient[] = [chicken, egg, oil];
+/** The Phase 16 fixture: an ingredient that offers household measures. */
+export const garlic: Ingredient = {
+  id: 'usda:4',
+  name: 'Czosnek',
+  aliases: [],
+  state: 'raw',
+  per100g: macros(149, 6, 33, 0.5),
+  source: 'usda',
+  measures: [
+    { name: 'ząbek', grams: 5 },
+    { name: 'szt.', grams: 45 }
+  ]
+};
+
+export const ingredients: Ingredient[] = [chicken, egg, oil, garlic];
 
 export function item(
   ingredientId: string,

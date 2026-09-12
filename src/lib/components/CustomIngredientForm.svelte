@@ -1,7 +1,14 @@
 <script lang="ts">
   import type { Ingredient } from '../types';
   import type { IngredientDraft } from '../custom-ingredients';
-  import { draftProblem, draftToIngredient, emptyIngredientDraft } from '../custom-ingredients';
+  import {
+    draftProblem,
+    draftToIngredient,
+    emptyIngredientDraft,
+    emptyMeasureDraft
+  } from '../custom-ingredients';
+  import { MEASURE_NAMES, measureWord } from '../text';
+  import { newId } from '../ids';
   import Spinner from './Spinner.svelte';
   import { GeminiError } from '../gemini/client';
   import {
@@ -33,6 +40,10 @@
    * *proposal* into the draft — nothing is persisted until the ordinary „Zapisz składnik" —
    * and a field the scan could not read stays empty rather than becoming `0`, which is the
    * same rule as above seen from the other side.
+   *
+   * Phase 16 adds the household measures: a repeating row of „name + weight in grams", optional
+   * in every direction. An ingredient offering none is complete, which is why there is no empty
+   * row waiting to be filled — the list starts closed and „Dodaj miarę" opens it.
    */
 
   let {
@@ -168,6 +179,14 @@
 
   const fieldClass =
     'mt-1 w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)';
+
+  function addMeasure(): void {
+    draft.measures = [...draft.measures, emptyMeasureDraft(draft, newId())];
+  }
+
+  function removeMeasure(id: string): void {
+    draft.measures = draft.measures.filter((measure) => measure.id !== id);
+  }
 
   function save(): void {
     if (problem !== null) return;
@@ -317,6 +336,62 @@
     Oddziel przecinkami. Po tych nazwach też znajdziesz składnik w wyszukiwarce, a import
     przepisu łatwiej go dopasuje.
   </p>
+
+  <!-- Measures are a label and a default weight, never a unit: a recipe row that takes one
+       still stores its grams, and the macros are computed from those grams exactly as before
+       (STATE.md decision 323). -->
+  <fieldset class="mt-4 rounded-lg border border-(--color-border) p-3">
+    <legend class="px-1 text-xs font-medium text-(--color-ink-muted)">Miary domowe</legend>
+    <p class="text-xs text-(--color-ink-muted)">
+      Ile waży jedna sztuka, jeden ząbek, jedna łyżka. Dzięki temu w przepisie wpiszesz „2 ząbki”
+      zamiast „2 szt. po 5 g”. Możesz to pominąć — składnik bez miar działa tak samo.
+    </p>
+
+    {#each draft.measures as measure (measure.id)}
+      <div class="flex items-end gap-2 pt-3">
+        <label class="min-w-0 flex-1 text-sm font-medium">
+          Miara
+          <select class={fieldClass} bind:value={measure.name}>
+            {#each MEASURE_NAMES as name (name)}
+              <option value={name}>{name}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="w-28 shrink-0 text-sm font-medium">
+          Waga (g)
+          <input
+            class={fieldClass}
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="any"
+            bind:value={measure.grams}
+          />
+        </label>
+        <button
+          type="button"
+          class="shrink-0 rounded-lg border border-(--color-border) px-3 py-2 text-sm text-(--color-ink-muted)"
+          aria-label="Usuń miarę {measure.name}"
+          onclick={() => removeMeasure(measure.id)}
+        >
+          Usuń
+        </button>
+      </div>
+      {#if measure.grams !== null && measure.grams > 0}
+        <p class="pt-1 text-xs text-(--color-ink-muted)">
+          2 {measureWord(measure.name, 2)} = {Math.round(measure.grams * 2)} g
+        </p>
+      {/if}
+    {/each}
+
+    <button
+      type="button"
+      class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      onclick={addMeasure}
+    >
+      Dodaj miarę
+    </button>
+  </fieldset>
 
   <div class="flex flex-wrap gap-2 pt-4">
     <button

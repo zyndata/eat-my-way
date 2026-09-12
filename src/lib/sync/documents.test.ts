@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { readDaysDocument, readMealPlan, readProfileDocument } from './documents';
+import {
+  readDaysDocument,
+  readIngredientsDocument,
+  readMealPlan,
+  readProfileDocument,
+  readRecipesDocument
+} from './documents';
 import { DEFAULT_PROFILE } from '../db';
 
 /**
@@ -95,5 +101,66 @@ describe('readDaysDocument', () => {
 
     const read = readDaysDocument({ '2026-09-10': { ...day, meals: [meal] } });
     expect(read['2026-09-10']?.meals[0]).not.toHaveProperty('adjustments');
+  });
+});
+
+describe('household measures in the Drive documents (Phase 16)', () => {
+  it('keeps an ingredient\u2019s measures, because the reader keeps the fields it does not know', () => {
+    const document = {
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom',
+          measures: [{ name: 'łyżka', grams: 28 }]
+        }
+      ],
+      corrections: []
+    };
+
+    const read = readIngredientsDocument(JSON.parse(JSON.stringify(document)));
+    expect(read.ingredients[0]?.measures).toEqual([{ name: 'łyżka', grams: 28 }]);
+  });
+
+  it('keeps a recipe item\u2019s measureName', () => {
+    const document = {
+      recipes: [
+        {
+          id: 'recipe-1',
+          name: 'Czosnkowa',
+          items: [
+            { ingredientId: 'usda:4', amount: 2, unit: 'szt', gramsPerUnit: 5, measureName: 'ząbek' }
+          ],
+          tags: [],
+          instructions: '',
+          createdAt: '2026-09-11T10:00:00.000Z',
+          updatedAt: '2026-09-11T10:00:00.000Z'
+        }
+      ],
+      tags: []
+    };
+
+    const read = readRecipesDocument(JSON.parse(JSON.stringify(document)));
+    expect(read.recipes[0]?.items[0]?.measureName).toBe('ząbek');
+  });
+
+  it('reads a document written before measures existed, unchanged', () => {
+    const read = readIngredientsDocument({
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom'
+        }
+      ],
+      corrections: []
+    });
+    expect(read.ingredients[0]?.measures).toBeUndefined();
   });
 });

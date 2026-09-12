@@ -1,8 +1,15 @@
 <script lang="ts">
-  import type { Ingredient } from '../types';
+  import type { Ingredient, Measure } from '../types';
   import type { DraftItem } from '../recipes';
-  import { isDraftComplete, overrideSeed, toRecipeItem } from '../recipes';
+  import {
+    applyMeasure,
+    isDraftComplete,
+    measureChoices,
+    overrideSeed,
+    toRecipeItem
+  } from '../recipes';
   import { itemGrams, itemMacros } from '../macros';
+  import { formatMeasureAmount, measureWord } from '../text';
   import IngredientAutocomplete from './IngredientAutocomplete.svelte';
   import NavIcon from './NavIcon.svelte';
 
@@ -11,6 +18,12 @@
    *
    * `item` is the parent's `$state` draft object, so writing to its fields here updates the
    * live macro sum without any event plumbing.
+   *
+   * Phase 16 adds the household-measure chips under the amount. They **offer**, they never take
+   * over (STATE.md decision 325): picking an ingredient leaves the unit on `g`, so typing `100`
+   * straight afterwards still means 100 grams, and someone who weighs everything sees one extra
+   * row and nothing else moves. One tap sets the unit, the label and the weight together; the
+   * weight field stays editable afterwards, because a clove re-weighed at 7 g is still a clove.
    */
 
   const PENCIL = 'M4 20h4L18 10a2.83 2.83 0 0 0-4-4L4 16v4Zm9.5-13.5 4 4';
@@ -52,6 +65,25 @@
   const macros = $derived(itemMacros(wire, ingredient));
   const complete = $derived(isDraftComplete(item));
   const overridden = $derived(item.macroOverride !== null);
+
+  /**
+   * What this row may be counted in. The ingredient's own measures, plus the one the row
+   * already carries when the library has since dropped it — so the label never disappears from
+   * under a recipe that is using it.
+   */
+  const choices = $derived(measureChoices(item, ingredient));
+
+  /** The amount as the row reads out loud: „2 ząbki", „1,5 łyżki", „200 g". */
+  const spoken = $derived(formatMeasureAmount(wire.amount, wire.unit, wire.measureName));
+
+  /** Tapping a chip that is already on turns the row back into a plain „szt." row. */
+  function pickMeasure(measure: Measure): void {
+    if (item.measureName === measure.name) {
+      item.measureName = null;
+      return;
+    }
+    applyMeasure(item, measure);
+  }
 
   /** The pencil. Opening seeds the fields from the database values, so the user edits a
    * real starting point rather than four zeros. Closing the panel keeps the override — only
@@ -167,7 +199,9 @@
 
       {#if item.unit !== 'g'}
         <label class="col-span-2 block text-sm font-medium sm:col-span-1">
-          {item.unit === 'szt' ? 'Waga 1 szt. (g)' : 'Gęstość (g/ml)'}
+          {item.unit === 'ml'
+            ? 'Gęstość (g/ml)'
+            : `Waga 1 ${item.measureName === null ? 'szt.' : measureWord(item.measureName, 1)} (g)`}
           <input
             id="recipe-item-{position}-grams"
             class="mt-1 w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)"
@@ -181,6 +215,25 @@
         </label>
       {/if}
     </div>
+
+    {#if choices.length > 0}
+      <div class="flex flex-wrap items-center gap-2 pt-2">
+        <span class="text-xs text-(--color-ink-muted)">Miary domowe:</span>
+        {#each choices as measure (measure.name)}
+          {@const on = item.measureName === measure.name}
+          <button
+            type="button"
+            class="rounded-full border px-2.5 py-1 text-xs {on
+              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
+              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            aria-pressed={on}
+            onclick={() => pickMeasure(measure)}
+          >
+            {measure.name} · {measure.grams} g
+          </button>
+        {/each}
+      </div>
+    {/if}
 
     {#if !complete}
       <p class="pt-2 text-xs text-(--color-danger)">
@@ -246,7 +299,9 @@
     {/if}
 
     <p class="pt-2 text-xs text-(--color-ink-muted)">
-      {Math.round(grams)} g · {Math.round(macros.kcal)} kcal · B {macros.protein.toFixed(1)} · W
+      {#if wire.measureName !== undefined}{spoken} ({Math.round(grams)} g){:else}{Math.round(
+          grams
+        )} g{/if} · {Math.round(macros.kcal)} kcal · B {macros.protein.toFixed(1)} · W
       {macros.carbs.toFixed(1)} · T {macros.fat.toFixed(1)}
     </p>
   {/if}

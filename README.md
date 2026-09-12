@@ -8,14 +8,15 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–15 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–16 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then six phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then seven phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
-> your goals (13), changing one planned meal without touching the recipe it came from (14), and
-> the safe-area fix an installed iPhone asked for (15).
+> your goals (13), changing one planned meal without touching the recipe it came from (14),
+> the safe-area fix an installed iPhone asked for (15), and household measures — a clove, a
+> slice, a tablespoon — so a recipe can be typed the way it is written (16).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -57,6 +58,13 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   batch cooked today can be planned onto tomorrow with one checkbox — the same batch the
   planner writes — and anything the USDA subset does not know you add once to your own
   ingredient library.
+- **You can say „dwa ząbki czosnku".** An ingredient knows what one of it weighs — a clove, a
+  slice of bread, a tablespoon of oil, a medium onion — so a recipe row takes that in one tap
+  instead of you typing „2 szt." and then „5 g each" again in every recipe. It is a label and a
+  default weight, never a new unit: the grams stay on the row and the arithmetic is unchanged,
+  so the same row reads „2 ząbki (10 g)" in the editor, on the meal screen and on the shopping
+  list, and Polish plurals come out right — 1 ząbek, 2 ząbki, 5 ząbków. If you weigh everything,
+  nothing changes: typing `100` after picking an ingredient still means 100 grams.
 - **What you ate is allowed not to be the recipe.** The salad was planned and what was in the
   house was the cucumbers; the bread is home-baked one week and shop-bought the next. On that
   one meal you skip a row, change its amount, swap it for something else or add something the

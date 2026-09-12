@@ -201,6 +201,9 @@ export function toDraftItems(
     amount: row.parsed.amount,
     unit: row.parsed.unit,
     gramsPerUnit: row.parsed.gramsPerUnit ?? null,
+    // An import never names a household measure: the model returns an amount and a unit, and
+    // inventing a label for a „szt” row would be inventing a claim about the ingredient.
+    measureName: null,
     macroOverride: null,
     sourceName: row.parsed.name
   }));

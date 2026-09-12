@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   activityDate,
+  applyMeasure,
   canSaveDraft,
   draftFromRecipe,
+  draftFromRecipeItem,
   draftMacros,
   draftToRecipe,
   budgetFit,
@@ -15,6 +17,7 @@ import {
   incompleteDrafts,
   isDraftComplete,
   isRecipeSort,
+  measureChoices,
   overrideSeed,
   searchRecipes,
   sortRecipes,
@@ -25,8 +28,8 @@ import {
   type RecipeListEntry
 } from './recipes';
 import type { Macros, Tag } from './types';
-import { ingredientLookup } from './macros';
-import { chicken, egg, ingredients, item, macros, makeRecipe } from '../test/fixtures';
+import { ingredientLookup, itemGrams, itemMacros } from './macros';
+import { chicken, egg, garlic, ingredients, item, macros, makeRecipe } from '../test/fixtures';
 
 const lookup = ingredientLookup(ingredients);
 
@@ -468,5 +471,91 @@ describe('duplicateRecipe', () => {
   it('does not carry the photo over — two recipes must not own one Drive file', () => {
     const original = { ...makeRecipe({ id: 'r1' }), photoFileId: 'drive-1' };
     expect(duplicateRecipe(original, { id: 'r2', now: 'x' })).not.toHaveProperty('photoFileId');
+  });
+});
+
+describe('household measures on a recipe row (Phase 16)', () => {
+  it('sets unit, label and weight in one act, and the macros equal typing szt + 5 by hand', () => {
+    const chip = emptyDraftItem('row-1');
+    chip.ingredientId = garlic.id;
+    chip.amount = 2;
+    applyMeasure(chip, { name: 'ząbek', grams: 5 });
+
+    const byHand = emptyDraftItem('row-2');
+    byHand.ingredientId = garlic.id;
+    byHand.amount = 2;
+    byHand.unit = 'szt';
+    byHand.gramsPerUnit = 5;
+
+    expect(chip.unit).toBe('szt');
+    expect(chip.gramsPerUnit).toBe(5);
+    expect(chip.measureName).toBe('ząbek');
+    // The whole claim of decision 323: a measure is a label, so the arithmetic is identical.
+    expect(itemGrams(toRecipeItem(chip))).toBe(itemGrams(toRecipeItem(byHand)));
+    expect(itemMacros(toRecipeItem(chip), garlic)).toEqual(itemMacros(toRecipeItem(byHand), garlic));
+  });
+
+  it('leaves a fresh row on grams, so typing 100 after picking still means 100 grams', () => {
+    const draft = emptyDraftItem('row-1');
+    draft.ingredientId = garlic.id;
+    draft.amount = 100;
+
+    expect(draft.unit).toBe('g');
+    expect(measureChoices(draft, garlic)).toHaveLength(2);
+    expect(itemGrams(toRecipeItem(draft))).toBe(100);
+  });
+
+  it('stores the label only on a szt row', () => {
+    const draft = emptyDraftItem('row-1');
+    draft.ingredientId = garlic.id;
+    draft.amount = 2;
+    applyMeasure(draft, { name: 'ząbek', grams: 5 });
+    expect(toRecipeItem(draft).measureName).toBe('ząbek');
+
+    // Switching the unit back drops a label nothing would ever print.
+    draft.unit = 'g';
+    expect(toRecipeItem(draft)).not.toHaveProperty('measureName');
+  });
+
+  it('round-trips through the draft, and an item without a measure stays without one', () => {
+    const labelled = item(garlic.id, 2, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' });
+    expect(toRecipeItem(draftFromRecipeItem(labelled, 'row-1'))).toEqual(labelled);
+
+    const plain = item(egg.id, 2, 'szt', { gramsPerUnit: 58 });
+    expect(toRecipeItem(draftFromRecipeItem(plain, 'row-2'))).toEqual(plain);
+  });
+
+  it('keeps offering a measure the ingredient has since dropped, with the row\u2019s own weight', () => {
+    const draft = draftFromRecipeItem(
+      item(garlic.id, 2, 'szt', { gramsPerUnit: 7, measureName: 'ząbek' }),
+      'row-1'
+    );
+    // The library forgot cloves; the recipe did not.
+    const forgetful = { ...garlic, measures: [{ name: 'szt.' as const, grams: 45 }] };
+
+    expect(measureChoices(draft, forgetful)).toEqual([
+      { name: 'szt.', grams: 45 },
+      { name: 'ząbek', grams: 7 }
+    ]);
+    // Label, weight and macros are all the row's own, untouched by the library.
+    const wire = toRecipeItem(draft);
+    expect(wire.measureName).toBe('ząbek');
+    expect(wire.gramsPerUnit).toBe(7);
+    expect(itemGrams(wire)).toBe(14);
+  });
+
+  it('offers nothing for an ingredient with no measures, which is most of them', () => {
+    const draft = emptyDraftItem('row-1');
+    draft.ingredientId = chicken.id;
+    expect(measureChoices(draft, chicken)).toEqual([]);
+    expect(measureChoices(draft, undefined)).toEqual([]);
+  });
+
+  it('copies the label into a duplicated recipe', () => {
+    const original = makeRecipe({
+      items: [item(garlic.id, 2, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+    const copy = duplicateRecipe(original, { id: 'r2', now: '2026-09-11T10:00:00.000Z' });
+    expect(copy.items[0]?.measureName).toBe('ząbek');
   });
 });

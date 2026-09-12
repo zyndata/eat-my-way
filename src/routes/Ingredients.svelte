@@ -12,6 +12,7 @@
     IngredientInUseError,
     draftForCopy,
     draftFromIngredient,
+    emptyIngredientDraft,
     macrosDiffer,
     type IngredientDraft
   } from '../lib/custom-ingredients';
@@ -105,7 +106,7 @@
     sheet = {
       title: 'Nowy składnik',
       submitLabel: 'Zapisz składnik',
-      draft: { name: query.trim(), state: 'raw', aliases: '', kcal: null, protein: null, carbs: null, fat: null }
+      draft: emptyIngredientDraft(query.trim())
     };
   }
 

@@ -6,7 +6,7 @@
  */
 
 /** Bumped whenever the bundled data changes; IndexedDB stores the value it imported. */
-export const NUTRITION_DATA_VERSION = 2;
+export const NUTRITION_DATA_VERSION = 3;
 
 /** How many ingredients the bundle holds. */
 export const NUTRITION_INGREDIENT_COUNT = 1344;

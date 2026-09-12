@@ -22,13 +22,24 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 13    | Planer posiłków             | done    | 2026-09-04 |
 | 14    | Poprawki posiłku            | done    | 2026-09-08 |
 | 15    | iPhone                      | done    | 2026-09-11 |
-| 16    | Miary domowe                | pending | — |
+| 16    | Miary domowe                | done    | 2026-09-12 |
 | 17    | Dział sklepu                | pending | — |
 | 18    | Trzy drobiazgi              | pending | — |
 | 19    | Cel dopowiedziany do końca  | pending | — |
 | 20    | Metryczka przepisu          | pending | — |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 16 is **built** (2026-09-12, decisions 349–357). The weight of a clove used to live on
+every recipe row that used one: `gramsPerUnit` on `RecipeItem`, retyped at each point of use,
+with a typo in one recipe invisible from every other. It now lives on the ingredient, where it
+belongs, as a **label and a default weight** — never a unit. `macros.ts` is byte-for-byte
+unchanged, the three invariants stand, `shoppingLines` still keys by `ingredientId + unit`, and
+`Ingredient.measures` and `RecipeItem.measureName` are optional fields that cost no schema
+version, no migration and nothing in the transport. Sixteen names, a Polish plural table with a
+fourth form for fractions, chips on the recipe row that offer and never take over, and 294 of
+the 1 344 bundled rows filled in by hand. What is not done, deliberately: the other 1 050 rows —
+task 2 exists to make a partial fill legal.
 
 Phase 15 is **built** (2026-09-11, decisions 341–347). The calendar's „Dodaj posiłek" button
 was cut off by the navigation bar on an installed iPhone, because a fixed bottom offset was
@@ -4232,6 +4243,95 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      and that is what was verified. Somebody should find out why the Drive flow behaves
      differently on :8080 than on :4173; it is not recorded as an open question because nothing
      yet says whether it is the policy, the port or this machine.
+
+### 2026-09-11 — Phase 16
+
+349. **The plural table carries a fourth form, the genitive singular, for fractions.**
+     `pluralPl` has three forms and truncates, so „1,5 ząbek" is what a measure would print
+     the moment `cookingScale` is `0,5` or `1,5` — and that scale is offered on every meal.
+     `portionWord` already meets this and gets away with it only because „porcji" is both the
+     genitive singular and the genitive plural of „porcja"; „ząbka" and „ząbków" are not the
+     same word. So `MEASURE_FORMS` holds `one`, `few`, `many` and `fraction`, and
+     `measureWord` picks `fraction` for anything non-integer. Sixteen extra strings, and the
+     alternative is printing wrong Polish on an ordinary half batch.
+
+350. **`MEASURE_NAMES` is duplicated once, in `scripts/measures.mjs`, and a test holds the two
+     copies together.** The build script is `.mjs` and cannot import a `.ts` module, and
+     `build-nutrition.mjs` runs `main()` on import so it cannot be imported by a test either.
+     Hence a third small script module beside `csv.mjs` and `usda-zip.mjs`, owning the closed
+     vocabulary and the `nazwa:gramy|…` parser, plus `src/lib/nutrition/measures.test.ts`,
+     which imports both it and `text.ts` and fails if the lists ever drift. **Rejected:**
+     generating one from the other, which would put a build step between a sixteen-line table
+     and the two files that read it.
+
+351. **A shopping line keeps its measure label only while every row that merged into it agrees.**
+     `shoppingLines` keys by `ingredientId + unit` and that does not change (decision 323), so
+     „2 ząbki" from one recipe and „1 szt." of garlic from another land on one line. Printing
+     either label would be a claim about the other recipe's row. The line therefore carries
+     `measureName` from the first row and drops it the moment a row disagrees, falling back to
+     „3 szt. (25 g)" — which is what the line said before this phase and is true of both.
+
+352. **`DATA_VERSION` goes to 3, because measures on bundled rows reach an existing install no
+     other way.** `importBundledNutrition` skips entirely when the stored version is not lower,
+     so a bundle rebuilt in place would be invisible to every device that already ran. This is
+     the first bump since the bundle existed and it does what the constant is documented to do:
+     `bulkPut` rewrites the 1 344 `usda:*` rows and touches nothing custom.
+
+353. **`fromIngredientRecord` had to learn the field.** It builds the wire shape by naming six
+     properties rather than spreading the row, so `measures` written by the import would be
+     dropped on the way back out of IndexedDB — invisibly, and only in the app, since the JSON
+     on disk would look right. Same treatment as `updatedAt`: copied only when present.
+
+354. **The meal screen's „Zmień" keeps the amount and the unit but drops the measure.** Phase 14
+     swaps the ingredient and keeps the row's measurements, on the grounds that they are the
+     user's measurement of their own plate (decision 180). A measure name is not a measurement,
+     it is a claim about the ingredient — „2 ząbki" of yoghurt is nonsense — so it is the one
+     field that does not survive a swap. The weight does, because that is what was eaten.
+
+
+355. **The e2e spec was added, though PLAN.md's task 7 asked only for unit tests.** Three of
+     the acceptance criteria are about what a row *reads* on three different screens, and no
+     unit test can say that the chips are on the editor, that one tap fills three fields, or
+     that the meal screen and the shopping sheet print the same words. `e2e/measures.spec.ts`
+     drives it through the real screens, using „Czosnek" out of the bundled subset. It also
+     pins the criterion that matters to someone who weighs everything: typing `100` straight
+     after picking an ingredient still means 100 grams.
+
+356. **The editor screenshot moved from „Owsianka z bananem" to „Jogurt z bananem".** The
+     README's five screenshots are re-taken every phase that changes a screen, and the recipe
+     editor is the only screen the measures are visible on — but only for an ingredient that
+     offers some, and „płatki owsiane" does not. The banana does, so the flag in
+     `scripts/screenshots.mjs` moved one recipe down. Nothing else about the walk changed, and
+     the day, planner, library and meal shots are the same screens they were.
+
+357. **Where a row offers sized pieces, the plain „szt." is not repeated as „średnia szt.".**
+     The first fill gave twenty rows both, at the same weight — „szt. · 118 g" next to
+     „średnia szt. · 118 g" on the banana — which is two chips saying one number on a screen
+     that has to fit a phone. „szt." is what a person says by default, so it stays and the
+     redundant middle size goes; „mała" and „duża" earn their place because they differ. Rows
+     where the sizes genuinely differ from the default keep all four.
+
+### Not verified, and honestly so — Phase 16
+
+- **`e2e/pwa.spec.ts` is flaky on this Windows machine under a full parallel run, and was
+  before this phase.** Across four full runs the suite failed exactly one test each time and a
+  different one each time — `pwa.spec.ts:33`, then `pwa.spec.ts:153`, then `comfort.spec.ts:49`
+  — and every one of them passes when its spec is run alone. **Checked against a stash of this
+  phase's work:** unmodified `dev` fails the same way (`pwa.spec.ts:153` on a full run), so it
+  is not Phase 16. The one thing that could plausibly have been this phase — the bundled JSON
+  growing from 230 kB to 258 kB and falling out of the precache — was checked directly and did
+  not happen: `dist/sw.js` lists `ingredients-*.json` among its 20 precached entries. CI, which
+  runs on Linux, is the arbiter.
+- **The container run's known instability (decision 348) is unchanged.** Run serially against
+  `http://localhost:8080`, `screens.spec.ts` (zero CSP violations on every screen),
+  `ingredients.spec.ts` and the new `measures.spec.ts` all pass — which is what the „no CSP
+  change" criterion is actually about. Run in parallel against the same container, unrelated
+  specs fail the way decision 348 already records.
+- **294 of 1 344 bundled rows have measures.** That is the deliberate partial fill of task 6,
+  not an omission — but it means most ingredients still show no chips, and the ones that do
+  were weighed from ordinary household figures rather than measured. They are a starting point
+  a person overwrites on the row, which is exactly what `gramsPerUnit` staying editable is for.
+
 
 ## Open questions
 

@@ -204,6 +204,10 @@ export function toIngredientRecord(ingredient: Ingredient): IngredientRecord {
  * `updatedAt` is absent on every row written before Phase 10 and on every bundled one, and it
  * stays absent here rather than being invented: an unknown edit time must lose a merge, and a
  * fabricated one would win it.
+ *
+ * This names its fields rather than spreading the row, so **every optional field has to be
+ * listed here or it is silently dropped on the way out** — which is what `measures` (Phase 16)
+ * would have been: right in the JSON on disk, gone in the app (STATE.md decision 353).
  */
 export function fromIngredientRecord(record: IngredientRecord): Ingredient {
   const ingredient: Ingredient = {
@@ -215,6 +219,7 @@ export function fromIngredientRecord(record: IngredientRecord): Ingredient {
     source: record.source
   };
   if (record.updatedAt !== undefined) ingredient.updatedAt = record.updatedAt;
+  if (record.measures !== undefined) ingredient.measures = record.measures;
   return ingredient;
 }
 

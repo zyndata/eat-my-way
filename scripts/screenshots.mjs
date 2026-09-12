@@ -50,7 +50,11 @@ await page.waitForFunction(() => document.body.textContent?.includes('Nowy przep
 // An empty library is a screen worth showing — it is what a new user actually meets.
 await shot('library-empty');
 
-/** One recipe with one ingredient row. The first one is also the editor screenshot. */
+/**
+ * One recipe with one ingredient row. One of them is also the editor screenshot, and it is
+ * deliberately the banana: the editor is the only screen the household measures (Phase 16)
+ * are visible on, and they only appear for an ingredient that offers some.
+ */
 async function writeRecipe(name, ingredient, amount, { screenshot = false } = {}) {
   await page.goto(`${BASE_URL}/#/recipes/new/edit`);
   await page.getByRole('heading', { name: 'Nowy przepis' }).waitFor({ state: 'visible' });
@@ -66,12 +70,12 @@ async function writeRecipe(name, ingredient, amount, { screenshot = false } = {}
 
 // A handful of recipes, so the planner has something to choose between — one is not a
 // library, and a library of four small ones cannot reach a 2000 kcal day.
-await writeRecipe('Owsianka z bananem', 'płatki owsiane', '130', { screenshot: true });
+await writeRecipe('Owsianka z bananem', 'płatki owsiane', '130');
 await writeRecipe('Kurczak z ryżem', 'ryż biały', '200');
 await writeRecipe('Makaron z pesto', 'makaron pszenny', '150');
 await writeRecipe('Kanapki z serem', 'ser żółty gouda', '110');
 await writeRecipe('Sałatka z tuńczykiem', 'tuńczyk', '180');
-await writeRecipe('Jogurt z bananem', 'banan', '150');
+await writeRecipe('Jogurt z bananem', 'banan', '150', { screenshot: true });
 
 // The planner's proposal, which is the one screen that explains what this app is for.
 await page.goto(`${BASE_URL}/#/`);
