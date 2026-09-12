@@ -146,6 +146,31 @@ describe('first sync', () => {
     expect((await b.repository.getProfile()).goals).toEqual(macros(1800, 120, 150, 50));
   });
 
+  /**
+   * Phase 19: the body data is an optional profile field, so its whole transport story is
+   * „the profile already travels". This is the assertion that says so — a second device gets
+   * the calculator's inputs without a schema version, a migration or a file of its own.
+   */
+  it('carries the calculator’s body data to a second device', async () => {
+    const drive = new FakeDrive();
+    const a = device(drive);
+    const body = {
+      sex: 'male' as const,
+      age: 40,
+      height: 180,
+      weight: 80,
+      activity: 'sedentary' as const,
+      split: { protein: 40, carbs: 30, fat: 30 }
+    };
+    await a.repository.setGoals(macros(2076, 208, 156, 69), body);
+    await a.engine.sync();
+
+    const b = device(drive);
+    await b.engine.sync();
+
+    expect((await b.repository.getProfile()).body).toEqual(body);
+  });
+
   it('is a no-op the second time, and downloads nothing that did not move', async () => {
     const drive = new FakeDrive();
     const a = device(drive);

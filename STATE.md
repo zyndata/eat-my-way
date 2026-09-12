@@ -25,10 +25,23 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 16    | Miary domowe                | done    | 2026-09-12 |
 | 17    | Dział sklepu                | done    | 2026-09-12 |
 | 18    | Trzy drobiazgi              | done    | 2026-09-12 |
-| 19    | Cel dopowiedziany do końca  | pending | — |
+| 19    | Cel dopowiedziany do końca  | done    | 2026-09-12 |
 | 20    | Metryczka przepisu          | pending | — |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 19 is **built** (2026-09-12, decisions 373–380). The Mifflin-St Jeor calculator has been
+in `goals.ts` since Phase 5 and was used once and then never again, for three reasons that are
+now fixed. Its inputs stop evaporating: sex, age, height, weight and activity level become one
+optional `Profile.body`, written by the same button that writes the goals, so they travel to
+Drive and into the backup and a second device does not ask for them again — and that is the one
+change in these six phases to **what the app is documented to store**, so README.md and
+SECURITY.md were corrected inside the phase. The 25/45/30 split becomes three percentage fields
+pinned at 100, stored inside the same field, unchanged for anyone who never opens them. And the
+result now shows its derivation — basal rate, activity factor, product, and each macro's share
+in grams — computed by the same `deriveGoals` call that fills the fields, so the shown
+arithmetic cannot drift from the saved number. The calculator still only *fills*: no schema
+version, no migration, no dependency, no CSP or `Caddyfile` change.
 
 Phase 18 is **built** (2026-09-12, decisions 367–372). Three small things that touch no data
 model between them. `draftSanity` asks whether the four per-100 g values are *possible* — the
@@ -4513,6 +4526,80 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
   suite passes 115/115 against the dev server, and `screens.spec.ts`, `scan.spec.ts` and the
   new `drobiazgi.spec.ts` pass against `http://localhost:8080` with zero CSP violations — which is
   what the „no CSP change" criterion is about. CI, on Linux, is the arbiter.
+
+### 2026-09-12 — Phase 19, cel dopowiedziany do końca
+
+373. **One optional profile field, `body`, and the split lives inside it.** PLAN.md task 1 names
+     four fields (sex, age, height, weight); the activity level is a fifth input of the same
+     formula and evaporated for the same reason, and the split from task 2 is a third thing
+     that would have to be re-entered at every open. All of it is one `BodyData` on
+     `Profile.body`: one reader, one validator, one thing for `readProfileDocument` to learn.
+     **Rejected:** a separate `Profile.macroSplit`, which buys nothing and doubles every place
+     that has to know the field exists.
+
+374. **The split is stored in whole percent, not as fractions.** `DEFAULT_SPLIT` was
+     `{0.25, 0.45, 0.3}`; the rule PLAN.md asks for is „the sum is pinned at 100", and as
+     fractions that rule is a float comparison — a rule that is sometimes wrong for numbers a
+     user typed. In percent it is `=== 100`. The arithmetic is unchanged: `25/100` is the same
+     double as `0.25`, and `calculateGoals` returns exactly what it returned before for anyone
+     who never opens the three fields.
+
+375. **The body data is saved by „Zapisz cele", not while it is being typed and not by
+     „Wypełnij pola".** The acceptance criterion „the calculator still only *fills* the four
+     fields; nothing saves without the user pressing save" is the stronger statement of the two,
+     and writing to IndexedDB on every keystroke would break it in spirit for the sake of the
+     letter of the other one. So the panel says so in Polish — „Dane sylwetki zapisują się razem
+     z celami, przyciskiem »Zapisz cele«" — and the acceptance criterion about reopening the
+     panel is met through that one press, which is the flow anybody who calculates a goal is in
+     anyway. `e2e/goals.spec.ts` pins both halves, including that „Wypełnij pola" alone leaves
+     the database untouched.
+
+376. **An impossible split blocks the save button, not only the fill button.** „40/30/40 cannot
+     be saved" is read literally: the split travels with the goals, and a stored split that does
+     not add up would be a number the calculator could never reproduce. Because the three fields
+     sit behind a collapsed toggle, the save button never goes dead silently — the reason is
+     printed next to it („Podział energii w kalkulatorze musi sumować się do 100%"), and a
+     second, more specific message sits under the fields themselves.
+
+377. **`readBodyData` lives in `goals.ts`, not in `sync/documents.ts`.** Decision 274's lesson
+     was that `readProfileDocument` enumerates fields, so an unread field is a dropped field —
+     but the same validation is also what says whether a body is usable at all, and putting it
+     next to the formula keeps one answer to „is this body real" for the sync reader, the form
+     and the tests. `documents.ts` imports it; the backup reader spreads the profile through and
+     needs nothing.
+
+378. **`isNeverUsed` and `isUntouchedProfile` learned about `body`.** Both answer „has anyone
+     ever told this app anything", and body data is something a user typed. Without it, a device
+     whose only setting was a calculated goal would have been offered the first-run wizard, and
+     a fresh sync could have treated its profile as replaceable.
+
+379. **The derivation is live and shares one code path with the fill.** It re-computes as the
+     fields change rather than freezing at the last „Wypełnij pola" press, and it is the
+     `deriveGoals` result whose `.goals` the button writes — so „the derivation matches the
+     saved goals" is structural rather than a pair of formulas kept in step by hand.
+
+380. **An e2e spec again, where PLAN.md named no tests.** As in Phases 16–18: four of the eight
+     criteria are statements about a screen — that reopening the panel shows the same data, that
+     40/30/40 cannot be saved, that the derivation matches the filled fields, and that filling
+     alone saves nothing. `e2e/goals.spec.ts` gained five cases; the arithmetic, the transport
+     and the readers are pinned at the unit level.
+
+### Not verified, and honestly so — Phase 19
+
+- **The live Drive round trip is proved against `FakeDrive`, as every phase since 6 has been.**
+  `engine.test.ts` carries the body data from one device to a second one through the real merge
+  path, and `e2e/goals.spec.ts` does the profile write through the browser; what Google's own
+  `appDataFolder` does with the extra key is the same open question 15 as ever, and the answer
+  cannot be different, because the field rides inside `profile.json` and nothing about that file
+  changed shape.
+- **Nobody has entered their own body data on a phone yet.** The panel is four number fields and
+  two selects, all of them already present before this phase; the three percentage fields are the
+  new row, and they were checked at 400 px in the emulator only.
+- **The container run's flakiness (decision 348) is unchanged.** At eight parallel workers
+  against `http://localhost:8080` one or two specs time out, a different one each run and every
+  one of them green in isolation; at four workers the full suite passes **119/119** against the
+  Caddy container under the production CSP, with zero CSP violations reported, and 119/119
+  against the dev server. CI, on Linux, is the arbiter.
 
 ## Open questions
 

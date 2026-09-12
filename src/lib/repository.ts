@@ -1,4 +1,5 @@
 import type {
+  BodyData,
   Day,
   Ingredient,
   Macros,
@@ -264,9 +265,16 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       return row;
     },
 
-    async setGoals(goals: Macros): Promise<Profile> {
+    /**
+     * The goals, and — when the calculator was used — the body data behind them (Phase 19).
+     *
+     * One write, because they are one user act: the save button under the four fields is the
+     * only thing in the app that persists either of them. The calculator itself still only
+     * *fills* the fields and writes nothing (PLAN.md Phase 19).
+     */
+    async setGoals(goals: Macros, body?: BodyData): Promise<Profile> {
       const current = (await database.profile.get(PROFILE_KEY)) ?? DEFAULT_PROFILE;
-      const profile: Profile = plain({ ...current, goals });
+      const profile: Profile = plain({ ...current, goals, ...(body === undefined ? {} : { body }) });
       await database.profile.put(profile, PROFILE_KEY);
       return profile;
     },
@@ -327,6 +335,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       return (
         profile.googleSub === undefined &&
         profile.geminiUsage === undefined &&
+        profile.body === undefined &&
         profile.geminiModel === DEFAULT_PROFILE.geminiModel &&
         profile.encryptVault === DEFAULT_PROFILE.encryptVault &&
         profile.locale === DEFAULT_PROFILE.locale &&

@@ -55,6 +55,37 @@ describe('profile', () => {
     expect(profile.geminiModel).toBe(DEFAULT_PROFILE.geminiModel);
     expect(profile.encryptVault).toBe(true);
   });
+
+  /** Phase 19: the calculator's inputs stop evaporating when the panel is closed. */
+  it('remembers the body data the goals were calculated from', async () => {
+    const body = {
+      sex: 'male' as const,
+      age: 40,
+      height: 180,
+      weight: 80,
+      activity: 'sedentary' as const,
+      split: { protein: 40, carbs: 30, fat: 30 }
+    };
+    await repo.setGoals(macros(2076, 208, 156, 69), body);
+
+    expect((await repo.getProfile()).body).toEqual(body);
+  });
+
+  it('leaves the stored body alone when goals are saved without one', async () => {
+    const body = {
+      sex: 'female' as const,
+      age: 30,
+      height: 165,
+      weight: 60,
+      activity: 'light' as const
+    };
+    await repo.setGoals(macros(1800, 120, 180, 60), body);
+    await repo.setGoals(macros(1900, 130, 190, 65));
+
+    const profile = await repo.getProfile();
+    expect(profile.goals.kcal).toBe(1900);
+    expect(profile.body).toEqual(body);
+  });
 });
 
 describe('ingredients', () => {
@@ -927,6 +958,17 @@ describe('isNeverUsed', () => {
 
   it('is false once goals have been set, even to a value that looks default', async () => {
     await repo.setGoals({ ...DEFAULT_PROFILE.goals, kcal: 2400 });
+    expect(await repo.isNeverUsed()).toBe(false);
+  });
+
+  it('is false once the calculator has been told a body', async () => {
+    await repo.setGoals(DEFAULT_PROFILE.goals, {
+      sex: 'male',
+      age: 40,
+      height: 180,
+      weight: 80,
+      activity: 'sedentary'
+    });
     expect(await repo.isNeverUsed()).toBe(false);
   });
 

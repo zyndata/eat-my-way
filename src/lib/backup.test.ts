@@ -167,6 +167,30 @@ describe('reading a backup', () => {
     expect(summarizeBackup(buildBackup({ ...input, vaultFile: '{}' })).vault).toBe(true);
   });
 
+  /**
+   * Phase 19: the body data is an optional profile field, so it must cross the export file
+   * with no schema version bump and no migration — the way `mealPlan` and `adjustments` do.
+   */
+  it('round-trips the body data the goals were calculated from', () => {
+    const body = {
+      sex: 'male' as const,
+      age: 40,
+      height: 180,
+      weight: 80,
+      activity: 'sedentary' as const,
+      split: { protein: 40, carbs: 30, fat: 30 }
+    };
+    const document = buildBackup({ ...input, profile: { ...DEFAULT_PROFILE, body } });
+    const backup = readBackup(JSON.stringify(document));
+
+    expect(backup.profile.body).toEqual(body);
+    expect(backup.schemaVersion).toBe(input.schemaVersion);
+  });
+
+  it('leaves a file written before the calculator without a body', () => {
+    expect(readBackup(JSON.stringify(buildBackup(input))).profile).not.toHaveProperty('body');
+  });
+
   it('fills in profile fields a file predates', () => {
     const document = { ...buildBackup(input), profile: { goals: DEFAULT_PROFILE.goals } };
     const backup = readBackup(JSON.stringify(document));

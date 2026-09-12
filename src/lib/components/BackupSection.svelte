@@ -136,9 +136,9 @@
 <section class="mt-4 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-4">
   <h2 class="text-base font-semibold">Kopia danych</h2>
   <p class="pt-2 text-sm text-(--color-ink-muted)">
-    Jeden plik JSON z całą zawartością tego urządzenia: cele, przepisy, tagi, własne składniki i
-    wszystkie zaplanowane dni. Przyda się, gdy nie korzystasz z Dysku Google — albo po prostu
-    chcesz mieć własną kopię.
+    Jeden plik JSON z całą zawartością tego urządzenia: cele wraz z danymi sylwetki z
+    kalkulatora, przepisy, tagi, własne składniki i wszystkie zaplanowane dni. Przyda się, gdy
+    nie korzystasz z Dysku Google — albo po prostu chcesz mieć własną kopię.
   </p>
   <p class="pt-2 text-sm {vaultState.status !== 'absent' && !vaultState.encrypted
     ? 'text-(--color-danger)'

@@ -8,7 +8,7 @@
   import TagSection from '../lib/components/TagSection.svelte';
   import MealPlanSection from '../lib/components/MealPlanSection.svelte';
   import Spinner from '../lib/components/Spinner.svelte';
-  import type { Macros, Profile } from '../lib/types';
+  import type { BodyData, Macros, Profile } from '../lib/types';
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
   import { testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
@@ -164,9 +164,9 @@
     }
   });
 
-  async function saveGoals(next: Macros): Promise<void> {
+  async function saveGoals(next: Macros, body: BodyData): Promise<void> {
     savingGoals = true;
-    await repository.setGoals(next);
+    profile = await repository.setGoals(next, body);
     savingGoals = false;
     goalsSaved = true;
     void syncNow();
@@ -673,7 +673,12 @@
       <p class="pt-2 text-sm text-(--color-ink-muted)">Wczytywanie…</p>
     {:else}
       <div class="pt-3">
-        <GoalsForm bind:goals saving={savingGoals} onsave={(next) => void saveGoals(next)} />
+        <GoalsForm
+          bind:goals
+          body={profile.body}
+          saving={savingGoals}
+          onsave={(next, body) => void saveGoals(next, body)}
+        />
       </div>
       {#if goalsSaved}
         <p class="pt-2 text-sm text-(--color-ink-muted)" role="status">Zapisano.</p>

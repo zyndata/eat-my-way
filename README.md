@@ -8,7 +8,7 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–17 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–19 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
 > and the installable offline PWA for 1.0, then nine phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
@@ -19,7 +19,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > slice, a tablespoon — so a recipe can be typed the way it is written (16), a shopping
 > list grouped by where things are actually bought (17), and three small things daily use
 > asked for: a warning when a label's numbers cannot all be true, a library that finds a
-> recipe by what is in it, and the week's menu as text you can paste into a message (18).
+> recipe by what is in it, and the week's menu as text you can paste into a message (18), and
+> a goals calculator that remembers what you told it, lets you set your own macro split and
+> shows where its number came from (19).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -95,6 +97,17 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   recipe has not got — the macros and the shopping list follow, a copy of the meal carries the
   changes, and the recipe in your library stays exactly as you typed it. There is no „save as a
   variant": an improvisation you will never repeat does not earn a card in the library.
+- **The goals calculator explains itself, and does not ask twice.** „Policz za mnie" turns
+  sex, age, height, weight and activity into a daily kcal goal (Mifflin-St Jeor) and a split of
+  it into grams — and shows the whole derivation: the basal rate, the activity factor, the
+  product and each macro's share. The split is yours to set, three percentages that have to add
+  up to 100, so a high-protein target is one number rather than a rewrite. It still only
+  *fills* the four fields: nothing is stored until you press *Zapisz cele*, and every value
+  stays editable afterwards. What you tell it — sex, age, height, weight, activity level and
+  the split — is saved with the goals, so reopening the panel on this device, on a second one
+  through Drive, or after restoring a backup shows the same data instead of asking again. That
+  also means it is in the Drive file and in the export file, which is what the two paragraphs
+  under *Getting your data back* and [SECURITY.md](SECURITY.md) say.
 - **Bring your own key.** The optional Gemini features — the recipe import and the package
   scan — use *your* API key, stored in a
   vault that is encrypted with Argon2id + AES-GCM behind a master password by default; the
@@ -172,11 +185,12 @@ paths are in *Ustawienia*.
 
 **A new device, with Drive.** Install the app, *Połącz Dysk Google* with the same account, and
 enter the master password when the vault is fetched. The calendar, the recipes, the custom
-ingredients and the Gemini key all come back from the app's private `appDataFolder`.
+ingredients, the goals with the body data behind them and the Gemini key all come back from the
+app's private `appDataFolder`.
 
 **A new device, without Drive.** *Zapisz kopię* on the old device writes one JSON file with
-everything local in it — the goals, the recipes, the tags, your own ingredients, every planned
-day, and the vault; *Wczytaj kopię* on the new one reads it back and replaces what is there.
+everything local in it — the goals and the body data the calculator was given, the recipes, the
+tags, your own ingredients, every planned day, and the vault; *Wczytaj kopię* on the new one reads it back and replaces what is there.
 The vault travels exactly as the device holds it, so an encrypted vault is an Argon2id + AES-GCM
 blob and the master password is nowhere in the file — you re-enter it at the first import after
 the restore. If you chose a vault **without** a password, the Gemini key is in that file in the

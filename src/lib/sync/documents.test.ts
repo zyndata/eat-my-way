@@ -62,6 +62,37 @@ describe('readMealPlan', () => {
   });
 });
 
+/** The Phase 19 body data, which needs a reader here for exactly the same reason. */
+describe('body data in profile.json', () => {
+  const body = {
+    sex: 'male' as const,
+    age: 40,
+    height: 180,
+    weight: 80,
+    activity: 'sedentary' as const,
+    split: { protein: 40, carbs: 30, fat: 30 }
+  };
+
+  it('survives a round trip through the document', () => {
+    const written = JSON.parse(JSON.stringify({ ...PROFILE_JSON, body }));
+    expect(readProfileDocument(written, DEFAULT_PROFILE).body).toEqual(body);
+  });
+
+  it('keeps the body this device holds when the remote document has none', () => {
+    const { split: _ignored, ...plain } = body;
+    const local = { ...DEFAULT_PROFILE, body: plain };
+    expect(readProfileDocument(PROFILE_JSON, local).body).toEqual(local.body);
+    expect(readProfileDocument(PROFILE_JSON, DEFAULT_PROFILE)).not.toHaveProperty('body');
+  });
+
+  it('ignores a damaged body rather than importing half of one', () => {
+    const local = { ...DEFAULT_PROFILE, body: { ...body } };
+    const damaged = { ...PROFILE_JSON, body: { sex: 'male', age: 40 } };
+    expect(readProfileDocument(damaged, local).body).toEqual(local.body);
+    expect(readProfileDocument(damaged, DEFAULT_PROFILE)).not.toHaveProperty('body');
+  });
+});
+
 describe('readDaysDocument', () => {
   /**
    * The days document is spread through rather than rebuilt field by field, which is what

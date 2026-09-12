@@ -89,3 +89,101 @@ test('a sync landing under the screen does not overwrite an unsaved edit', async
 
   await expect(kcalField(device)).toHaveValue('1234');
 });
+
+/**
+ * Phase 19. The calculator's three missing pieces, from the screen: its inputs survive a
+ * close, its split is editable and pinned at 100%, and it shows where the number came from.
+ */
+
+const openCalculator = async (page: Page) =>
+  page.getByRole('button', { name: /Policz za mnie/ }).click();
+
+const derivation = (page: Page) => page.getByTestId('derivation');
+
+test('body data entered in the calculator is still there after a reload', async ({ device }) => {
+  await openCalculator(device);
+  await device.getByLabel('Płeć').selectOption('male');
+  await device.getByLabel(/Wiek/).fill('44');
+  await device.getByLabel(/Wzrost/).fill('183');
+  await device.getByLabel(/Waga/).fill('86');
+  await device.getByLabel('Aktywność').selectOption('moderate');
+  await device.getByRole('button', { name: 'Wypełnij pola' }).click();
+  await device.getByRole('button', { name: 'Zapisz cele' }).click();
+  await expect(device.getByText('Zapisano.', { exact: true })).toBeVisible();
+
+  await device.reload();
+  await openCalculator(device);
+
+  await expect(device.getByLabel('Płeć')).toHaveValue('male');
+  await expect(device.getByLabel(/Wiek/)).toHaveValue('44');
+  await expect(device.getByLabel(/Wzrost/)).toHaveValue('183');
+  await expect(device.getByLabel(/Waga/)).toHaveValue('86');
+  await expect(device.getByLabel('Aktywność')).toHaveValue('moderate');
+});
+
+test('the derivation matches the goals the calculator fills in', async ({ device }) => {
+  await openCalculator(device);
+  await device.getByLabel('Płeć').selectOption('male');
+  await device.getByLabel(/Wiek/).fill('40');
+  await device.getByLabel(/Wzrost/).fill('180');
+  await device.getByLabel(/Waga/).fill('80');
+  await device.getByLabel('Aktywność').selectOption('sedentary');
+
+  // BMR 1730, × 1.2 = 2076 kcal; the default 25/45/30 split of it.
+  await expect(derivation(device)).toContainText('1730');
+  await expect(derivation(device)).toContainText('1,200');
+  await expect(derivation(device)).toContainText('2076');
+
+  await device.getByRole('button', { name: 'Wypełnij pola' }).click();
+  await expect(kcalField(device)).toHaveValue('2076');
+  await expect(device.getByLabel(/Białko \(g\)/)).toHaveValue('130');
+  await expect(device.getByLabel(/Węglowodany \(g\)/)).toHaveValue('234');
+  await expect(device.getByLabel(/Tłuszcz \(g\)/)).toHaveValue('69');
+});
+
+test('a 40/30/30 split calculates, and 40/30/40 cannot be saved', async ({ device }) => {
+  await openCalculator(device);
+  await device.getByLabel(/Białko \(%\)/).fill('40');
+  await device.getByLabel(/Węglowodany \(%\)/).fill('30');
+  await device.getByLabel(/Tłuszcz \(%\)/).fill('30');
+  await device.getByRole('button', { name: 'Wypełnij pola' }).click();
+
+  // The default body — 30-year-old woman, 170 cm, 70 kg, light activity:
+  // BMR = 700 + 1062.5 − 150 − 161 = 1451.5, × 1.375 = 1996 kcal, split 40/30/30.
+  await expect(kcalField(device)).toHaveValue('1996');
+  await expect(device.getByLabel(/Białko \(g\)/)).toHaveValue('200');
+  await expect(device.getByLabel(/Węglowodany \(g\)/)).toHaveValue('150');
+  await expect(device.getByLabel(/Tłuszcz \(g\)/)).toHaveValue('67');
+
+  await device.getByLabel(/Tłuszcz \(%\)/).fill('40');
+  await expect(device.getByRole('button', { name: 'Wypełnij pola' })).toBeDisabled();
+  await expect(device.getByRole('button', { name: 'Zapisz cele' })).toBeDisabled();
+  await expect(device.getByText('zamiast 100%')).toBeVisible();
+});
+
+test('the split is remembered and still only filling the fields saves nothing', async ({
+  device
+}) => {
+  await openCalculator(device);
+  await device.getByLabel(/Białko \(%\)/).fill('40');
+  await device.getByLabel(/Węglowodany \(%\)/).fill('30');
+  await device.getByLabel(/Tłuszcz \(%\)/).fill('30');
+  await device.getByRole('button', { name: 'Wypełnij pola' }).click();
+
+  // „Wypełnij pola" writes nothing: after a reload the goals are the untouched defaults.
+  const filled = await kcalField(device).inputValue();
+  await device.reload();
+  expect(await kcalField(device).inputValue()).not.toBe(filled);
+
+  await openCalculator(device);
+  await device.getByLabel(/Białko \(%\)/).fill('40');
+  await device.getByLabel(/Węglowodany \(%\)/).fill('30');
+  await device.getByLabel(/Tłuszcz \(%\)/).fill('30');
+  await device.getByRole('button', { name: 'Zapisz cele' }).click();
+  await expect(device.getByText('Zapisano.', { exact: true })).toBeVisible();
+
+  await device.reload();
+  await openCalculator(device);
+  await expect(device.getByLabel(/Białko \(%\)/)).toHaveValue('40');
+  await expect(device.getByLabel(/Tłuszcz \(%\)/)).toHaveValue('30');
+});

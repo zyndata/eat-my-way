@@ -3,7 +3,7 @@
   import Screen from '../lib/components/Screen.svelte';
   import GoalsForm from '../lib/components/GoalsForm.svelte';
   import Spinner from '../lib/components/Spinner.svelte';
-  import type { Macros } from '../lib/types';
+  import type { BodyData, Macros } from '../lib/types';
   import { DEFAULT_GOALS } from '../lib/db';
   import { repository } from '../lib/repository';
   import { AI_STUDIO_KEY_URL, testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
@@ -123,8 +123,8 @@
     step = 'goals';
   }
 
-  async function saveGoals(next: Macros): Promise<void> {
-    await repository.setGoals(next);
+  async function saveGoals(next: Macros, body: BodyData): Promise<void> {
+    await repository.setGoals(next, body);
     void syncNow();
     step = 'done';
   }
@@ -312,7 +312,7 @@
         Możesz je wpisać teraz albo zostawić domyślne i zmienić kiedykolwiek w Ustawieniach.
       </p>
       <div class="pt-3">
-        <GoalsForm bind:goals onsave={(next) => void saveGoals(next)} />
+        <GoalsForm bind:goals onsave={(next, body) => void saveGoals(next, body)} />
       </div>
       <button type="button" class="{secondaryClass} mt-3" onclick={() => (step = 'done')}>
         Ustawię później

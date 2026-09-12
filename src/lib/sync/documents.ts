@@ -9,6 +9,7 @@ import type {
   Recipe,
   Tag
 } from '../types';
+import { readBodyData } from '../goals';
 
 /**
  * The `appDataFolder` file layout from PLAN.md, and the JSON that goes inside each file.
@@ -267,6 +268,12 @@ export function readProfileDocument(value: unknown, fallback: Profile): Profile 
     ...(() => {
       const plan = readMealPlan(doc.mealPlan) ?? fallback.mealPlan;
       return plan === undefined ? {} : { mealPlan: plan };
+    })(),
+    // Phase 19's body data, read for the same reason `mealPlan` is: this function enumerates
+    // the profile's fields, so a field nobody reads here is a field dropped on the next sync.
+    ...(() => {
+      const body = readBodyData(doc.body) ?? fallback.body;
+      return body === undefined ? {} : { body };
     })()
   };
 }

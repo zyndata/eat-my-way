@@ -1,10 +1,12 @@
 import type { MealAdjustment } from './adjustments';
 import type { MeasureName } from './text';
 import type { Department } from './departments';
+import type { BodyData } from './goals';
 
 export type { MealAdjustment };
 export type { MeasureName };
 export type { Department };
+export type { BodyData };
 
 /**
  * Data model. These are the *wire* shapes: exactly what PLAN.md specifies and exactly
@@ -256,4 +258,15 @@ export interface Profile {
    * template the first time the planner is opened (STATE.md decision 261).
    */
   mealPlan?: MealPlanTemplate;
+  /**
+   * What the goals calculator was last told: sex, age, height, weight, activity level and the
+   * macro split (Phase 19, decision 336). Optional for the same reason `mealPlan` is — no
+   * schema version, no migration, and an older build ignores the key instead of breaking on
+   * it — and absent for everyone who has never opened the calculator.
+   *
+   * It lives on the profile, not in device-local `meta`, so a second phone and a restored
+   * backup do not ask for it again. That means it travels to Drive and into the export file,
+   * which is why README.md and SECURITY.md name it.
+   */
+  body?: BodyData;
 }

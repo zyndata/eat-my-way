@@ -127,7 +127,10 @@ function isUntouchedProfile(profile: Profile): boolean {
   return (
     hashValue(profile.goals) === hashValue(DEFAULT_PROFILE.goals) &&
     profile.geminiModel === DEFAULT_PROFILE.geminiModel &&
-    profile.encryptVault === DEFAULT_PROFILE.encryptVault
+    profile.encryptVault === DEFAULT_PROFILE.encryptVault &&
+    // Body data is something the user typed, so a profile carrying it is not untouched
+    // (Phase 19).
+    profile.body === undefined
   );
 }
 
