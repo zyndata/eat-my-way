@@ -246,7 +246,7 @@
   <button
     type="button"
     class={primary
-      ? 'rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)'
+      ? 'emw-press emw-btn emw-btn-primary px-4'
       : 'rounded-lg border border-(--color-accent) px-3 py-1.5 text-sm font-medium text-(--color-accent)'}
     onclick={() => openPlanner('day')}
   >
@@ -257,7 +257,7 @@
        each other and neither reads as the first thing to press. -->
   <button
     type="button"
-    class="rounded-lg border border-(--color-accent) text-sm font-medium text-(--color-accent) {primary
+    class="emw-press emw-tint rounded-lg border border-(--color-accent) text-sm font-medium text-(--color-accent) {primary
       ? 'px-4 py-2'
       : 'px-3 py-1.5'}"
     onclick={() => openPlanner('week')}
@@ -271,7 +271,7 @@
     <h1 class="text-2xl font-semibold tracking-tight">Nie ma takiej daty</h1>
     <p class="pt-2 text-sm text-(--color-ink-muted)">
       „{date}” nie wygląda na dzień kalendarza.
-      <a class="font-medium text-(--color-accent) underline" href="#/">Wróć do dzisiaj</a>.
+      <a class="emw-press emw-btn-link font-medium" href="#/">Wróć do dzisiaj</a>.
     </p>
   </section>
 {:else}
@@ -282,7 +282,7 @@
   <div class="flex justify-center pt-2">
     <button
       type="button"
-      class="flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium text-(--color-ink-muted)"
+      class="emw-press emw-btn-chip px-3 py-1 text-xs font-medium text-(--color-ink-muted)"
       aria-expanded={monthShown}
       onclick={() => {
         monthAnchor = date;
@@ -333,7 +333,7 @@
 
       <details class="relative shrink-0" bind:this={dayMenu}>
         <summary
-          class="cursor-pointer list-none rounded-lg p-2 text-(--color-ink-muted) [&::-webkit-details-marker]:hidden"
+          class="cursor-pointer list-none emw-press emw-btn-icon text-(--color-ink-muted) [&::-webkit-details-marker]:hidden"
           aria-label="Menu dnia"
         >
           <NavIcon path={DOTS} class="size-5" />
@@ -346,7 +346,7 @@
                second copy in the menu is one more thing to read past (decision 299). -->
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm"
             onclick={() => {
               closeMenu();
               copyDayOpen = true;
@@ -356,7 +356,7 @@
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm"
             onclick={() => {
               closeMenu();
               copyFromOpen = true;
@@ -366,35 +366,35 @@
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm"
             onclick={() => openShopping('day')}
           >
             Lista zakupów — dzień
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm"
             onclick={() => openShopping('week')}
           >
             Lista zakupów — tydzień
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm"
             onclick={() => openMenuExport('day')}
           >
             Jadłospis — dzień
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm"
             onclick={() => openMenuExport('week')}
           >
             Jadłospis — tydzień
           </button>
           <button
             type="button"
-            class="block w-full rounded-lg px-3 py-2 text-left text-sm text-(--color-danger) disabled:opacity-40"
+            class="emw-press emw-row block w-full rounded-lg px-3 py-2 text-sm text-(--color-danger) disabled:opacity-40"
             disabled={day.meals.length === 0}
             onclick={() => {
               closeMenu();
@@ -450,7 +450,7 @@
 
   <button
     type="button"
-    class="fixed right-[max(1rem,var(--safe-right))] bottom-[calc(var(--nav-h)+1.1875rem)] z-20 flex items-center gap-1.5 rounded-full bg-(--color-accent) px-4 py-3 text-sm font-medium text-(--color-accent-ink) shadow-lg md:bottom-6"
+    class="emw-press emw-btn-primary emw-btn-chip fixed right-[max(1rem,var(--safe-right))] bottom-[calc(var(--nav-h)+1.1875rem)] z-20 px-4 py-3 text-sm font-medium shadow-lg md:bottom-6"
     onclick={() => (pickerOpen = true)}
   >
     <NavIcon path={PLUS} class="size-5" />
@@ -530,21 +530,21 @@
     <div class="flex flex-wrap justify-end gap-2 pt-4">
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         onclick={() => (conflictDates = [])}
       >
         Anuluj
       </button>
       <button
         type="button"
-        class="rounded-lg border border-(--color-danger-border) px-3 py-2 text-sm font-medium text-(--color-danger)"
+        class="emw-press emw-btn emw-btn-danger"
         onclick={() => void resolveConflict('replace')}
       >
         Zastąp
       </button>
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
+        class="emw-press emw-btn emw-btn-primary px-4"
         onclick={() => void resolveConflict('append')}
       >
         Dopisz

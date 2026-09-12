@@ -150,9 +150,8 @@
 
   const inputClass =
     'mt-1 w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)';
-  const buttonClass =
-    'rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50';
-  const secondaryClass = 'rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium';
+  const buttonClass = 'emw-press emw-btn emw-btn-primary disabled:opacity-50';
+  const secondaryClass = 'emw-press emw-btn emw-btn-secondary';
 
   const steps: { key: Step; label: string }[] = [
     { key: 'drive', label: 'Dysk' },
@@ -305,7 +304,7 @@
         Klucz jest potrzebny tylko do importu przepisów z internetu. Utworzysz go w Google AI
         Studio —
         <a
-          class="font-medium text-(--color-accent) underline"
+          class="emw-press emw-btn-link font-medium"
           href={AI_STUDIO_KEY_URL}
           target="_blank"
           rel="noopener noreferrer">aistudio.google.com/apikey</a>. Sprawdzimy go od razu i
@@ -368,7 +367,7 @@
   {#if step !== 'done'}
     <button
       type="button"
-      class="pt-3 text-sm text-(--color-accent) underline"
+      class="pt-3 emw-press emw-btn-link text-sm"
       disabled={leaving}
       onclick={() => void leave('/')}
     >

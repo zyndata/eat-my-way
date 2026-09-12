@@ -362,7 +362,7 @@
       <span class="text-xs text-(--color-ink-muted)">Pierwszy dzień</span>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
         aria-label="Zacznij dzień wcześniej"
         onclick={() => setStart(addDays(start, -1))}
       >
@@ -377,7 +377,7 @@
       />
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
         aria-label="Zacznij dzień później"
         onclick={() => setStart(addDays(start, 1))}
       >
@@ -414,7 +414,7 @@
           </span>
           <button
             type="button"
-            class="rounded-lg border px-2 py-1 font-medium {replace
+            class="emw-press emw-tint rounded-lg border px-2 py-1 font-medium {replace
               ? 'border-(--color-border)'
               : 'border-(--color-accent) text-(--color-accent)'}"
             onclick={() => setReplace(false)}
@@ -423,7 +423,7 @@
           </button>
           <button
             type="button"
-            class="rounded-lg border px-2 py-1 font-medium {replace
+            class="emw-press emw-tint rounded-lg border px-2 py-1 font-medium {replace
               ? 'border-(--color-accent) text-(--color-accent)'
               : 'border-(--color-border)'}"
             onclick={() => setReplace(true)}
@@ -530,9 +530,9 @@
                           {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
                             <button
                               type="button"
-                              class="px-2 py-1 text-xs tabular-nums {run.dates.length === length
-                                ? 'bg-(--color-accent) text-(--color-accent-ink)'
-                                : ''}"
+                              class="emw-press px-2 py-1 text-xs tabular-nums {run.dates.length === length
+                                ? 'emw-btn-primary'
+                                : 'emw-tint'}"
                               aria-label="Gotuj na {length} dni"
                               title="Gotuj na {length} dni"
                               aria-pressed={run.dates.length === length}
@@ -545,7 +545,7 @@
                       {/if}
                       <button
                         type="button"
-                        class="rounded-lg border border-(--color-border) p-1.5 {locks.includes(run.id)
+                        class="emw-press emw-btn-icon border border-(--color-border) {locks.includes(run.id)
                           ? 'text-(--color-accent)'
                           : 'text-(--color-ink-muted)'}"
                         aria-label="{locks.includes(run.id) ? 'Odblokuj' : 'Zablokuj'} {run.recipeName}"
@@ -559,7 +559,7 @@
                       </button>
                       <button
                         type="button"
-                        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+                        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
                         aria-label="Przelosuj {slotLabel(run.slotId)}"
                         title="Przelosuj tylko ten posiłek — reszta zostaje"
                         onclick={() => solve(run.id)}
@@ -606,7 +606,7 @@
     <div class="flex flex-wrap justify-end gap-2 pt-4">
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         disabled={proposal === null}
         onclick={() => solve()}
       >
@@ -614,7 +614,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-40"
+        class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-40"
         disabled={proposal === null || applying || picked.length === 0}
         onclick={() => void apply()}
       >

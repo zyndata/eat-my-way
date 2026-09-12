@@ -242,7 +242,7 @@
       />
       <button
         type="button"
-        class="inline-flex items-center gap-2 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium disabled:opacity-50"
+        class="inline-flex items-center gap-2 emw-press emw-btn emw-btn-secondary disabled:opacity-50"
         disabled={scanning}
         onclick={() => fileInput?.click()}
       >
@@ -421,7 +421,7 @@
         </label>
         <button
           type="button"
-          class="shrink-0 rounded-lg border border-(--color-border) px-3 py-2 text-sm text-(--color-ink-muted)"
+          class="shrink-0 emw-press emw-btn emw-btn-secondary font-normal text-(--color-ink-muted)"
           aria-label="Usuń miarę {measure.name}"
           onclick={() => removeMeasure(measure.id)}
         >
@@ -437,7 +437,7 @@
 
     <button
       type="button"
-      class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="mt-3 emw-press emw-btn emw-btn-secondary"
       onclick={addMeasure}
     >
       Dodaj miarę
@@ -447,7 +447,7 @@
   <div class="flex flex-wrap gap-2 pt-4">
     <button
       type="button"
-      class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+      class="emw-press emw-btn emw-btn-primary disabled:opacity-50"
       disabled={problem !== null}
       onclick={save}
     >
@@ -455,7 +455,7 @@
     </button>
     <button
       type="button"
-      class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="emw-press emw-btn emw-btn-secondary"
       onclick={oncancel}
     >
       Anuluj

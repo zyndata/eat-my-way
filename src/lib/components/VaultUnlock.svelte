@@ -71,7 +71,7 @@
       <p class="pt-2 text-sm text-(--color-danger)" role="alert">{vaultState.message}</p>
     {/if}
     {#if vaultState.failedAttempts >= ATTEMPTS_BEFORE_EXPLANATION}
-      <a class="mt-2 inline-block text-sm text-(--color-accent) underline" href="#/settings">
+      <a class="mt-2 inline-block emw-press emw-btn-link text-sm" href="#/settings">
         Załóż sejf od nowa w Ustawieniach
       </a>
     {/if}
@@ -79,14 +79,14 @@
     <div class="flex flex-wrap justify-end gap-2 pt-5">
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         onclick={dismiss}
       >
         Nie teraz
       </button>
       <button
         type="submit"
-        class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+        class="emw-press emw-btn emw-btn-primary disabled:opacity-50"
         disabled={vaultState.busy || password === ''}
       >
         {vaultState.busy ? 'Odszyfrowywanie…' : 'Odblokuj'}

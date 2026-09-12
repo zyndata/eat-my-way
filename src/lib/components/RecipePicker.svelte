@@ -160,9 +160,9 @@
         <li>
           <button
             type="button"
-            class="rounded-full border px-3 py-1 text-sm {on
-              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            class="emw-press emw-btn-chip border px-3 py-1 text-sm {on
+              ? 'emw-btn-primary border-(--color-accent)'
+              : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
             aria-pressed={on}
             onclick={() => toggle(tag.key)}
           >
@@ -182,7 +182,7 @@
   {:else if visible.length === 0 && filtering}
     <p class="pt-4 text-sm text-(--color-ink-muted)">
       Żaden przepis nie mieści się w {Math.round(budget.remaining)} kcal.
-      <button type="button" class="text-(--color-accent) underline" onclick={() => (budgetOnly = false)}>
+      <button type="button" class="emw-press emw-btn-link" onclick={() => (budgetOnly = false)}>
         Pokaż wszystkie
       </button>
     </p>
@@ -195,7 +195,7 @@
         <li>
           <button
             type="button"
-            class="block w-full rounded-xl border border-(--color-border) p-3 text-left"
+            class="emw-press emw-row block w-full rounded-xl border border-(--color-border) p-3"
             onclick={() => onpick(entry.recipe.id)}
           >
             <span class="flex items-baseline justify-between gap-3">
@@ -229,7 +229,7 @@
   {/if}
 
   <a
-    class="mt-4 block rounded-lg border border-(--color-border) px-3 py-2 text-center text-sm font-medium"
+    class="emw-press emw-btn-secondary mt-4 block px-3 py-2 text-center text-sm font-medium"
     href="#/recipes/new/edit"
   >
     Nowy przepis

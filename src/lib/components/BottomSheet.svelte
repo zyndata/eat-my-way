@@ -47,7 +47,7 @@
       <h2 id="bottom-sheet-title" class="text-base font-semibold">{title}</h2>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-1.5 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary py-1.5"
         onclick={onclose}
       >
         Zamknij

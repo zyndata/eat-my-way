@@ -158,7 +158,7 @@
 {#snippet card(entry: RecipeListEntry)}
   {@const portion = macros.get(entry.recipe.id)}
   <li class="rounded-xl border border-(--color-border) bg-(--color-surface-raised)">
-    <a class="block p-3" href="#/recipes/{entry.recipe.id}/edit">
+    <a class="emw-press emw-row block rounded-xl p-3" href="#/recipes/{entry.recipe.id}/edit">
       <span class="flex items-baseline justify-between gap-3">
         <span class="min-w-0 truncate font-medium">{entry.recipe.name}</span>
         {#if portion}
@@ -198,7 +198,7 @@
     <div class="flex justify-end border-t border-(--color-border) px-3 py-1.5">
       <button
         type="button"
-        class="text-xs font-medium text-(--color-accent) disabled:opacity-50"
+        class="emw-press emw-btn-link text-xs font-medium no-underline disabled:opacity-50"
         disabled={duplicating !== null}
         onclick={() => void duplicate(entry.recipe.id)}
       >
@@ -220,7 +220,7 @@
       />
     </label>
     <a
-      class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+      class="emw-press emw-btn emw-btn-primary"
       href="#/recipes/new/edit"
     >
       Nowy przepis
@@ -242,9 +242,9 @@
     </label>
     <button
       type="button"
-      class="rounded-full border px-3 py-1 text-sm {grouped
-        ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-        : 'border-(--color-border) text-(--color-ink-muted)'}"
+      class="emw-press emw-btn-chip border px-3 py-1 text-sm {grouped
+        ? 'emw-btn-primary border-(--color-accent)'
+        : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
       aria-pressed={grouped}
       onclick={() => void toggleGrouped()}
     >
@@ -264,9 +264,9 @@
         <li>
           <button
             type="button"
-            class="rounded-full border px-3 py-1 text-sm {on
-              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            class="emw-press emw-btn-chip border px-3 py-1 text-sm {on
+              ? 'emw-btn-primary border-(--color-accent)'
+              : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
             aria-pressed={on}
             onclick={() => chooseMaxPrep(limit)}
           >
@@ -294,9 +294,9 @@
         <li>
           <button
             type="button"
-            class="rounded-full border px-3 py-1 text-sm {on
-              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            class="emw-press emw-btn-chip border px-3 py-1 text-sm {on
+              ? 'emw-btn-primary border-(--color-accent)'
+              : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
             aria-pressed={on}
             onclick={() => toggle(tag.key)}
           >
@@ -306,7 +306,7 @@
       {/each}
     </ul>
     {#if selected.length > 0}
-      <button type="button" class="pt-2 text-sm text-(--color-accent) underline" onclick={() => (selected = [])}>
+      <button type="button" class="pt-2 emw-press emw-btn-link text-sm" onclick={() => (selected = [])}>
         Wyczyść filtry
       </button>
     {/if}
@@ -323,13 +323,13 @@
       <p class="text-sm">Biblioteka jest pusta. To Twoje przepisy — zbierasz je sam.</p>
       <div class="flex flex-wrap justify-center gap-2 pt-4">
         <a
-          class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
+          class="emw-press emw-btn emw-btn-primary px-4"
           href="#/recipes/new/edit"
         >
           Nowy przepis
         </a>
         <a
-          class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
+          class="emw-press emw-btn emw-btn-secondary px-4"
           href="#/recipes/new/edit?import"
         >
           Wklej przepis z internetu

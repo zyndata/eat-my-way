@@ -67,16 +67,14 @@
   <div class="flex flex-wrap justify-end gap-2 pt-5">
     <button
       type="button"
-      class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="emw-press emw-btn emw-btn-secondary"
       onclick={oncancel}
     >
       {cancelLabel}
     </button>
     <button
       type="button"
-      class="rounded-lg px-3 py-2 text-sm font-medium {danger
-        ? 'bg-(--color-danger-solid) text-(--color-danger-solid-ink)'
-        : 'bg-(--color-accent) text-(--color-accent-ink)'}"
+      class="emw-press emw-btn {danger ? 'emw-btn-danger-solid' : 'emw-btn-primary'}"
       onclick={onconfirm}
     >
       {confirmLabel}

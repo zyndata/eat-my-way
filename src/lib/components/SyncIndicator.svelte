@@ -35,12 +35,12 @@
         Połączone inne konto Google{syncState.foreignAccount.account.label
           ? ` (${syncState.foreignAccount.account.label})`
           : ''}.
-        <a class="underline" href="#/settings">Rozstrzygnij w Ustawieniach</a>
+        <a class="emw-press emw-btn-link-muted" href="#/settings">Rozstrzygnij w Ustawieniach</a>
       </p>
     {:else}
       <p class="text-xs text-(--color-warn)">
         {syncState.message}
-        <button type="button" class="underline" onclick={() => void syncNow({ interactive: true })}>
+        <button type="button" class="emw-press emw-btn-link-muted" onclick={() => void syncNow({ interactive: true })}>
           Spróbuj ponownie
         </button>
       </p>

@@ -283,7 +283,7 @@
     </label>
     <button
       type="button"
-      class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+      class="emw-press emw-btn emw-btn-primary"
       onclick={openNew}
     >
       Nowy składnik
@@ -323,7 +323,7 @@
               <div class="flex flex-wrap justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  class="text-xs font-medium text-(--color-accent) disabled:opacity-50"
+                  class="emw-press emw-btn-link text-xs font-medium no-underline disabled:opacity-50"
                   disabled={busy}
                   onclick={() => openEdit(ingredient)}
                 >
@@ -331,7 +331,7 @@
                 </button>
                 <button
                   type="button"
-                  class="text-xs font-medium text-(--color-danger) disabled:opacity-50"
+                  class="emw-press emw-btn-link-danger text-xs font-medium no-underline disabled:opacity-50"
                   disabled={busy}
                   onclick={() => void startRemove(ingredient)}
                 >
@@ -347,9 +347,9 @@
     <section class="pt-6">
       <button
         type="button"
-        class="rounded-full border px-3 py-1 text-sm {showBundled
-          ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-          : 'border-(--color-border) text-(--color-ink-muted)'}"
+        class="emw-press emw-btn-chip border px-3 py-1 text-sm {showBundled
+          ? 'emw-btn-primary border-(--color-accent)'
+          : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
         aria-pressed={showBundled}
         onclick={() => (showBundled = !showBundled)}
       >
@@ -375,7 +375,7 @@
                 <div class="flex justify-end pt-2">
                   <button
                     type="button"
-                    class="text-xs font-medium text-(--color-accent) disabled:opacity-50"
+                    class="emw-press emw-btn-link text-xs font-medium no-underline disabled:opacity-50"
                     disabled={busy}
                     onclick={() => openCopy(ingredient)}
                   >
@@ -450,7 +450,7 @@
     <ul class="flex flex-col gap-1 pt-3">
       {#each references.recipes as recipe (recipe.id)}
         <li>
-          <a class="text-sm font-medium text-(--color-accent) underline" href="#/recipes/{recipe.id}/edit">
+          <a class="emw-press emw-btn-link text-sm font-medium" href="#/recipes/{recipe.id}/edit">
             {recipe.name}
           </a>
         </li>
@@ -481,7 +481,7 @@
     <div class="flex flex-wrap gap-2 pt-4">
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+        class="emw-press emw-btn emw-btn-primary disabled:opacity-50"
         disabled={replacement === null || busy}
         onclick={() => void confirmReplace()}
       >
@@ -489,7 +489,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         onclick={() => (removing = null)}
       >
         Anuluj

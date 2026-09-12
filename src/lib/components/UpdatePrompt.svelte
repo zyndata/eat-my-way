@@ -19,14 +19,14 @@
     <div class="flex gap-2">
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         onclick={() => (pwaState.updateReady = false)}
       >
         Później
       </button>
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+        class="emw-press emw-btn emw-btn-primary"
         onclick={applyUpdate}
       >
         Odśwież

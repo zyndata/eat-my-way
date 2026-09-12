@@ -73,9 +73,9 @@
         <div class="flex flex-col gap-2 pt-2 sm:flex-row">
           <button
             type="button"
-            class="flex-1 rounded-lg border p-3 text-left text-sm {picked === 'local'
+            class="emw-press emw-row flex-1 rounded-lg border p-3 text-sm {picked === 'local'
               ? 'border-(--color-accent) bg-(--color-accent)/10'
-              : 'border-(--color-border)'}"
+              : 'emw-tint border-(--color-border)'}"
             aria-pressed={picked === 'local'}
             onclick={() => choose(conflict.date, 'local')}
           >
@@ -89,9 +89,9 @@
           </button>
           <button
             type="button"
-            class="flex-1 rounded-lg border p-3 text-left text-sm {picked === 'remote'
+            class="emw-press emw-row flex-1 rounded-lg border p-3 text-sm {picked === 'remote'
               ? 'border-(--color-accent) bg-(--color-accent)/10'
-              : 'border-(--color-border)'}"
+              : 'emw-tint border-(--color-border)'}"
             aria-pressed={picked === 'remote'}
             onclick={() => choose(conflict.date, 'remote')}
           >
@@ -111,14 +111,14 @@
   <div class="flex flex-wrap justify-end gap-2 pt-5">
     <button
       type="button"
-      class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="emw-press emw-btn emw-btn-secondary"
       onclick={oncancel}
     >
       Anuluj synchronizację
     </button>
     <button
       type="button"
-      class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+      class="emw-press emw-btn emw-btn-primary disabled:opacity-50"
       disabled={!answered}
       onclick={() => onresolve(new Map(choices))}
     >

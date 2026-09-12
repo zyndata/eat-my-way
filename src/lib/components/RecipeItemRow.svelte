@@ -118,11 +118,11 @@
     />
     <div class="flex flex-wrap items-center gap-4 pt-2">
       {#if canRestore}
-        <button type="button" class="text-sm text-(--color-accent) underline" onclick={onrestore}>
+        <button type="button" class="emw-press emw-btn-link text-sm" onclick={onrestore}>
           Anuluj zmianę
         </button>
       {/if}
-      <button type="button" class="text-sm text-(--color-ink-muted) underline" onclick={onremove}>
+      <button type="button" class="emw-press emw-btn-link-muted text-sm" onclick={onremove}>
         Usuń wiersz
       </button>
     </div>
@@ -145,7 +145,9 @@
       <div class="flex shrink-0 items-center gap-1">
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2 {overridden ? 'text-(--color-accent)' : 'text-(--color-ink-muted)'}"
+          class="emw-press emw-btn-icon border border-(--color-border) {overridden
+      ? 'text-(--color-accent)'
+      : 'text-(--color-ink-muted)'}"
           aria-label="Nadpisz makroskładniki na 100 g"
           aria-pressed={overrideOpen}
           onclick={toggleOverride}
@@ -154,14 +156,14 @@
         </button>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-2 py-2 text-sm text-(--color-ink-muted)"
+          class="emw-press emw-btn emw-btn-secondary px-2 font-normal text-(--color-ink-muted)"
           onclick={onclear}
         >
           Zmień
         </button>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-2 py-2 text-sm text-(--color-ink-muted)"
+          class="emw-press emw-btn emw-btn-secondary px-2 font-normal text-(--color-ink-muted)"
           aria-label="Usuń składnik {ingredient?.name ?? ''}"
           onclick={onremove}
         >
@@ -223,9 +225,9 @@
           {@const on = item.measureName === measure.name}
           <button
             type="button"
-            class="rounded-full border px-2.5 py-1 text-xs {on
-              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            class="emw-press emw-btn-chip border px-2.5 py-1 text-xs {on
+              ? 'emw-btn-primary border-(--color-accent)'
+              : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
             aria-pressed={on}
             onclick={() => pickMeasure(measure)}
           >
@@ -292,7 +294,7 @@
             />
           </label>
         </div>
-        <button type="button" class="pt-3 text-sm text-(--color-accent) underline" onclick={clearOverride}>
+        <button type="button" class="pt-3 emw-press emw-btn-link text-sm" onclick={clearOverride}>
           Przywróć wartości z bazy
         </button>
       </fieldset>

@@ -254,9 +254,9 @@
                       {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
                         <button
                           type="button"
-                          class="px-3 py-2 text-sm tabular-nums {row.batchDays === length
-                            ? 'bg-(--color-accent) text-(--color-accent-ink)'
-                            : ''}"
+                          class="emw-press px-3 py-2 text-sm tabular-nums {row.batchDays === length
+                            ? 'emw-btn-primary'
+                            : 'emw-tint'}"
                           aria-pressed={row.batchDays === length}
                           aria-label="{row.label}: gotuję na {length} {length === 1 ? 'dzień' : 'dni'}"
                           onclick={() => setBatchDays(row.id, length)}
@@ -269,7 +269,7 @@
 
                   <button
                     type="button"
-                    class="rounded-lg border border-(--color-danger-border) px-3 py-2 text-sm font-medium text-(--color-danger)"
+                    class="emw-press emw-btn emw-btn-danger"
                     onclick={() => removeRow(row.id)}
                   >
                     Usuń
@@ -292,7 +292,7 @@
 
     <button
       type="button"
-      class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="mt-3 emw-press emw-btn emw-btn-secondary"
       onclick={addRow}
     >
       Dodaj posiłek
@@ -311,9 +311,9 @@
           <div class="flex overflow-hidden rounded-lg border border-(--color-border)" role="group" aria-label="{name}: długość gotowania">
             <button
               type="button"
-              class="px-3 py-1.5 text-xs {cookDays[weekday] === undefined
-                ? 'bg-(--color-accent) text-(--color-accent-ink)'
-                : ''}"
+              class="emw-press px-3 py-1.5 text-xs {cookDays[weekday] === undefined
+                ? 'emw-btn-primary'
+                : 'emw-tint'}"
               aria-pressed={cookDays[weekday] === undefined}
               onclick={() => setCookDay(weekday, null)}
             >
@@ -322,9 +322,9 @@
             {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
               <button
                 type="button"
-                class="px-3 py-1.5 text-xs tabular-nums {cookDays[weekday] === length
-                  ? 'bg-(--color-accent) text-(--color-accent-ink)'
-                  : ''}"
+                class="emw-press px-3 py-1.5 text-xs tabular-nums {cookDays[weekday] === length
+                  ? 'emw-btn-primary'
+                  : 'emw-tint'}"
                 aria-pressed={cookDays[weekday] === length}
                 aria-label="{name}: gotuję na {length} {length === 1 ? 'dzień' : 'dni'}"
                 onclick={() => setCookDay(weekday, length)}
@@ -340,7 +340,7 @@
     <div class="flex flex-wrap items-center gap-2 pt-4">
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-40"
+        class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-40"
         disabled={saving || rows.length === 0}
         onclick={() => void save()}
       >
@@ -348,7 +348,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         onclick={() => (resetOpen = true)}
       >
         Przywróć domyślny

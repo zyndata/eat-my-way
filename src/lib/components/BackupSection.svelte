@@ -128,9 +128,8 @@
     return 'Uwaga: sejf na tym urządzeniu nie jest zaszyfrowany, więc klucz API Gemini znajdzie się w pliku otwartym tekstem. Traktuj taki plik jak hasło — nie wysyłaj go mailem i nie zostawiaj w chmurze. Szyfrowanie sejfu włączysz wyżej, w sekcji „Sejf".';
   });
 
-  const buttonClass =
-    'rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50';
-  const secondaryClass = 'rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium';
+  const buttonClass = 'emw-press emw-btn emw-btn-primary disabled:opacity-50';
+  const secondaryClass = 'emw-press emw-btn emw-btn-secondary';
 </script>
 
 <section class="mt-4 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-4">

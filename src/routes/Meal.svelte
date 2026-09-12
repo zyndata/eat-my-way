@@ -275,12 +275,12 @@
   <section>
     <h1 class="text-2xl font-semibold tracking-tight">Nie ma takiej daty</h1>
     <p class="pt-2 text-sm text-(--color-ink-muted)">
-      <a class="font-medium text-(--color-accent) underline" href="#/">Wróć do dzisiaj</a>.
+      <a class="emw-press emw-btn-link font-medium" href="#/">Wróć do dzisiaj</a>.
     </p>
   </section>
 {:else}
   <a
-    class="inline-flex items-center gap-1 text-sm font-medium text-(--color-accent)"
+    class="emw-press emw-btn-link inline-flex items-center gap-1 text-sm font-medium no-underline"
     href="#/day/{date}"
   >
     <NavIcon path={CHEVRON_LEFT} class="size-4" />
@@ -387,7 +387,7 @@
                   {#if skipped}
                     <button
                       type="button"
-                      class="font-medium text-(--color-accent) underline"
+                      class="emw-press emw-btn-link font-medium"
                       onclick={() => void writeLayer(restoreRow(layer, row.key))}
                     >
                       Przywróć
@@ -395,21 +395,21 @@
                   {:else}
                     <button
                       type="button"
-                      class="text-(--color-ink-muted) underline"
+                      class="emw-press emw-btn-link-muted"
                       onclick={() => void writeLayer(skipRow(layer, row.key))}
                     >
                       Pomiń
                     </button>
                     <button
                       type="button"
-                      class="text-(--color-ink-muted) underline"
+                      class="emw-press emw-btn-link-muted"
                       onclick={() => (pickerFor = row.key)}
                     >
                       Zmień
                     </button>
                     <button
                       type="button"
-                      class="text-(--color-ink-muted) underline"
+                      class="emw-press emw-btn-link-muted"
                       onclick={() => void keepOnly(row)}
                     >
                       Zostaw tylko ten składnik
@@ -429,7 +429,7 @@
         <div class="flex flex-wrap items-center gap-4 pt-3">
           <button
             type="button"
-            class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+            class="emw-press emw-btn emw-btn-secondary"
             onclick={() => (pickerFor = 'add')}
           >
             Dodaj składnik
@@ -437,7 +437,7 @@
           {#if changed}
             <button
               type="button"
-              class="text-sm font-medium text-(--color-accent) underline"
+              class="emw-press emw-btn-link text-sm font-medium"
               onclick={() => (restoreOpen = true)}
             >
               Przywróć oryginał
@@ -461,7 +461,7 @@
             <h3 class="text-sm font-semibold">Źródło</h3>
             <p class="pt-1 text-sm">
               <a
-                class="font-medium text-(--color-accent) underline"
+                class="emw-press emw-btn-link font-medium"
                 href={recipe.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer">{sourceHost(recipe.sourceUrl)}</a>
@@ -480,7 +480,7 @@
       <div class="flex items-center gap-2 pt-3">
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Mniej porcji do ugotowania"
           onclick={() => void setScale(Math.max(1, scale - 1))}
         >
@@ -500,7 +500,7 @@
         </label>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Więcej porcji do ugotowania"
           onclick={() => void setScale(scale + 1)}
         >
@@ -516,7 +516,7 @@
              (PLAN.md Phase 9 task 7). A day's or a week's list lives on the day screen. -->
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="emw-press emw-btn emw-btn-secondary"
           onclick={() => (shoppingOpen = true)}
         >
           Lista zakupów
@@ -542,7 +542,7 @@
         <p class="pt-1 pl-6 text-xs text-(--color-ink-muted)">
           {#if alreadyTomorrow}
             Ten przepis jest zaplanowany na
-            <a class="text-(--color-accent) underline" href="#/day/{tomorrow}">jutro</a>. Odznacz,
+            <a class="emw-press emw-btn-link" href="#/day/{tomorrow}">jutro</a>. Odznacz,
             żeby usunąć tamten posiłek.
           {:else}
             Ugotuje się na dwa dni: ustawimy 2 porcje i dopiszemy jeden posiłek do jutra.
@@ -560,7 +560,7 @@
       <div class="flex items-center gap-2 pt-3">
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Mniej zjedzonych porcji"
           onclick={() => void setPortions(Math.max(0, portions - 0.5))}
         >
@@ -580,7 +580,7 @@
         </label>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Więcej zjedzonych porcji"
           onclick={() => void setPortions(portions + 0.5)}
         >

@@ -114,7 +114,7 @@
     <div class="flex flex-wrap items-center gap-2 pt-4">
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
+        class="emw-press emw-btn emw-btn-primary px-4"
         onclick={() => void share()}
       >
         Udostępnij jadłospis

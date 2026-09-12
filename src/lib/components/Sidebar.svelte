@@ -10,7 +10,9 @@
   class="fixed inset-y-0 left-0 z-20 hidden w-56 shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface-raised) py-4 pr-3 pl-[max(0.75rem,var(--safe-left))] md:flex"
   aria-label="Nawigacja główna"
 >
-  <a href="#/" class="px-2 text-lg font-semibold tracking-tight">Eat My Way</a>
+  <a href="#/" class="emw-press emw-btn-link px-2 text-lg font-semibold tracking-tight no-underline">
+    Eat My Way
+  </a>
   <p class="px-2 pt-0.5 pb-3 text-xs text-(--color-ink-muted)">Plan posiłków</p>
 
   <Separator.Root class="mb-3 h-px bg-(--color-border)" />
@@ -21,9 +23,9 @@
       <li>
         <a
           href={item.href}
-          class="flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors {active
-            ? 'bg-(--color-accent) text-(--color-accent-ink)'
-            : 'text-(--color-ink-muted) hover:bg-(--color-surface)'}"
+          class="emw-press flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium {active
+            ? 'emw-btn-primary'
+            : 'emw-row text-(--color-ink-muted)'}"
           aria-current={active ? 'page' : undefined}
         >
           <NavIcon path={item.icon} class="size-5" />

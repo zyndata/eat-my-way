@@ -65,10 +65,33 @@
   /** What travels with the save press. The split rides along; see `BodyData`. */
   const currentBody = $derived<BodyData>({ ...input, split: { ...split } });
 
+  /**
+   * What the last press filled in, for the confirmation under the button — `null` once it has
+   * timed out.
+   *
+   * This exists because the press was reported as a broken button (Phase 20 UI audit), and it
+   * was not: it filled the four fields at the top of the section, which by then had scrolled
+   * out of sight behind the calculator panel. Nothing moved anywhere the eye was looking.
+   *
+   * Naming the four numbers here rather than scrolling the page back up is the deliberate
+   * choice — a calculator that yanks the viewport away from the fields being tuned is worse
+   * than one that is quiet. It also answers the question the panel's own preamble only hints
+   * at, and which „Wypełnij pola" invites: no, this has not saved anything yet.
+   */
+  let filled = $state<Macros | null>(null);
+  let filledTimer: ReturnType<typeof setTimeout> | undefined;
+
   function fillFromCalculator(): void {
     if (derivation === null) return;
     goals = derivation.goals;
+
+    // Re-armed on every press, so pressing twice re-announces rather than going silent.
+    filled = derivation.goals;
+    clearTimeout(filledTimer);
+    filledTimer = setTimeout(() => (filled = null), 8000);
   }
+
+  $effect(() => () => clearTimeout(filledTimer));
 
   /** „1 234" and „1,375" — the Polish separators the rest of the app uses. */
   function number(value: number, decimals = 0): string {
@@ -117,7 +140,7 @@
 
 <button
   type="button"
-  class="pt-3 text-sm text-(--color-accent) underline"
+  class="emw-press emw-btn-link pt-3 text-sm"
   aria-expanded={calculatorOpen}
   onclick={() => (calculatorOpen = !calculatorOpen)}
 >
@@ -215,19 +238,27 @@
 
     <button
       type="button"
-      class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium disabled:opacity-50"
+      class="mt-3 emw-press emw-btn emw-btn-secondary disabled:opacity-50"
       disabled={derivation === null}
       onclick={fillFromCalculator}
     >
       Wypełnij pola
     </button>
+
+    {#if filled !== null}
+      <p class="pt-2 text-sm text-(--color-accent)" role="status" data-testid="fill-confirmation">
+        Wypełniono pola powyżej: {number(filled.kcal)} kcal, {number(filled.protein)} g białka,
+        {number(filled.carbs)} g węglowodanów, {number(filled.fat)} g tłuszczu. Nic jeszcze nie
+        zostało zapisane — zrobi to przycisk „Zapisz cele".
+      </p>
+    {/if}
   </div>
 {/if}
 
 {#if onsave}
   <button
     type="button"
-    class="mt-4 rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+    class="mt-4 emw-press emw-btn emw-btn-primary disabled:opacity-50"
     disabled={!valid || saving}
     onclick={() => onsave?.(goals, currentBody)}
   >

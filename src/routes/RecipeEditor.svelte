@@ -306,7 +306,7 @@
   {:else if notFound}
     <p class="text-sm text-(--color-ink-muted)">
       Nie znaleziono takiego przepisu.
-      <a class="font-medium text-(--color-accent) underline" href="#/recipes">Wróć do biblioteki</a>.
+      <a class="emw-press emw-btn-link font-medium" href="#/recipes">Wróć do biblioteki</a>.
     </p>
   {:else}
     <div class="flex flex-col gap-5">
@@ -351,7 +351,7 @@
       <div>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="emw-press emw-btn emw-btn-secondary"
           onclick={() => (importOpen = true)}
         >
           Wklej przepis z internetu
@@ -412,7 +412,7 @@
 
         <button
           type="button"
-          class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="mt-3 emw-press emw-btn emw-btn-secondary"
           onclick={addRow}
         >
           Dodaj składnik
@@ -456,13 +456,13 @@
           <h2 class="text-sm font-semibold">Źródło</h2>
           <p class="flex flex-wrap items-baseline gap-2 pt-1 text-sm">
             <a
-              class="font-medium text-(--color-accent) underline"
+              class="emw-press emw-btn-link font-medium"
               href={draft.sourceUrl}
               target="_blank"
               rel="noopener noreferrer">{sourceHost(draft.sourceUrl)}</a>
             <button
               type="button"
-              class="text-xs text-(--color-ink-muted) underline"
+              class="emw-press emw-btn-link-muted text-xs"
               onclick={() => (draft.sourceUrl = '')}
             >
               Usuń źródło
@@ -493,7 +493,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+          class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-50"
           disabled={!canSave}
           onclick={() => void save()}
         >
@@ -502,20 +502,20 @@
         {#if existing !== undefined}
           <button
             type="button"
-            class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium disabled:opacity-50"
+            class="emw-press emw-btn emw-btn-secondary px-4 disabled:opacity-50"
             disabled={!canSave}
             onclick={() => void saveAsCopy()}
           >
             Zapisz jako kopię
           </button>
         {/if}
-        <a class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium" href="#/recipes">
+        <a class="emw-press emw-btn emw-btn-secondary px-4" href="#/recipes">
           Anuluj
         </a>
         {#if existing !== undefined}
           <button
             type="button"
-            class="ml-auto rounded-lg border border-(--color-danger-border) px-3 py-2 text-sm font-medium text-(--color-danger)"
+            class="ml-auto emw-press emw-btn emw-btn-danger"
             onclick={() => (deleteOpen = true)}
           >
             Usuń przepis

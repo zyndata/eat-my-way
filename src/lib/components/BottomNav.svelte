@@ -22,7 +22,7 @@
       <li class="flex-1">
         <a
           href={item.href}
-          class="flex flex-col items-center gap-1 py-2 text-xs font-medium transition-colors {active
+          class="emw-press flex flex-col items-center gap-1 py-2 text-xs font-medium {active
             ? 'text-(--color-accent)'
             : 'text-(--color-ink-muted)'}"
           aria-current={active ? 'page' : undefined}
