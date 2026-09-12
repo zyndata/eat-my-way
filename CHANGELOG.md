@@ -21,9 +21,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 18 — trzy drobiazgi
 - Phase 19 — cel dopowiedziany do końca
 - Phase 20 — metryczka przepisu
+- Phase 21 — pierwsze dwadzieścia cztery sekundy
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
