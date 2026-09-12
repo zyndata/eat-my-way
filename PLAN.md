@@ -1195,7 +1195,7 @@ Gemini section is amended to say so, rather than left to contradict this phase.
 > **This section is history.** Stage B was measured on fourteen packages and declined: Open Food
 > Facts covers this household (13 of 14) but agrees with the print on only 9 of 13, because a
 > barcode does not identify the national or store variant the user is holding — while the label
-> scan read 56 values out of 56. See STATE.md decisions 291–293 and open question 30. **Do not
+> scan read 56 values out of 56. See STATE.md decisions 291–293 and open question 32. **Do not
 > build what the rest of this section describes without reopening that decision first.**
 
 Not built in this phase. It is written down here so that the decision to build it is a decision

@@ -3687,7 +3687,7 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      rule working, as in decision 254, rather than a failure.
 
 292. **Open Food Facts covers this household — 13 of 14, all four fields present — and that
-     turned out not to be the number that decides anything.** Coverage cleared open question 30's
+     turned out not to be the number that decides anything.** Coverage cleared open question 32's
      „eight in ten" bar with room to spare (93%), and the one miss was a small-producer pasta
      (Pol-Mak). But only **9 of the 13 hits agreed with the package in hand on all four values**
      — 42 of 52 numbers, 81%. The four disagreements are not database sloppiness, and three
@@ -5407,33 +5407,6 @@ its own.
     still works — it retries once without them — so what the visit measures is speed, not
     whether the feature runs. Worth timing the same package before and after.
 
-30. **Does Open Food Facts cover what this household actually buys? Answered 2026-09-06 on
-    fourteen packages — and the question turned out to be the wrong one. Closed.**
-
-    Coverage is **13 of 14** (93%), every hit carrying all four `*_100g` fields, so the „eight
-    in ten" bar this question set is cleared. But agreement with the print is **9 of 13**, and the
-    gap decision 271 suspected is structural rather than incidental: a barcode is shared across
-    national variants that declare different values, and four of these fourteen codes are EAN-8
-    restricted-circulation numbers that Lidl reuses. The measurement, the four disagreements and
-    the verdict are decisions 291–293. **Stage B is declined**, deliberately against PLAN.md's
-    coverage criterion, and the label scan — 56 values out of 56 — stays the only path.
-
-    The original text of this question follows.
-
-    **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
-    fired (decision 270), but the number that decides whether a WebAssembly decoder earns its
-    place is coverage — on *these* shopping habits, not on the ~37 200 products tagged
-    `countries_tags=poland` in the abstract. A shortcut that works on eight products in ten is
-    worth a dependency; one that works on three is not.
-
-    **The method, so it is not re-invented:** collect 5–10 EANs from products actually added to
-    the library — typed off the barcode or photographed — and query
-    `https://world.openfoodfacts.org/api/v2/product/<ean>.json` for each, counting how many are
-    found *and* carry all four `*_100g` fields. Note also how far each one's values sit from
-    what is printed on the package, because decision 271 showed that gap is not always zero.
-
-    Waiting on the user, who will open a fresh conversation with the codes and label
-    photographs. Until then stage B stays unbuilt and PLAN.md's description of it stands.
 30. **The iPhone has never been verified, and the README implies it has.** Open question 26
     closed the install path on **Android** (decisions 219 and 220) and nothing has ever claimed
     the same for iOS — yet the README lists iPhone beside Android as a way to install the app,
@@ -5586,3 +5559,35 @@ its own.
     here: whether Safari on iOS behaves like Playwright's WebKit at all, and how long the import
     takes on a phone rather than a desktop.
 
+32. **Does Open Food Facts cover what this household actually buys? Answered 2026-09-06 on
+    fourteen packages — and the question turned out to be the wrong one. Closed.**
+
+    Coverage is **13 of 14** (93%), every hit carrying all four `*_100g` fields, so the „eight
+    in ten" bar this question set is cleared. But agreement with the print is **9 of 13**, and the
+    gap decision 271 suspected is structural rather than incidental: a barcode is shared across
+    national variants that declare different values, and four of these fourteen codes are EAN-8
+    restricted-circulation numbers that Lidl reuses. The measurement, the four disagreements and
+    the verdict are decisions 291–293. **Stage B is declined**, deliberately against PLAN.md's
+    coverage criterion, and the label scan — 56 values out of 56 — stays the only path.
+
+    The original text of this question follows.
+
+    **Does Open Food Facts cover what this household actually buys?** Stage B's trigger has
+    fired (decision 270), but the number that decides whether a WebAssembly decoder earns its
+    place is coverage — on *these* shopping habits, not on the ~37 200 products tagged
+    `countries_tags=poland` in the abstract. A shortcut that works on eight products in ten is
+    worth a dependency; one that works on three is not.
+
+    **The method, so it is not re-invented:** collect 5–10 EANs from products actually added to
+    the library — typed off the barcode or photographed — and query
+    `https://world.openfoodfacts.org/api/v2/product/<ean>.json` for each, counting how many are
+    found *and* carry all four `*_100g` fields. Note also how far each one's values sit from
+    what is printed on the package, because decision 271 showed that gap is not always zero.
+
+    Waiting on the user, who will open a fresh conversation with the codes and label
+    photographs. Until then stage B stays unbuilt and PLAN.md's description of it stands.
+
+    **Renumbered 2026-09-12: this was a second „30".** Two different questions carried that
+    number — this one and the iPhone verification, which keeps 30 because seven places cite it
+    against this one's two (PLAN.md's scan section and decision 292). Nothing about either
+    question changed; only this number and the two references to it.
