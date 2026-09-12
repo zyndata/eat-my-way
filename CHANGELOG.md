@@ -8,12 +8,17 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### CI/CD
+
+- Run the WebKit project on every push
+
 ### Documentation
 
 - Plan phases 15-20 — the iPhone defect first, then six ideas
 - Plan phase 21 — the first twenty-four seconds
 - The WebKit slowness is Windows, not Safari
 - The WebKit slowness is confirmed as Windows-only, measured on Linux
+- Give the duplicated open question 30 its own number
 
 ### Features
 
@@ -36,6 +41,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
+- Regenerate the changelog
 
 ## [1.11.0] - 2026-09-08
 
