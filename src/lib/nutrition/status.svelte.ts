@@ -22,8 +22,8 @@ export const nutritionStatus = $state<{
  *
  * Rendered nowhere and read by nobody in the app — it exists so that something outside it can
  * tell whether the first-run import is still running. `e2e/fixtures.ts` waits on it before a
- * test acts, which is what stops the whole suite from racing a twenty-four-second import on
- * WebKit (STATE.md decision 390). A one-attribute signal is cheaper and far steadier than a
+ * test acts, which is what stops the whole suite from racing an import that takes twenty
+ * seconds under Playwright's WebKit (STATE.md decision 390). A one-attribute signal is cheaper and far steadier than a
  * test reaching into IndexedDB past the app — a read that, on WebKit, is itself blocked by the
  * import it is trying to observe.
  */

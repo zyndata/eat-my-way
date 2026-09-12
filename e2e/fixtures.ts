@@ -27,9 +27,9 @@ export interface DeviceOptions {
   keepSetup?: boolean;
   /**
    * Do not wait for the first-run nutrition import. The default is to wait: a fresh browser
-   * spends about six seconds on Chromium and about twenty-four on WebKit writing the 1 344
-   * bundled ingredients, and a test that acts inside that window is racing the app rather than
-   * testing it (STATE.md open question 31). `e2e/import-race.spec.ts` sets this, because
+   * spends about 0.2 s on Chromium and about twenty seconds under Playwright's WebKit writing
+   * the 1 344 bundled ingredients, and a test that acts inside that window is racing the app
+   * rather than testing it (STATE.md open question 31). `e2e/import-race.spec.ts` sets this, because
    * racing the import on purpose is the only way to cover the gate that phase 21 built.
    */
   raceNutritionImport?: boolean;
@@ -49,8 +49,8 @@ export interface DeviceOptions {
 
 /**
  * How long the bundled import may take before the fixture gives up. Generous on purpose: the
- * measured worst case is WebKit at about 24 s, and a slow CI machine has every right to be
- * slower than the machine this was measured on.
+ * measured worst case is Playwright's WebKit at about 21 s, and a slow CI machine has every
+ * right to be slower than the machine this was measured on.
  */
 const NUTRITION_TIMEOUT = 90_000;
 

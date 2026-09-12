@@ -61,7 +61,7 @@
    * `void`, which is a real bug on any engine: queue that write behind the first-run nutrition
    * import, let the user move on and the page reload, and the flag is silently lost — the
    * wizard comes back as though nobody had been through it, with nothing to notice (STATE.md
-   * open question 31). Chromium hid it by being fast; on WebKit it cost 23 e2e tests.
+   * open question 31). A fast engine hides it; the slow test browser cost 23 e2e tests.
    */
   async function leave(target: string): Promise<void> {
     leaving = true;

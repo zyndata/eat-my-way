@@ -1,9 +1,13 @@
 /**
  * The first-run nutrition import holds the `ingredients` table for as long as it takes to
- * write 1 344 rows — about six seconds on Chromium and about twenty-four on WebKit (STATE.md
- * open question 31). On WebKit any other transaction that touches the table while that runs
- * never returns, which is how a Drive sync started inside that window stops for good at
- * „Odczyt i zapis plików na Dysku…".
+ * write 1 344 rows. Under Playwright's WebKit that is twenty seconds and any other transaction
+ * touching the table meanwhile never returns — which is how a Drive sync started inside the
+ * window stopped for good at „Odczyt i zapis plików na Dysku…" (STATE.md open question 31).
+ *
+ * That twenty seconds is a slow test browser, not a slow phone: it is one Windows message-loop
+ * tick per request, and no real engine charges it (decision 398). What survives the correction
+ * is the ordering hazard, which is why this exists — on a fast engine the window is a fraction
+ * of a second, and the writes in it should still queue rather than race.
  *
  * So the import raises a gate and every other writer waits at it. This is the „seal the
  * window" half of the phase 21 design call: it makes the first minute correct at whatever

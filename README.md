@@ -183,11 +183,16 @@ the arithmetic, not the device: the safe-area insets are driven through CSS cust
 that an end-to-end test moves, so the layout is proved against an emulated home indicator and
 notch. The install metadata was read and is correct. The suite can also be run under WebKit, the
 engine Safari uses, and the first time it was, it found a storage bug that has nothing to do
-with layout: on that engine, writing the 1 344 bundled ingredients takes twenty seconds, and a
-Drive sync started inside that window never finished. Phase 21 fixed it — the import now holds
-a gate every other writer waits at, and says in Polish that it is waiting — and the whole suite
-now passes under WebKit as well as Chromium (`E2E_WEBKIT=1 npm run test:e2e`, opt-in because it
-takes minutes rather than seconds). Nobody has yet confirmed on an actual iPhone that the
+with layout: a Drive sync started while the app was still writing its 1 344 bundled ingredients
+never finished. Phase 21 fixed it — the import now holds a gate every other writer waits at, and
+says in Polish that it is waiting — and the whole suite now passes under WebKit as well as
+Chromium (`E2E_WEBKIT=1 npm run test:e2e`, opt-in because that build is slow enough to turn a
+thirty-second run into a four-minute one). That slowness is worth naming, because it is easy to
+misread as a fact about Safari: Playwright's WebKit **on Windows** charges about 15 ms for every
+task the event loop dispatches, so an import that costs Chromium a fifth of a second costs it
+twenty. No Apple platform has that floor, and Safari is in fact the *fastest* of the three
+engines at bulk IndexedDB writes. The bug the slow run exposed was real; the twenty seconds were
+not an iPhone's. Nobody has yet confirmed on an actual iPhone that the
 camera, the share sheet, Drive sign-in and offline start all behave — [STATE.md](STATE.md) open
 question 30 lists exactly what is still unanswered.
 

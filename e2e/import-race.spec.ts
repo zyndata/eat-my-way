@@ -7,10 +7,10 @@ import { recipe, seedAccount } from './seed';
  *
  * Every other spec waits for the import to settle before it acts, which is what makes the rest
  * of the suite honest (phase 21 task 4). This one does the opposite, because the overlap is
- * the defect: while a fresh browser writes the 1 344 bundled ingredients — about six seconds on
- * Chromium, about twenty-four on WebKit — a Drive sync used to open a transaction over the same
- * table and never come back, leaving the app at „Odczyt i zapis plików na Dysku…" until it was
- * reloaded (STATE.md open question 31). Connecting Drive inside that window is also exactly
+ * the defect: while a fresh browser writes the 1 344 bundled ingredients — a fifth of a second
+ * on Chromium, twenty seconds under Playwright's WebKit — a Drive sync used to open a
+ * transaction over the same table and never come back, leaving the app at „Odczyt i zapis plików
+ * na Dysku…" until it was reloaded (STATE.md open question 31). Connecting Drive inside that window is also exactly
  * what a new user does: it is step 1 of the wizard.
  *
  * Without this spec, the gate in `src/lib/nutrition/gate.ts` would be covered by nothing.

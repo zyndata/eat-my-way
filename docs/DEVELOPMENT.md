@@ -245,14 +245,23 @@ falls. „The two are indistinguishable, keep the one with 500 requests a day" i
 A second Playwright project runs the same specs under **WebKit**, the engine Safari uses, and
 since phase 21 it passes: 125 of the 127, with `swipe.spec.ts` skipped because its touch drag is
 dispatched over CDP, which only Chromium has. Its first run had found a WebKit-only defect in
-the data layer — writing the 1 344 bundled ingredients takes about twenty seconds there, against
-a fifth of a second on Chromium, and anything that touched the same table meanwhile never came
-back. The import now holds a gate and every other writer waits at it.
+the data layer: anything that touched the `ingredients` table while the 1 344 bundled rows were
+being written never came back. The import now holds a gate and every other writer waits at it.
+
+**On the slowness itself, so nobody repeats the mistake this project made:** writing those rows
+takes about twenty seconds under this build against a fifth of a second on Chromium, and that is
+**not** a fact about Safari. Playwright's WebKit on Windows charges about 15 ms for every
+task-queue dispatch — `setTimeout(0)`, a same-origin `fetch` and an IndexedDB *read* all cost the
+same — because that port's run loop is bound to the Windows message-timer tick. Raising the
+system timer to 1 ms does not help, and headed is identical to headless. No Apple platform has
+that floor. Treat the WebKit project as a correctness check, never as a performance measurement
+(STATE.md decision 398).
 
 It stays behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — for what is now a
-cost rather than a bug: every test waits out that twenty-second import before it can act, so the
-run takes about four minutes against Chromium's thirty seconds, and installing a second engine
-in CI is its own cost on top. Two things follow for anyone writing a spec, and both are in
+cost rather than a bug: every test waits out that slow import before it can act, so the run takes
+about four minutes against Chromium's thirty seconds, and installing a second engine in CI is its
+own cost on top. (Both figures are from Windows; on Linux the tick does not exist and the run may
+be far cheaper, which nobody has measured.) Two things follow for anyone writing a spec, and both are in
 `e2e/fixtures.ts`:
 
 - **The fixture waits for `<html data-nutrition="ready">`** before a test acts, so no test

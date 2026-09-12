@@ -37,10 +37,12 @@ export default defineConfig({
    * The defect it found — a write overlapping the first-run bundled nutrition import never
    * completes — was fixed in phase 21 (STATE.md open question 31, decisions 386–391). It stays
    * behind `E2E_WEBKIT=1` all the same, for a reason that is now cost rather than a bug: this
-   * engine writes IndexedDB about nine hundred times slower than Chromium — 1 344 rows take
-   * 21 s against 23 ms — so every test waits out the first-run import before it can act, and the
-   * run takes minutes rather than seconds. A second engine in CI is its own cost on top of
-   * that. Run it by hand with `E2E_WEBKIT=1 npm run test:e2e`.
+   * *build* takes about 15 ms over every task the event loop dispatches, so the first-run import
+   * of 1 344 ingredients costs 21 s here against 0.2 s on Chromium, every test waits it out, and
+   * the run takes minutes rather than seconds. That is Playwright's WebKit on **Windows** — its
+   * run loop is bound to the Windows message-timer tick — and not a property of Safari, which no
+   * Apple platform shares (STATE.md decision 398). Treat this project as a correctness check and
+   * never as a performance measurement. Run it by hand with `E2E_WEBKIT=1 npm run test:e2e`.
    */
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
@@ -51,7 +53,7 @@ export default defineConfig({
             name: 'webkit',
             // Four minutes, against Chromium's default thirty seconds. Not slack for shaky
             // assertions: `e2e/fixtures.ts` waits for the bundled import before a test acts,
-            // and on this engine that wait alone is about twenty seconds of the budget — a
+            // and on this build that wait alone is about twenty seconds of the budget — a
             // two-device test pays it twice.
             timeout: 240_000,
             use: { ...devices['Desktop Safari'] }

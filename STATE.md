@@ -31,12 +31,17 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
-Phase 21 is **built** (2026-09-12, decisions 386–397). The first half-minute of a fresh
+Phase 21 is **built** (2026-09-12, decisions 386–398). The first half-minute of a fresh
 install is no longer the window in which this app is fragile. The design call decision 346 left
 open — shorten the window or seal it — was settled by measuring: the batch size is **not** a
-lever (1 344 rows cost 20.9 s on WebKit at 100, 250, 500 and 1 344 rows per transaction, flat
-to within 60 ms, and 20.3 s for the same rows written straight to IndexedDB with no Dexie and no
-app), so the window was sealed. The import raises a gate in `src/lib/nutrition/gate.ts`;
+lever (1 344 rows cost 20.9 s under Playwright's WebKit at 100, 250, 500 and 1 344 rows per
+transaction, flat to within 60 ms, and 20.3 s for the same rows written straight to IndexedDB
+with no Dexie and no app), so the window was sealed. **Decision 398 then corrected what that
+number means:** it is Playwright's WebKit on *Windows* charging one ~15 ms message-loop tick per
+task — `setTimeout`, `fetch` and IndexedDB reads all pay it — and not a property of Safari, which
+independent measurement has as the *fastest* engine at bulk IndexedDB writes. The real first-run
+window is a fraction of a second; the gate is cheap insurance and an ordering fix, and the two
+bugs the WebKit run exposed were real on every engine. The import raises a gate in `src/lib/nutrition/gate.ts`;
 `applyMergedData` and every other writer that opens a transaction over `ingredients` waits at
 it, and a sync caught by that wait says „Czekam na bazę składników…" instead of going quiet.
 The wizard's `setupDone` is **awaited** before it navigates — a dropped write on any engine, and
@@ -4708,9 +4713,16 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      **The batch size is not the lever.** Across a thirteen-fold range WebKit varies by 60 ms —
      three parts in a thousand. A control run says what it is instead: 1 344 `put`s into a fresh
      store in **one** transaction, raw IndexedDB, no Dexie and no app, cost **20 259 ms** on
-     WebKit and **23 ms** on Chromium. The cost is per row and it is the engine's, not ours; a
-     second load on the same profile takes 170 ms, so the whole 20.9 s is the writing.
-     `BATCH_SIZE` stays at 250. This also retires „make it incremental, lazy or a worker" as a
+     WebKit and **23 ms** on Chromium. The cost is per row, not per transaction and not per byte;
+     a second load on the same profile takes 170 ms, so the whole 20.9 s is the writing.
+     `BATCH_SIZE` stays at 250.
+
+     > **Corrected the same day — see decision 398.** This entry went on to call the per-row cost
+     > „the engine's", and every document that quoted it read that as a fact about the engine an
+     > iPhone runs. It is not. The 15 ms is Playwright's WebKit build on **Windows** dispatching
+     > one *task* per message-loop tick — `setTimeout`, `fetch` and IndexedDB reads pay it
+     > equally — and no Apple platform has it. The table above stays because it is what was
+     > measured and it is what the test suite experiences; the conclusion drawn from it does not. This also retires „make it incremental, lazy or a worker" as a
      *speed* answer — a worker would move the twenty seconds off the main thread, not shorten
      them — and PLAN.md put those out of scope anyway.
 
@@ -4854,6 +4866,81 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      twenty seconds of any test's budget and a two-device test pays it twice. It **stays behind
      `E2E_WEBKIT=1` and out of CI** (PLAN.md task 5 left that open): the reason is no longer a
      bug but arithmetic — four minutes against thirty seconds, plus a second engine to install.
+     **Qualified by decision 398:** those four minutes are a Windows artifact, and on Linux the
+     run may cost seconds. The decision stands on an untested premise and should be re-measured
+     on Linux before it is quoted as settled.
+
+398. **Correction to 386, the same day: the twenty seconds are Windows, not Safari, and not
+     IndexedDB.** Decision 386 concluded „the cost is per row and it is the engine's". The first
+     half of that is right and the second is wrong in a way that matters, because it was read —
+     here, in README.md and in `playwright.config.ts` — as a statement about the engine an iPhone
+     runs. Asked to justify it, the measurement did not survive.
+
+     **What the number actually is.** In Playwright's WebKit build on Windows, *every task-queue
+     dispatch* costs about 15 ms. Median gap between consecutive operations, same machine, same
+     page:
+
+     | operation | Chromium | Playwright WebKit |
+     |---|---|---|
+     | `queueMicrotask` | 0 ms | **0 ms** |
+     | `setTimeout(0)` | 4.9 ms | **15 ms** |
+     | `fetch` same-origin | 0.9 ms | **15 ms** |
+     | `MessageChannel` | 0 ms | **30 ms** |
+     | IndexedDB `put` | 0 ms | **15 ms** |
+     | IndexedDB `get` | 0 ms | **15 ms** |
+     | empty IndexedDB transaction | 0.1 ms | **15 ms** |
+
+     Microtasks are free; everything that goes through the event loop costs one quantum.
+     IndexedDB is not special — it is simply the API this app calls 1 344 times on first run.
+
+     **Four hypotheses, all disposed of by measurement.** Not per transaction: 1 344 puts cost
+     the same in one transaction as in six. Not bytes: the *same* 1 344 rows written as a single
+     record cost 15 ms, and as 14 records of 96, 212 ms — against 20 234 ms as 1 344 records.
+     Not writes, and therefore not `fsync` or SQLite: 1 344 `get`s cost 20 240 ms while one
+     `getAll` over the same rows costs 15 ms. Not indexes: 500 puts into an indexed store cost
+     7 523 ms against 7 526 ms into a plain one. The cost tracks the number of *requests* and
+     nothing else — 15.05, 15.05, 15.05, 15.07 ms per request at 100, 500, 1 344 and 2 688.
+
+     **Where it comes from.** WebKit's Windows port drives its run loop off Windows message
+     timers, whose floor is `USER_TIMER_MINIMUM` (10 ms) and whose real granularity is the ~15.6
+     ms user tick. Upstream WebKit has been working on exactly this — „[Win] Improvements to run
+     loop timer resolution", March 2025, whose commit message says WM_TIMER's resolution „means
+     we can't hit 60fps on requestAnimationFrame" — and this build is WebKit **26.5**, so
+     whatever landed does not cover task dispatch in Playwright's embedder. Chrome and Firefox
+     escape the tick by asking Windows for a finer timer (Mozilla bug 585162 is literally „use
+     timeBeginPeriod on Windows to give us a 1 msec timer"); WebKit's Windows port does not.
+
+     **Two fixes tried and disproved, which is why they are recorded.** Holding the *system*
+     timer at 1 ms with `timeBeginPeriod(1)` changes nothing: `NtQueryTimerResolution` confirmed
+     the machine at 1.0000 ms and WebKit still dispatched one task per 15 ms, so this is not the
+     system tick but WebKit's own message-loop granularity, which no outside setting reaches.
+     Headed and headless are identical to the millisecond.
+
+     **What this means for the app, which is the part that matters.** Safari does not run on
+     Windows, and no Apple platform has a 64 Hz message-timer floor — iOS and macOS drive the
+     same run loop off CFRunLoop with sub-millisecond timers. Independent measurement points the
+     other way entirely: Dexie's author measured Safari as the **fastest** of the three engines
+     at bulk IndexedDB writes, with Chrome about five times slower; and Dexie's own „IndexedDB on
+     Safari" page, which catalogues that engine's real defects — race conditions, instability
+     when a tab wakes from the background, missing `getAllRecords()` — lists nothing about write
+     speed. **There is no reason to believe an iPhone spends twenty seconds on this import, and
+     this repository should stop implying that it does.**
+
+     **What still stands, unchanged.** Nothing about the phase's *code* rests on the number. The
+     `setupDone` write was dropped on every engine (decision 389). The planner was undoing the
+     user's chosen first day on every engine (decision 394). The service worker made the WebKit
+     runs non-hermetic (decision 392). The gate (decisions 387–388) is an *ordering* fix, not a
+     speed one: it costs a resolved promise when nothing is importing, and it is the difference
+     between „a sync that lands mid-import waits" and „a sync that lands mid-import is at the
+     mercy of transaction scheduling" on any engine, fast or slow. What changes is the story
+     told about *why*, and the size of the window it protects — on a real browser that window is
+     a fraction of a second, not twenty of them.
+
+     **What is now unknown again, and was previously called settled.** Whether WebKit is
+     expensive enough to keep out of CI. The four-minute run time is a Windows artifact; on
+     Linux, where the tick does not exist, the suite may cost seconds. Nobody has run it there —
+     this machine's only WSL distribution is Docker Desktop's — so decision 397's „stays out of
+     CI" stands on an untested premise and should be re-measured before it is quoted again.
 
 ### Not verified, and honestly so — Phase 21
 
@@ -5269,8 +5356,10 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     finishing — is fixed, and the whole suite now passes under WebKit. What is still owed is the
     device itself: **phase 21 task 6 was not done.** (a)–(h) stand unanswered, with one addition
     to (h): make the connection **inside the first half-minute** of a fresh install, which is
-    what used to break. The window to aim at is about 21 s on a desktop WebKit; nobody knows what
-    it is on a phone.
+    what used to break. „The first half-minute" is now the honest phrasing: the 21 s figure came
+    from Playwright's WebKit on Windows and is a message-loop artifact of that build (decision
+    398), so nobody knows how long the import takes on the device — which is itself one of the
+    things the procedure would answer.
 
 31. **WebKit hangs on a write that overlaps the first-run nutrition import — answered and
     2026-09-12, and the window is four times wider than decision 346 recorded.** Found by phase
@@ -5334,13 +5423,22 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     install the app and connect Drive within the first half-minute** — the window to aim at is
     24 s, not 5. Carried into open question 30.
     **Answered 2026-09-12 by Phase 21 — fixed, and the suite is green on WebKit** (decisions
-    386–397). The design call went both ways it could: the window was **sealed**, and it was
-    measured to see whether it could also be **shortened**. It cannot. The batch size moves
-    nothing (decision 386), because the cost is per row and belongs to the engine — 1 344 raw
-    `put`s in one transaction, no Dexie and no app, cost 20 259 ms on WebKit against 23 ms on
-    Chromium. Two of this entry's own figures were corrected in the process: the Chromium import
-    takes about 0.2 s, not six seconds (the old probe's five-second sampling could not see it),
-    and WebKit takes 20.9 s, not 24.
+    386–398). The design call went both ways it could: the window was **sealed**, and it was
+    measured to see whether it could also be **shortened**. It cannot, on this engine build: the
+    batch size moves nothing (decision 386), because the cost is per request — 1 344 raw `put`s
+    in one transaction, no Dexie and no app, cost 20 259 ms under Playwright's WebKit against
+    23 ms on Chromium. Two of this entry's own figures were corrected in the process: the
+    Chromium import takes about 0.2 s, not six seconds (the old probe's five-second sampling
+    could not see it), and WebKit takes 20.9 s, not 24.
+
+    **And then the diagnosis itself was corrected — decision 398.** The 20.9 s is not IndexedDB
+    and not Safari: Playwright's WebKit build on Windows charges about 15 ms for *every*
+    task-queue dispatch, `setTimeout`, `fetch` and IndexedDB *reads* included, because that
+    port's run loop is bound to the Windows message-timer tick. Raising the system timer to 1 ms
+    does not touch it; headed and headless are identical. Safari does not run on Windows and no
+    Apple platform has that floor. So this entry's premise — „on WebKit the import takes twenty
+    seconds" — holds for the test browser and **not** for the engine an iPhone runs, where the
+    same work is very likely sub-second.
 
     What the fix is: `src/lib/nutrition/gate.ts`. The import raises a gate around its writes;
     `applyMergedData` and every other writer that opens a transaction over `ingredients` waits at
