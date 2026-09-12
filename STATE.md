@@ -5080,6 +5080,92 @@ its own.
      three libraries were unpacked into the WebKit bundle's own `sys/lib`, which its launcher
      puts on `LD_LIBRARY_PATH`. CI installs its own dependencies as root and is unaffected.
 
+### 2026-09-12 — the interaction audit
+
+> Not a phase: a defect report („klikam «Wypełnij pola» i nic się nie dzieje, wygląda to na
+> bug") that turned out to be a whole-app finding rather than a bug in that button.
+
+400. **The app had 157 clickable elements and one `hover:` rule between them.** Nothing —
+     button, link, chip, calendar day, navigation item — answered the cursor or the finger.
+     `body` also sets `-webkit-tap-highlight-color: transparent` (Phase 8), which removes the
+     native flash on touch, so a press painted *nothing* on either kind of input.
+
+     This is why „Wypełnij pola" was reported as broken. **It was not broken.** It fills the
+     four goal fields at the top of the section, which by the time the button is reachable have
+     scrolled out of sight behind the calculator panel — so the press changed nothing the eye
+     could see and nothing under the finger either. Two different absences of feedback stacked
+     into something indistinguishable from a dead control.
+
+     The fix is a small system in `src/app.css` rather than a `hover:` sprinkled per call site:
+     `.emw-press` (transition, press scale, focus ring, disabled cursor) plus the variants
+     `.emw-btn-{primary,secondary,danger,danger-solid,link,link-muted,link-danger,icon,chip}`,
+     `.emw-tint` and `.emw-row`. Eight new tokens per theme carry the colours, so a hover and a
+     press are theme values like every other colour here. Every one of the 157 now carries it;
+     a sweep that parses opening tags (multi-line `class` attributes included) reports zero
+     left. The three identical `const buttonClass = '…'` strings in Settings, Setup and
+     BackupSection collapsed into the shared classes.
+
+401. **Hover is gated behind `@media (hover: hover)`, and that is not a nicety.** On a
+     touchscreen `:hover` latches after a tap and stays painted until something else is tapped,
+     so an ungated hover rule leaves the last-pressed button looking stuck — on a phone-first
+     PWA that is a worse bug than the one being fixed. The press state, which every input can
+     produce, therefore carries both a colour shift and a 2% scale and is the state that must
+     never be missed. The scale goes under `prefers-reduced-motion`; the colour stays, because
+     it is then carrying the whole message.
+
+402. **`:hover` and `:active` have the same specificity, so the order they are written in
+     decides which one a mouse press sees.** The first version grouped every hover into one
+     `@media (hover: hover)` block at the foot of the file, after all the `:active` rules —
+     which meant that on a desktop the hover colour won while the button was held down and the
+     press state was dead on the one input that can produce both. It was caught by the test
+     asserting the two colours differ, not by looking.
+
+     Each variant now states resting → hover → press together, with its own small hover block.
+     More `@media` blocks, one readable unit per variant, and the ordering cannot be got wrong
+     by moving code around.
+
+403. **`--radius-full` does not exist, and an undefined custom property fails silently.**
+     `.emw-btn-chip` first shipped with `border-radius: var(--radius-full)`; Tailwind v4 ships
+     `--radius-xs` through `--radius-4xl` and compiles `rounded-full` to `calc(infinity * 1px)`
+     rather than to a token. The declaration was invalid, nothing reported it, and the floating
+     „Dodaj posiłek" button came out square. **Only the screenshot caught it** — every test
+     passed, on both engines, with the FAB a rectangle. `9999px` now, matching `.emw-spinner`,
+     and `e2e/interaction.spec.ts` asserts a pill's radius is at least half its height.
+
+     The general lesson is the one worth keeping: this stylesheet's whole design is
+     `var(--token)`, and a typo in a token name is not a build error in any tool in this repo.
+
+404. **`revert-layer` reverts to the previous cascade layer, not to the resting value.** A
+     blanket `.emw-press:disabled:hover { background-color: revert-layer }` looked like a cheap
+     way to keep a disabled control from lighting up; on a disabled primary button it resolved
+     to very nearly transparent. Removed — every variant's hover carries its own
+     `:not(:disabled)`, which is what actually does the job. The test that asserts a disabled
+     button does not repaint on hover is what found it.
+
+405. **Icon-only buttons were 36px and are now 44px**, as a `min-width`/`min-height` on
+     `.emw-btn-icon` rather than as padding, so the hit area grows without moving the icon.
+     This is the one change in the set with a layout consequence: the week strip's arrows are
+     wider and the whole day screen sits a few pixels lower, and the two planner controls that
+     had drifted to different sizes now match. README screenshots re-taken.
+
+406. **„Wypełnij pola" now says what it did, and that it has not saved it.** A confirmation
+     under the button names the four numbers it just wrote — deliberately instead of scrolling
+     the page back up, because a calculator that yanks the viewport away from the fields being
+     tuned is worse than one that is quiet. It also answers the question the press invites and
+     the panel's preamble only hints at: no, this has not saved anything; „Zapisz cele" does
+     that. It clears itself after eight seconds and re-arms on every press.
+
+407. **The states are covered by `e2e/interaction.spec.ts`, which reads computed styles the way
+     `comfort.spec.ts` covers the theme.** Two habits that file cannot do without, both learnt
+     the hard way: reads are taken only after the value stops changing, because the 120 ms
+     transition otherwise hands back an interpolated colour part-way between two states; and
+     `hover()` comes before `mouse.down()`, because the button is below the fold and raw
+     `boundingBox()` coordinates press empty space. It caught decisions 402 and 404. The
+     hover-gating test is Chromium-only — the phone context is `devices['Pixel 5']`, whose
+     `isMobile` Playwright supports on Chromium alone, the same limit as `swipe.spec.ts`
+     (decision 393).
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

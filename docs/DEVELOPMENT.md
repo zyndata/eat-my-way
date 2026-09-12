@@ -161,6 +161,45 @@ Two things that are easy to get wrong when switching machines:
    in STATE.md and commit — that file is how the other machine (and the next conversation)
    learns what happened.
 
+## Buttons and interaction states
+
+Every clickable thing in the app — `<button>`, `<a>`, a chip, a calendar day, a list row —
+carries **`emw-press`** plus one variant class. They are defined in
+[`src/app.css`](../src/app.css) under `@layer components`, and they exist because before them
+the app had 157 clickable elements and one `hover:` rule between them: nothing answered the
+cursor, and `body`'s `-webkit-tap-highlight-color: transparent` had removed the native flash on
+touch as well, so a press painted nothing on either input (STATE.md decisions 400–407).
+
+| Class | For |
+|---|---|
+| `emw-btn emw-btn-primary` | The accent fill: save, confirm, add |
+| `emw-btn emw-btn-secondary` | The outline: cancel, close, toggle a panel |
+| `emw-btn emw-btn-danger` / `emw-btn-danger-solid` | Destructive, outlined / filled |
+| `emw-btn-link`, `-link-muted`, `-link-danger` | Text inside a sentence |
+| `emw-btn-icon` | Icon-only, 44px minimum hit area |
+| `emw-btn-chip` | Pill shape — geometry only, see below |
+| `emw-tint` | Neutral hover/press fill, for anything with no colour of its own |
+| `emw-row` | A full-width tappable row; tints without the press scale |
+
+`emw-btn` carries the shared geometry. Layout stays at the call site: a utility class (`mt-3`,
+`w-full`, `px-4`) is in Tailwind's utilities layer and so overrides anything here.
+
+Four things worth knowing before adding a variant:
+
+1. **Write resting → hover → press, in that order, per variant.** `:hover` and `:active` have
+   the same specificity, so whichever is written last wins while a mouse button is held down.
+   A single shared hover block at the foot of the file kills every press state on desktop.
+2. **Hover belongs inside `@media (hover: hover)`.** On a touchscreen `:hover` latches after a
+   tap and stays painted until something else is tapped.
+3. **A chip's shape and a chip's fill are separate classes.** A chip is also a *state* — a
+   filter is on or off — so the selected half takes `emw-btn-primary` and the unselected half
+   `emw-tint`, never both. If the pill carried a tint of its own, the two would collide.
+4. **Check the token name you typed.** An undefined custom property makes the declaration
+   invalid and nothing in this repo reports it — `var(--radius-full)` (which Tailwind v4 does
+   not define) silently turned the floating action button into a rectangle, with every test
+   still green. `e2e/interaction.spec.ts` covers these states; add to it rather than trusting
+   a build to catch a stylesheet.
+
 ## Commits and branches
 
 - Branches: work on `dev`, merge to `main`, release by pushing a `vX.Y.Z` tag.
