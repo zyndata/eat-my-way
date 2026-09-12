@@ -12,6 +12,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - Plan phases 15-20 — the iPhone defect first, then six ideas
 - Plan phase 21 — the first twenty-four seconds
+- The WebKit slowness is Windows, not Safari
 
 ### Features
 
@@ -25,6 +26,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
