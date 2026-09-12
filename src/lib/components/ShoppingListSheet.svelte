@@ -1,7 +1,12 @@
 <script lang="ts">
   import type { Recipe } from '../types';
   import type { ShoppingLine, ShoppingMeal } from '../shopping';
-  import { formatShoppingLine, formatShoppingList, shoppingLines } from '../shopping';
+  import {
+    formatShoppingLine,
+    formatShoppingList,
+    groupByDepartment,
+    shoppingLines
+  } from '../shopping';
   import { ingredientLookup } from '../macros';
   import { repository } from '../repository';
   import { shareText, type ShareOutcome } from '../share';
@@ -18,6 +23,10 @@
    * It leaves through `navigator.share()` or the clipboard, neither of which is a network
    * request: the CSP is untouched (decision 144). The text is also on screen, so a browser
    * where both routes fail still lets it be selected and copied by hand.
+   *
+   * Phase 17 groups it by department, in the order a shop is walked. The screen and the shared
+   * text go through the same `groupByDepartment`, so what is read off the phone in the shop and
+   * what was pasted into a message are the same list under the same headings.
    */
 
   let {
@@ -42,6 +51,7 @@
   let outcome = $state<ShareOutcome | null>(null);
 
   const text = $derived(formatShoppingList(title, lines));
+  const groups = $derived(groupByDepartment(lines));
 
   async function load(): Promise<void> {
     loading = true;
@@ -108,15 +118,20 @@
       Nie ma czego kupić — w tym zakresie nie ma posiłków ze składnikami.
     </p>
   {:else}
-    <ul class="flex flex-col gap-1 pt-4">
-      {#each lines as line (line.ingredientId + line.unit)}
-        <li
-          class="rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-sm"
-        >
-          {formatShoppingLine(line)}
-        </li>
-      {/each}
-    </ul>
+    {#each groups as group (group.department)}
+      <h3 class="pt-4 text-xs font-semibold tracking-wide text-(--color-ink-muted) uppercase">
+        {group.label}
+      </h3>
+      <ul class="flex flex-col gap-1 pt-1">
+        {#each group.lines as line (line.ingredientId + line.unit)}
+          <li
+            class="rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-sm"
+          >
+            {formatShoppingLine(line)}
+          </li>
+        {/each}
+      </ul>
+    {/each}
 
     <div class="flex flex-wrap items-center gap-2 pt-4">
       <button

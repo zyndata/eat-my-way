@@ -23,12 +23,24 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 14    | Poprawki posiłku            | done    | 2026-09-08 |
 | 15    | iPhone                      | done    | 2026-09-11 |
 | 16    | Miary domowe                | done    | 2026-09-12 |
-| 17    | Dział sklepu                | pending | — |
+| 17    | Dział sklepu                | done    | 2026-09-12 |
 | 18    | Trzy drobiazgi              | pending | — |
 | 19    | Cel dopowiedziany do końca  | pending | — |
 | 20    | Metryczka przepisu          | pending | — |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 17 is **built** (2026-09-12, decisions 358–366). The shopping list used to be ordered by
+the order the ingredients were first met, „so a list reads like the recipes it came from". That
+was right while the app knew nothing about what an ingredient *is*, and wrong in the one place
+the list is actually read. An ingredient now has a **department** — nine, one level, in the
+order a shop is walked — and `shopping.ts` groups by it, keeping the old order inside each
+department. All 1 344 bundled rows carry one: the build script derives it from the USDA food
+category through a hand-reviewed table of 28 entries, and a sixth TSV column overrides it per
+row, which is how „Truskawki mrożone" leaves the fruit shelf. `gemini/scan.ts` proposes one
+while it is already reading a photographed package — one enumerated property, no second
+request. The field is optional, absent means „Inne", and nothing ever blocks a save on it.
+`DATA_VERSION` goes to 4, for the reason it went to 3 in Phase 16.
 
 Phase 16 is **built** (2026-09-12, decisions 349–357). The weight of a clove used to live on
 every recipe row that used one: `gramsPerUnit` on `RecipeItem`, retyped at each point of use,
@@ -4332,6 +4344,96 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
   were weighed from ordinary household figures rather than measured. They are a starting point
   a person overwrites on the row, which is exactly what `gramsPerUnit` staying editable is for.
 
+
+### 2026-09-12 — Phase 17
+
+358. **The precondition decision 328 set was checked before anything was built, and it holds.**
+     Both pinned releases expose the category in the same field: `food.csv` carries
+     `food_category_id` in SR Legacy 2018-04 and in Foundation 2026-04-30 alike, against a
+     `food_category.csv` that is the same 28 rows in both. Better than the fallback the decision
+     prepared for: **all 1 344 mapped rows have a non-blank category**, spread over 20 of the 28,
+     so the derivation is complete and the TSV column is only ever a correction. The fill did
+     not have to become incremental the way Phase 16's did.
+
+359. **The mapping table is 28 entries, not „roughly twenty-five", and an unknown category
+     throws.** Every FDC category is named even where no mapped row uses it, because the
+     alternative — a default — is the failure decision 328 exists to avoid: a refreshed release
+     that adds a category would file a shelf's worth of food under „Inne" silently, months
+     later, looking like a sync fault. `departmentForCategory` throws instead, and the build
+     fails loudly. `departments.test.ts` pins that all 28 are covered.
+
+360. **Nothing derives into „Mrożonki", and that is a property of the data, not an oversight.**
+     Frozen is a *form*, not a USDA food category: frozen strawberries and fresh ones are both
+     „Fruits and Fruit Juices". Every one of the 21 rows in that department got there by a TSV
+     override. It is the clearest demonstration of why the override column exists at all, and
+     `bundle.test.ts` asserts exactly that pair — „Truskawki" in warzywa, „Truskawki mrożone" in
+     mrozonki, from one category.
+
+361. **The first override pass is 87 rows, and it is a first pass.** Systematic misfilings
+     only: anything whose name says „mrożon" plus the ice creams (→ mrozonki), the drinkable
+     juices (→ napoje), tofu, tempeh, natto, hummus and the margarines (→ nabiał, the chilled
+     shelf), soy sauce, miso and the nut butters (→ przyprawy i dodatki), the sugars, cocoa and
+     pudding powders (→ sypkie), and the confectionery (→ inne). Recorded honestly, in the shape
+     of decision 357: the remaining 1 257 rows carry a derived department that is *reasonable*
+     rather than reviewed one by one, and the override column is there for the next person who
+     notices one is wrong. Lemon and lime juice deliberately go to przyprawy rather than napoje —
+     they are bought by the spoonful, not drunk.
+
+362. **`shoppingLines` sorts, `groupByDepartment` groups, and the sort is stable.** The function
+     keeps returning a flat array — `planner.test.ts` and three specs index into it — now ordered
+     by department. „Within a department the order is the order first met" then costs nothing
+     and needs no code: `Array.prototype.sort` has been stable since ES2019, so the insertion
+     order survives untouched inside each department. One `groupByDepartment` serves both the
+     sheet on screen and the shared text, so the two can never disagree about what is grouped
+     where.
+
+363. **`ShoppingLine.department` is required, though `Ingredient.department` is optional.** They
+     answer different questions. „Nobody has filed this ingredient" is a fact worth keeping about
+     an ingredient, and it is what `undefined` means there. A *line*, though, has to print under
+     some heading, and the answer is always known — `departmentOf` resolves the absence to
+     `inne` once, at the point the line is built, and nothing downstream has to think about it
+     again. A deleted ingredient („Nieznany składnik") goes the same way.
+
+364. **The scan's property is `category` on the wire and `department` in the app.** The schema
+     property is named for what the model is being asked — which shelf this product belongs to —
+     and the field it lands in is named for what the app stores. `readScannedLabel` is the one
+     place that knows both, which it already was for every other field. An answer outside the
+     nine is dropped to `null` rather than coerced to `'inne'`: an empty field the user fills in
+     beats a wrong guess they have to notice. `labelIsEmpty` deliberately does not count the
+     department, so a photograph that yielded a shelf and nothing else is still reported as an
+     unreadable label.
+
+365. **`DATA_VERSION` goes to 4, for decision 352's reason exactly.** Departments on bundled rows
+     reach an existing install no other way: `importBundledNutrition` skips entirely when the
+     stored version is not lower, so a bundle rebuilt in place would be invisible to every device
+     that has already run. `bulkPut` rewrites the 1 344 `usda:*` rows and touches nothing custom.
+     The bundle grows from 258 kB to 288 kB, still inside the 200–400 kB `bundle.test.ts` holds
+     it to, and still precached.
+
+366. **An e2e spec was added, as in Phase 16, and PLAN.md's task 6 again asked only for unit
+     tests.** Four of the acceptance criteria are about what a *screen* shows: that a list comes
+     out under headings in walk order, that empty headings are absent, that an unfiled ingredient
+     saves without anyone being asked for a department, and that a scan marks one „ze zdjęcia" in
+     the same single request. `e2e/departments.spec.ts` drives the first three through the real
+     screens and two new cases in `e2e/scan.spec.ts` cover the fourth at the network boundary,
+     where the request count is actually observable.
+
+### Not verified, and honestly so — Phase 17
+
+- **The 1 257 derived departments are reasonable, not reviewed.** Decision 361 says what was
+  corrected by hand; everything else carries whatever its USDA food category implies. Several
+  are arguable rather than wrong — „Baked Products" sends biscuits and cakes to „Pieczywo",
+  „Sweets" sends jam and honey to „Przyprawy i dodatki" — and they are corrected one TSV cell at
+  a time when a shop says otherwise.
+- **The department a live Gemini call actually proposes has not been measured.** The wiring is
+  proved at the network boundary — one request, the property in the schema, the value in the
+  form, the counter unmoved — with the model answered by `e2e/fake-gemini.ts`. What a real key
+  returns for a real package is the same open question every scanned field has, and the field is
+  a proposal for that reason.
+- **The container run's known instability (decision 348) is unchanged.** Run serially, the full
+  suite passes 109/109 against the dev server, and `screens.spec.ts`, `departments.spec.ts` and
+  `scan.spec.ts` all pass against `http://localhost:8080` with zero CSP violations — which is
+  what the „no CSP change" criterion is about. CI, on Linux, is the arbiter.
 
 ## Open questions
 

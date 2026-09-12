@@ -8,15 +8,16 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–16 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–17 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then seven phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then nine phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
 > your goals (13), changing one planned meal without touching the recipe it came from (14),
-> the safe-area fix an installed iPhone asked for (15), and household measures — a clove, a
-> slice, a tablespoon — so a recipe can be typed the way it is written (16).
+> the safe-area fix an installed iPhone asked for (15), household measures — a clove, a
+> slice, a tablespoon — so a recipe can be typed the way it is written (16), and a shopping
+> list grouped by where things are actually bought (17).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -65,6 +66,12 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   so the same row reads „2 ząbki (10 g)" in the editor, on the meal screen and on the shopping
   list, and Polish plurals come out right — 1 ząbek, 2 ząbki, 5 ząbków. If you weigh everything,
   nothing changes: typing `100` after picking an ingredient still means 100 grams.
+- **The shopping list is ordered like the shop, not like the recipes.** Every ingredient
+  knows which part of a shop it is bought in — nine departments, in the order one is walked —
+  so a day's or a week's list comes out under headings instead of in the order the recipes
+  happened to mention things, and flour between two vegetables stops costing a walk back across
+  the building. Departments nothing was bought from are not printed; an ingredient nobody has
+  filed shops under „Inne", and nothing ever makes you choose one before saving.
 - **What you ate is allowed not to be the recipe.** The salad was planned and what was in the
   house was the cucumbers; the bread is home-baked one week and shop-bought the next. On that
   one meal you skip a row, change its amount, swap it for something else or add something the

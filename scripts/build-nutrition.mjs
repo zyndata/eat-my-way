@@ -7,7 +7,8 @@
  * Inputs
  *   - data/pl-ingredients.tsv  the hand-curated Polish name -> fdcId mapping. It decides
  *     BOTH which USDA entries are bundled and what they are called in the UI, and carries
- *     the household measures they offer (Phase 16). Four to six columns per row.
+ *     the household measures they offer (Phase 16). Four to six columns per row; the sixth
+ *     overrides the shopping department derived from the USDA food category (Phase 17).
  *   - two pinned USDA FoodData Central releases, downloaded into data/usda/ (gitignored)
  *     and verified against the SHA-256 digests below.
  *
@@ -30,6 +31,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCsv } from './csv.mjs';
+import { departmentForCategory, parseDepartment } from './departments.mjs';
 import { parseMeasures } from './measures.mjs';
 import { readZipIndex, readZipMemberByBaseName } from './usda-zip.mjs';
 
@@ -43,7 +45,7 @@ const META_FILE = path.join(ROOT, 'src', 'lib', 'nutrition', 'meta.ts');
  * Bump when the shape of the output changes or a release below is replaced. The app stores
  * it in IndexedDB and re-imports only when the stored value is lower.
  */
-const DATA_VERSION = 3;
+const DATA_VERSION = 4;
 
 /**
  * Pinned USDA releases. SR Legacy has been frozen since 2018 and will not move again;
@@ -110,14 +112,13 @@ async function readMapping() {
     const columns = line.split('\t');
     // Four to six, not exactly six: a row that has nothing new to say stays valid, so the
     // 1 344-row mapping can be filled in over months rather than in one sitting (decision 322).
-    // Column 5 is the measures; column 6 is reserved for the shopping department (Phase 17).
+    // Column 5 is the measures; column 6 overrides the derived shopping department.
     if (columns.length < 4 || columns.length > 6) {
       throw new Error(`${where}: expected 4 to 6 tab-separated columns, got ${columns.length}`);
     }
 
-    const [fdcId, name, aliasField, state, measureField = ''] = columns.map((column) =>
-      column.trim()
-    );
+    const [fdcId, name, aliasField, state, measureField = '', departmentField = ''] =
+      columns.map((column) => column.trim());
     if (!/^\d+$/.test(fdcId)) throw new Error(`${where}: fdcId must be digits, got "${fdcId}"`);
     if (name === '') throw new Error(`${where}: name is empty`);
     if (state !== 'raw' && state !== 'cooked') throw new Error(`${where}: bad state "${state}"`);
@@ -129,8 +130,9 @@ async function readMapping() {
       .filter((alias) => alias !== '');
 
     const measures = parseMeasures(measureField, where);
+    const department = parseDepartment(departmentField, where);
 
-    entries.set(fdcId, { fdcId, name, aliases, state, measures });
+    entries.set(fdcId, { fdcId, name, aliases, state, measures, department });
   });
 
   return entries;
@@ -162,16 +164,25 @@ async function ensureArchive(dataset, { offline }) {
 }
 
 /**
- * Pull the four macros for the wanted fdcIds out of one archive.
- * @returns {Map<string, {kcal: number, protein: number, carbs: number, fat: number}>}
+ * Pull the four macros — and the USDA food category — for the wanted fdcIds out of one archive.
+ *
+ * The category is what a shopping department is derived from (Phase 17). It is read here
+ * because it lives in the same `food.csv` row the wanted set is matched against, so it costs
+ * one extra column and no extra pass.
+ *
+ * @returns {{macros: Map<string, {kcal: number, protein: number, carbs: number, fat: number}>,
+ *            categories: Map<string, string>}}
  */
-function extractMacros(archive, wanted) {
+function extractFoods(archive, wanted) {
   const index = readZipIndex(archive);
   const decoder = new TextDecoder('utf-8');
 
   const found = new Map();
+  const categories = new Map();
   parseCsv(decoder.decode(readZipMemberByBaseName(archive, index, 'food.csv')), (row) => {
-    if (wanted.has(row.fdc_id)) found.set(row.fdc_id, {});
+    if (!wanted.has(row.fdc_id)) return;
+    found.set(row.fdc_id, {});
+    categories.set(row.fdc_id, row.food_category_id);
   });
 
   parseCsv(decoder.decode(readZipMemberByBaseName(archive, index, 'food_nutrient.csv')), (row) => {
@@ -194,7 +205,7 @@ function extractMacros(archive, wanted) {
     }
     if (complete) macros.set(fdcId, values);
   }
-  return macros;
+  return { macros, categories };
 }
 
 /**
@@ -253,10 +264,16 @@ async function main() {
   /** fdcId -> macros, plus which dataset it came from, so a double match can be reported. */
   const macros = new Map();
   const origin = new Map();
+  /** fdcId -> USDA food_category_id, first archive that names it. */
+  const categories = new Map();
 
   for (const dataset of DATASETS) {
     const archive = await ensureArchive(dataset, { offline });
-    for (const [fdcId, values] of extractMacros(archive, wanted)) {
+    const extracted = extractFoods(archive, wanted);
+    for (const [fdcId, categoryId] of extracted.categories) {
+      if (!categories.has(fdcId)) categories.set(fdcId, categoryId);
+    }
+    for (const [fdcId, values] of extracted.macros) {
       if (macros.has(fdcId)) {
         throw new Error(`fdcId ${fdcId} appears in both ${origin.get(fdcId)} and ${dataset.id}`);
       }
@@ -285,7 +302,12 @@ async function main() {
       source: 'usda',
       // Omitted rather than written as `[]`, like every optional field in the wire shapes: a
       // row offering no measure must look exactly like one from before measures existed.
-      ...(entry.measures.length === 0 ? {} : { measures: entry.measures })
+      ...(entry.measures.length === 0 ? {} : { measures: entry.measures }),
+      // Written on EVERY bundled row, `inne` included: the derived value is a fact the build
+      // established, not an absence. The TSV's sixth column beats it where it is wrong.
+      department:
+        entry.department ??
+        departmentForCategory(categories.get(entry.fdcId), `usda:${entry.fdcId} (${entry.name})`)
     }));
 
   const document = {

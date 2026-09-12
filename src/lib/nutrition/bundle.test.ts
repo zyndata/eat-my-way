@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import raw from './ingredients.json?raw';
 import type { Ingredient } from '../types';
 import { normalizeKey } from '../text';
+import { DEPARTMENTS } from '../departments';
 import { rankCandidates } from '../search';
 import { NUTRITION_DATA_VERSION, NUTRITION_INGREDIENT_COUNT, NUTRITION_SOURCES } from './meta';
 
@@ -110,6 +111,25 @@ describe('bundled nutrition data', () => {
     const found = rankCandidates('zolty ser', candidates, 5);
     expect(found.length).toBeGreaterThan(0);
     expect(found[0]?.item.ingredient.name).toContain('Ser żółty');
+  });
+
+  it('files every row in a shop department (Phase 17)', () => {
+    // The criterion, checked against the committed artefact rather than the script: no row
+    // may reach a shopping list with nothing to print it under.
+    for (const ingredient of bundle.ingredients) {
+      expect(DEPARTMENTS, ingredient.name).toContain(ingredient.department);
+    }
+  });
+
+  it('lets a TSV override beat the department derived from the USDA category', () => {
+    // Both are USDA category 9, „Fruits and Fruit Juices", which derives to `warzywa`. One of
+    // them is frozen, and nothing about a USDA category can ever say so (decision 328).
+    expect(bundle.ingredients.find((i) => i.name === 'Truskawki')?.department).toBe('warzywa');
+    expect(bundle.ingredients.find((i) => i.name === 'Truskawki mrożone')?.department).toBe(
+      'mrozonki'
+    );
+    // „Mrożonki" is derived from no category at all, so its rows exist only by override.
+    expect(bundle.ingredients.some((i) => i.department === 'mrozonki')).toBe(true);
   });
 
   it('is serialized one ingredient per line, so diffs stay readable', () => {

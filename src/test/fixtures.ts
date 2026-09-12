@@ -15,7 +15,8 @@ export const chicken: Ingredient = {
   aliases: ['kurczak', 'filet z kurczaka'],
   state: 'raw',
   per100g: macros(100, 20, 0, 2),
-  source: 'usda'
+  source: 'usda',
+  department: 'mieso'
 };
 
 export const egg: Ingredient = {
@@ -24,9 +25,14 @@ export const egg: Ingredient = {
   aliases: [],
   state: 'raw',
   per100g: macros(200, 10, 2, 10),
-  source: 'usda'
+  source: 'usda',
+  department: 'nabial'
 };
 
+/**
+ * Deliberately carries **no** department: the „Inne" fallback is a rule the app lives with on
+ * every row nobody has filed (Phase 17), so one fixture has to exercise it.
+ */
 export const oil: Ingredient = {
   id: 'usda:3',
   name: 'Oliwa z oliwek',
@@ -44,6 +50,7 @@ export const garlic: Ingredient = {
   state: 'raw',
   per100g: macros(149, 6, 33, 0.5),
   source: 'usda',
+  department: 'warzywa',
   measures: [
     { name: 'ząbek', grams: 5 },
     { name: 'szt.', grams: 45 }

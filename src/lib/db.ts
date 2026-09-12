@@ -208,6 +208,7 @@ export function toIngredientRecord(ingredient: Ingredient): IngredientRecord {
  * This names its fields rather than spreading the row, so **every optional field has to be
  * listed here or it is silently dropped on the way out** — which is what `measures` (Phase 16)
  * would have been: right in the JSON on disk, gone in the app (STATE.md decision 353).
+ * `department` (Phase 17) is here for the same reason and would fail the same way.
  */
 export function fromIngredientRecord(record: IngredientRecord): Ingredient {
   const ingredient: Ingredient = {
@@ -220,6 +221,7 @@ export function fromIngredientRecord(record: IngredientRecord): Ingredient {
   };
   if (record.updatedAt !== undefined) ingredient.updatedAt = record.updatedAt;
   if (record.measures !== undefined) ingredient.measures = record.measures;
+  if (record.department !== undefined) ingredient.department = record.department;
   return ingredient;
 }
 

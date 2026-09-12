@@ -1,4 +1,5 @@
 import type {
+  Department,
   Ingredient,
   IngredientState,
   Macros,
@@ -46,6 +47,13 @@ export interface IngredientDraft {
   fat: number | null;
   /** Household measures this ingredient offers (Phase 16). Empty is a complete ingredient. */
   measures: MeasureDraft[];
+  /**
+   * Which part of the shop it is bought in (Phase 17). `''` is „not chosen", which is a
+   * complete ingredient too: it shops under „Inne" and nothing ever blocks a save on it
+   * (decision 330). The `<select>` binds to this directly, which is why it is `''` and not
+   * `undefined` — an empty `<option>` value reads back as the empty string.
+   */
+  department: Department | '';
 }
 
 /**
@@ -72,7 +80,8 @@ export function emptyIngredientDraft(name = ''): IngredientDraft {
     protein: null,
     carbs: null,
     fat: null,
-    measures: []
+    measures: [],
+    department: ''
   };
 }
 
@@ -102,7 +111,8 @@ export function draftFromIngredient(
       id: nextId(),
       name: measure.name,
       grams: measure.grams
-    }))
+    })),
+    department: ingredient.department ?? ''
   };
 }
 
@@ -201,7 +211,10 @@ export function draftToIngredient(
     source: 'custom',
     // Omitted rather than written as `[]`, like every other optional field: an ingredient
     // offering no measure must look exactly like one from before measures existed.
-    ...(measures.length === 0 ? {} : { measures })
+    ...(measures.length === 0 ? {} : { measures }),
+    // Same rule: „not chosen" is an absent field, not the string „inne". The two mean the
+    // same thing on a shopping list, and only the absence says the user never answered.
+    ...(draft.department === '' ? {} : { department: draft.department })
   };
 }
 

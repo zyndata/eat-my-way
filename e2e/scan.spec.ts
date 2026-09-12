@@ -90,6 +90,39 @@ test('a photographed label fills the four macros and the name', async ({ device,
   expect(errors).toEqual([]);
 });
 
+test('the scan proposes a shop department in that same one request', async ({ device, gemini }) => {
+  // The Phase 17 criterion, seen where the user sees it: the department arrives with the
+  // macros, marked „ze zdjęcia" like every other scanned field, and the request count does not
+  // move — it rides on the scan already being made (STATE.md decision 330).
+  gemini.script.label = { ...BUTTER, category: 'nabial' };
+
+  await setUpVault(device, true);
+  await openNewIngredient(device);
+  await photograph(device);
+
+  await expect(device.getByLabel('Dział sklepu')).toHaveValue('nabial');
+  await expect(device.getByText(/Ze zdjęcia:.*dział sklepu/)).toBeVisible();
+  expect(modelCalls(gemini)).toHaveLength(1);
+});
+
+test('a scan that cannot tell the department leaves the field empty rather than guessing', async ({
+  device,
+  gemini
+}) => {
+  // `null`, not „inne": „I could not tell" and „it goes on the miscellaneous shelf" are
+  // different answers, and only the first one leaves the choice to the user.
+  gemini.script.label = { ...BUTTER, category: null };
+
+  await setUpVault(device, true);
+  await openNewIngredient(device);
+  await photograph(device);
+
+  await expect(device.getByLabel('kcal')).toHaveValue('735');
+  await expect(device.getByLabel('Dział sklepu')).toHaveValue('');
+  // …and the ingredient still saves, because the department never blocked anything.
+  await expect(device.getByRole('button', { name: 'Zapisz składnik' })).toBeEnabled();
+});
+
 test('a value the model could not read stays empty, and the save stays refused', async ({
   device,
   gemini

@@ -283,3 +283,26 @@ describe('household measures round-trip (Phase 16)', () => {
     expect(read.recipes[0]?.items[0]).not.toHaveProperty('measureName');
   });
 });
+
+describe('shop department round-trip (Phase 17)', () => {
+  const filed: Ingredient = { ...custom, department: 'mrozonki' };
+
+  it('survives export and import with no schema version bump and no migration', () => {
+    const built = buildBackup(
+      { ...input, customIngredients: [filed] },
+      new Date('2026-09-12T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]?.department).toBe('mrozonki');
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+    expect(read.version).toBe(BACKUP_VERSION);
+  });
+
+  it('reads a file written before departments existed, unchanged', () => {
+    const built = buildBackup(input, new Date('2026-09-12T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]).not.toHaveProperty('department');
+  });
+});

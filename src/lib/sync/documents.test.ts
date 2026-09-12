@@ -164,3 +164,42 @@ describe('household measures in the Drive documents (Phase 16)', () => {
     expect(read.ingredients[0]?.measures).toBeUndefined();
   });
 });
+
+describe('the shopping department in the Drive documents (Phase 17)', () => {
+  it('keeps an ingredient’s department, with no schema version and no migration', () => {
+    const document = {
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom',
+          department: 'nabial'
+        }
+      ],
+      corrections: []
+    };
+
+    const read = readIngredientsDocument(JSON.parse(JSON.stringify(document)));
+    expect(read.ingredients[0]?.department).toBe('nabial');
+  });
+
+  it('reads a document written before departments existed, unchanged', () => {
+    const read = readIngredientsDocument({
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom'
+        }
+      ],
+      corrections: []
+    });
+    expect(read.ingredients[0]).not.toHaveProperty('department');
+  });
+});

@@ -54,10 +54,47 @@ describe('scanLabelImage', () => {
       onusage: (one) => spent.push(one)
     });
 
-    expect(label).toEqual({ name: 'Masło', kcal: 735, protein: 0.7, carbs: 0.8, fat: 82 });
+    expect(label).toEqual({
+      name: 'Masło',
+      kcal: 735,
+      protein: 0.7,
+      carbs: 0.8,
+      fat: 82,
+      department: null
+    });
     expect(seen).toHaveLength(1);
     const contents = at(seen).body.contents as { parts: Record<string, unknown>[] }[];
     expect(contents[0]?.parts?.[1]).toEqual({ inlineData: IMAGE });
+    expect(spent).toEqual([{ requests: 1, tokens: 512 }]);
+  });
+
+  it('brings the shop department back in that same one request (Phase 17)', async () => {
+    // The acceptance criterion, measured where it is actually decided: the department rides on
+    // the scan already being made, so the request count and the usage counter do not move
+    // (STATE.md decision 330).
+    const { seen, fetchImpl } = recorder(
+      answer(
+        JSON.stringify({
+          name: 'Mleko 2%',
+          kcal: 51,
+          protein: 3.3,
+          carbs: 4.7,
+          fat: 2,
+          category: 'nabial'
+        })
+      )
+    );
+    const spent: { requests: number; tokens: number }[] = [];
+
+    const label = await scanLabelImage(IMAGE, {
+      apiKey: 'k',
+      model: 'm',
+      fetchImpl,
+      onusage: (one) => spent.push(one)
+    });
+
+    expect(label.department).toBe('nabial');
+    expect(seen).toHaveLength(1);
     expect(spent).toEqual([{ requests: 1, tokens: 512 }]);
   });
 

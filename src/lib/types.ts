@@ -1,8 +1,10 @@
 import type { MealAdjustment } from './adjustments';
 import type { MeasureName } from './text';
+import type { Department } from './departments';
 
 export type { MealAdjustment };
 export type { MeasureName };
+export type { Department };
 
 /**
  * Data model. These are the *wire* shapes: exactly what PLAN.md specifies and exactly
@@ -70,6 +72,17 @@ export interface Ingredient {
    * every data refresh; only a `custom:*` row carries measures the user typed (decision 321).
    */
   measures?: Measure[];
+  /**
+   * Which part of the shop this is bought in (Phase 17), which is the only thing that orders
+   * a shopping list. Optional like the fields above — no schema version, no migration — and a
+   * missing value means `inne` rather than an error, because the form that takes this field is
+   * the form that reads a photographed package and must never block on it (decision 330).
+   *
+   * Bundled rows all carry one: the build script derives it from the USDA food category and
+   * `data/pl-ingredients.tsv` overrides it per row where the derivation is wrong (decision
+   * 328). A `custom:*` row carries what the user chose, or what a scan proposed and they kept.
+   */
+  department?: Department;
 }
 
 export interface RecipeItem {

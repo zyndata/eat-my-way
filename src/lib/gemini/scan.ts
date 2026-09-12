@@ -1,4 +1,6 @@
 import type { IngredientDraft } from '../custom-ingredients';
+import type { Department } from '../departments';
+import { DEPARTMENTS, isDepartment } from '../departments';
 import type { ResponseSchema } from './client';
 
 /**
@@ -19,6 +21,14 @@ import type { ResponseSchema } from './client';
  * wpisano" and „zero" are different facts (decision 178), and a scan that quietly returned `0`
  * would recreate that bug with a photograph as its alibi. `readScannedLabel` enforces it on the
  * way out of the model, whatever the model actually sent.
+ *
+ * **Phase 17 adds the shopping department, and it costs no extra request.** One nullable,
+ * enumerated property on the schema and one rule in the prompt, both riding on the scan that is
+ * already being made — which is the whole reason it is acceptable here and a dedicated call is
+ * not (decision 330). A classification into nine shelves is not a nutrition value, so this does
+ * not touch the rule above; and like every scanned field it arrives as a proposal, marked „ze
+ * zdjęcia", which the user sees and can change. A scan that cannot tell the department leaves
+ * the field empty rather than guessing „Inne".
  */
 
 /** What one scan produced. Every macro is per 100 g; `null` is „could not read it". */
@@ -29,10 +39,18 @@ export interface ScannedLabel {
   protein: number | null;
   carbs: number | null;
   fat: number | null;
+  /**
+   * Which part of the shop the product is bought in, or `null` when the model could not tell.
+   *
+   * `null`, never `'inne'`: „I could not tell" and „it belongs on the miscellaneous shelf" are
+   * different answers, and only the first one leaves the field alone. The same shape of rule as
+   * the macros' „null is not 0", for the same reason.
+   */
+  department: Department | null;
 }
 
 /** The fields a scan may fill. Everything else in the draft stays the user's. */
-export const SCANNED_FIELDS = ['name', 'kcal', 'protein', 'carbs', 'fat'] as const;
+export const SCANNED_FIELDS = ['name', 'kcal', 'protein', 'carbs', 'fat', 'department'] as const;
 
 export type ScannedField = (typeof SCANNED_FIELDS)[number];
 
@@ -42,8 +60,8 @@ export type ScannedField = (typeof SCANNED_FIELDS)[number];
  */
 export const LABEL_SCHEMA: ResponseSchema = {
   type: 'object',
-  required: ['name', 'kcal', 'protein', 'carbs', 'fat'],
-  propertyOrdering: ['name', 'kcal', 'protein', 'carbs', 'fat'],
+  required: ['name', 'kcal', 'protein', 'carbs', 'fat', 'category'],
+  propertyOrdering: ['name', 'kcal', 'protein', 'carbs', 'fat', 'category'],
   properties: {
     name: {
       type: 'string',
@@ -53,7 +71,16 @@ export const LABEL_SCHEMA: ResponseSchema = {
     kcal: { type: 'number', nullable: true, description: 'Kilokalorie w 100 g. null, jeśli nie widać.' },
     protein: { type: 'number', nullable: true, description: 'Białko w gramach na 100 g.' },
     carbs: { type: 'number', nullable: true, description: 'Węglowodany w gramach na 100 g.' },
-    fat: { type: 'number', nullable: true, description: 'Tłuszcz w gramach na 100 g.' }
+    fat: { type: 'number', nullable: true, description: 'Tłuszcz w gramach na 100 g.' },
+    // Enumerated rather than free text: the nine ids are a closed vocabulary the app stores
+    // verbatim, and anything else that comes back anyway is dropped by `readScannedLabel`.
+    category: {
+      type: 'string',
+      nullable: true,
+      enum: [...DEPARTMENTS],
+      description:
+        'Dział sklepu, w którym kupuje się ten produkt. null, jeśli nie da się tego ocenić.'
+    }
   }
 };
 
@@ -76,14 +103,18 @@ export const SCAN_SYSTEM = [
   '   zapisz jako liczbę (0.5). Nie zwracaj jednostek ani tekstu — tylko liczby.',
   '5. name to nazwa produktu z przodu opakowania, po polsku, bez gramatury i bez sloganów.',
   '   Nie przepisuj nazwy prawnej drobnym drukiem, jeśli jest inna nazwa handlowa.',
-  '6. NAJWAŻNIEJSZE: jeśli którejś wartości nie widać, nie da się jej odczytać albo nie ma jej',
+  '6. category to dział sklepu, w którym kupuje się ten produkt: warzywa (warzywa i owoce),',
+  '   nabial (nabiał i jaja), mieso (mięso, ryby, wędliny), pieczywo, sypkie (kasze, makarony,',
+  '   mąka, cukier), przyprawy (przyprawy, oleje, sosy, dodatki), mrozonki (produkty mrożone),',
+  '   napoje, inne. Jeśli z opakowania nie da się tego ocenić — wpisz null, a nie „inne”.',
+  '7. NAJWAŻNIEJSZE: jeśli którejś wartości nie widać, nie da się jej odczytać albo nie ma jej',
   '   na zdjęciu — wpisz null. NIGDY nie wpisuj 0 zamiast wartości, której nie odczytałeś,',
   '   i nigdy nie zgaduj. 0 wpisz tylko wtedy, gdy na opakowaniu naprawdę wydrukowano 0.'
 ].join('\n');
 
 /** The user turn. The picture rides alongside it as `inlineData` (see `client.ts`). */
 export const SCAN_PROMPT =
-  'Odczytaj z tego zdjęcia nazwę produktu i wartości odżywcze w 100 g.';
+  'Odczytaj z tego zdjęcia nazwę produktu, wartości odżywcze w 100 g i dział sklepu.';
 
 // ---- readers ------------------------------------------------------------------------------
 
@@ -106,6 +137,17 @@ function readMacro(value: unknown): number | null {
   return parsed;
 }
 
+/**
+ * The department the model named, or `null`.
+ *
+ * Anything outside the nine — a Polish label instead of an id, a shelf we do not have, a whole
+ * sentence — is `null`, which leaves the field alone. There is deliberately no coercion to
+ * `'inne'`: a wrong guess the user has to notice is worse than an empty field they fill in.
+ */
+function readDepartment(value: unknown): Department | null {
+  return isDepartment(value) ? value : null;
+}
+
 /** Whatever came back, as a `ScannedLabel`. Never throws; an unreadable answer is all-`null`. */
 export function readScannedLabel(value: unknown): ScannedLabel {
   const doc = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
@@ -114,12 +156,16 @@ export function readScannedLabel(value: unknown): ScannedLabel {
     kcal: readMacro(doc.kcal),
     protein: readMacro(doc.protein),
     carbs: readMacro(doc.carbs),
-    fat: readMacro(doc.fat)
+    fat: readMacro(doc.fat),
+    department: readDepartment(doc.category)
   };
 }
 
 /** True when the scan read nothing at all — a photo of a table it could not see. */
 export function labelIsEmpty(label: ScannedLabel): boolean {
+  // `department` is deliberately not counted: a photo that yielded a shelf and nothing else is
+  // a photo of a table the model could not read, and the form has to say so rather than quietly
+  // filing an otherwise empty ingredient.
   return (
     label.name === '' &&
     label.kcal === null &&
@@ -157,6 +203,12 @@ export function applyScannedLabel(
     if (protectedFields[field] === true || value === null) continue;
     next[field] = value;
     filled.push(field);
+  }
+  // Same two rules as the macros: a field the user chose is never overwritten, and a department
+  // the scan could not tell is left exactly as it was rather than blanked or defaulted.
+  if (protectedFields.department !== true && label.department !== null) {
+    next.department = label.department;
+    filled.push('department');
   }
 
   return { draft: next, filled };

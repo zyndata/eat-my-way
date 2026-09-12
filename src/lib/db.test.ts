@@ -160,6 +160,18 @@ describe('ingredient records', () => {
     await db.delete();
   });
 
+  it('carry the shop department out again — same rule as the measures (Phase 17)', async () => {
+    const db = freshDb();
+    await db.open();
+    const filed = { ...salmon, department: 'mieso' as const };
+    await db.ingredients.put(toIngredientRecord(filed));
+
+    const stored = await db.ingredients.get(salmon.id);
+    expect(fromIngredientRecord(stored!)).toEqual(filed);
+
+    await db.delete();
+  });
+
   it('index an alias list into a multi-entry index', async () => {
     const db = freshDb();
     await db.open();

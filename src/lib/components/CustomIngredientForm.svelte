@@ -8,6 +8,7 @@
     emptyMeasureDraft
   } from '../custom-ingredients';
   import { MEASURE_NAMES, measureWord } from '../text';
+  import { DEPARTMENTS, DEPARTMENT_LABELS } from '../departments';
   import { newId } from '../ids';
   import Spinner from './Spinner.svelte';
   import { GeminiError } from '../gemini/client';
@@ -44,6 +45,10 @@
    * Phase 16 adds the household measures: a repeating row of „name + weight in grams", optional
    * in every direction. An ingredient offering none is complete, which is why there is no empty
    * row waiting to be filled — the list starts closed and „Dodaj miarę" opens it.
+   *
+   * Phase 17 adds the shopping department, on the same terms: it defaults to nothing, it shows
+   * „Inne" as what that means, and it never blocks a save (decision 330). A scan proposes one
+   * alongside the macros and marks it like every other scanned field.
    */
 
   let {
@@ -122,7 +127,8 @@
     kcal: 'kcal',
     protein: 'białko',
     carbs: 'węglowodany',
-    fat: 'tłuszcz'
+    fat: 'tłuszcz',
+    department: 'dział sklepu'
   };
 
   /** Typing into a field claims it: the scan stops owning it and stops marking it. */
@@ -320,6 +326,27 @@
       />
     </label>
   </div>
+
+  <!-- The department orders the shopping list and nothing else. „— (Inne)" is a real choice
+       and the default one: an ingredient nobody has filed still has to be buyable, so it
+       shops under „Inne" rather than holding up the save (STATE.md decision 330). -->
+  <label class="block pt-3 text-sm font-medium">
+    Dział sklepu
+    <select
+      class={fieldClass + scannedClass('department')}
+      bind:value={draft.department}
+      onchange={() => claim('department')}
+    >
+      <option value="">— (Inne)</option>
+      {#each DEPARTMENTS as department (department)}
+        <option value={department}>{DEPARTMENT_LABELS[department]}</option>
+      {/each}
+    </select>
+  </label>
+  <p class="pt-1 text-xs text-(--color-ink-muted)">
+    Po tym grupujemy listę zakupów, w kolejności obchodzenia sklepu. Możesz to pominąć —
+    składnik bez działu trafi na koniec, do „Inne”.
+  </p>
 
   <!-- Aliases were indexed from schema v2 on and until now had no way of ever being filled.
        They widen both the autocomplete and Gemini's ingredient matching. -->
