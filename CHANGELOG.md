@@ -18,9 +18,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 16 — miary domowe
 - Phase 17 — dział sklepu
 - Phase 18 — trzy drobiazgi
+- Phase 19 — cel dopowiedziany do końca
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
