@@ -16,8 +16,10 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
 > your goals (13), changing one planned meal without touching the recipe it came from (14),
 > the safe-area fix an installed iPhone asked for (15), household measures — a clove, a
-> slice, a tablespoon — so a recipe can be typed the way it is written (16), and a shopping
-> list grouped by where things are actually bought (17).
+> slice, a tablespoon — so a recipe can be typed the way it is written (16), a shopping
+> list grouped by where things are actually bought (17), and three small things daily use
+> asked for: a warning when a label's numbers cannot all be true, a library that finds a
+> recipe by what is in it, and the week's menu as text you can paste into a message (18).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -72,6 +74,21 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   happened to mention things, and flour between two vegetables stops costing a walk back across
   the building. Departments nothing was bought from are not printed; an ingredient nobody has
   filed shops under „Inne", and nothing ever makes you choose one before saving.
+- **You can look for a recipe by what is in the house.** Typing „soczewica" into the library
+  finds the recipes that *contain* lentils, not only the one with lentils in its name — those
+  still come first, so „sernik" never disappears under every recipe holding cheese. Ingredient
+  synonyms count too: „kurczak" finds a recipe using „Pierś z kurczaka".
+- **The menu shares the same way the shopping list does.** A day or a week becomes plain text
+  — the date, the meals, the portions and each day's totals against that day's goals — and
+  leaves through the system share sheet or the clipboard. No ingredients in it: those are the
+  shopping list, which is one button further down the same menu.
+- **A label's numbers are checked for being possible.** 100 g of anything cannot hold 40 g of
+  protein, 40 g of carbohydrate and 40 g of fat, and calories that disagree with the macros by
+  a wide margin are usually a decimal point in the wrong place — which is a real and silent
+  failure when the numbers were read off a photographed package rather than typed. The form
+  says so in a sentence and names the scanned fields it suspects. It never blocks the save:
+  fibre, alcohol and polyols miss the arithmetic honestly, and a form must not argue with a
+  package.
 - **What you ate is allowed not to be the recipe.** The salad was planned and what was in the
   house was the cucumbers; the bread is home-baked one week and shop-bought the next. On that
   one meal you skip a row, change its amount, swap it for something else or add something the

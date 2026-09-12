@@ -5,6 +5,7 @@
   import { groupByTag, isRecipeSort, searchRecipes } from '../lib/recipes';
   import { pluralPl } from '../lib/text';
   import { todayDate } from '../lib/dates';
+  import { ingredientIndex } from '../lib/ingredients';
   import { repository } from '../lib/repository';
   import { scheduleSync, syncState } from '../lib/sync/state.svelte';
 
@@ -14,6 +15,11 @@
    *
    * Everything is read from IndexedDB once when the screen mounts; filtering and ranking
    * then happen in memory, so typing never waits on a database round trip.
+   *
+   * Phase 18 widens the search from names to contents: „soczewica" also lists the recipes
+   * that merely contain lentils, underneath every recipe with lentils in its name. The keys
+   * come from the autocomplete's in-memory snapshot, so nothing is denormalized onto a recipe
+   * (STATE.md decision 333).
    *
    * Phase 9 adds three things on top of that list: a choice of order (task 4), a view grouped
    * by tag (task 1) and „Powiel" (task 3). The first two are remembered in the meta table,
@@ -30,6 +36,8 @@
   let entries = $state<RecipeListEntry[]>([]);
   let tags = $state<Tag[]>([]);
   let macros = $state(new Map<string, Macros>());
+  /** Ingredient search keys, so the query reaches what a recipe contains (Phase 18 task B). */
+  let ingredientKeys = $state(new Map<string, string[]>());
   let loading = $state(true);
   let duplicating = $state<string | null>(null);
 
@@ -38,7 +46,9 @@
   let sort = $state<RecipeSort>('activity');
   let grouped = $state(false);
 
-  const visible = $derived(searchRecipes(entries, query, selected, { sort, portionMacros: macros }));
+  const visible = $derived(
+    searchRecipes(entries, query, selected, { sort, portionMacros: macros, ingredientKeys })
+  );
   /**
    * The sections. `tags` is already most-used first, which is the order decision 157 chose,
    * and „Bez tagu" is appended last by `groupByTag`. A recipe with three tags appears three
@@ -50,14 +60,16 @@
 
   async function load(): Promise<void> {
     loading = true;
-    const [library, allTags, storedSort, storedGrouped] = await Promise.all([
+    const [library, allTags, storedSort, storedGrouped, keys] = await Promise.all([
       repository.recipeLibrary(todayDate()),
       repository.allTags(),
       repository.getMeta('recipeSort'),
-      repository.getMeta('recipeGrouped')
+      repository.getMeta('recipeGrouped'),
+      ingredientIndex.keysById()
     ]);
     entries = library;
     tags = allTags;
+    ingredientKeys = keys;
     if (isRecipeSort(storedSort)) sort = storedSort;
     grouped = storedGrouped === true;
     macros = await repository.recipeMacros(library.map((entry) => entry.recipe));
@@ -166,11 +178,11 @@
 <Screen title="Przepisy" lead="Twoja biblioteka przepisów. Składniki zawsze na 1 porcję.">
   <div class="flex flex-wrap items-center gap-2">
     <label class="min-w-0 flex-1 text-sm font-medium">
-      <span class="sr-only">Szukaj przepisu</span>
+      <span class="sr-only">Szukaj przepisu lub składnika</span>
       <input
         class="w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)"
         type="search"
-        placeholder="Szukaj przepisu…"
+        placeholder="Szukaj przepisu lub składnika…"
         bind:value={query}
       />
     </label>

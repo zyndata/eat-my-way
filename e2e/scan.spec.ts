@@ -90,6 +90,33 @@ test('a photographed label fills the four macros and the name', async ({ device,
   expect(errors).toEqual([]);
 });
 
+test('a scanned value ten times too large is warned about, and still saveable', async ({
+  device,
+  gemini
+}) => {
+  // The Phase 18 criterion, seen where it actually matters: a decimal point in the wrong
+  // place is silent when nobody typed the number. 7350 kcal against 82 g of fat is the same
+  // butter with its kcal shifted one digit.
+  gemini.script.label = { ...BUTTER, kcal: 7350 };
+
+  await setUpVault(device, true);
+  await openNewIngredient(device);
+  await photograph(device);
+
+  const warning = device.getByTestId('sanity-warning');
+  // It names the scanned fields it implicates — the form already knows which the scan filled.
+  await expect(warning).toContainText('odczytane ze zdjęcia');
+  await expect(warning).toContainText('kcal');
+  await expect(warning).toContainText('7350');
+
+  // …and it never blocks: a label is allowed to be right and Atwater wrong (decision 331).
+  await expect(device.getByRole('button', { name: 'Zapisz składnik' })).toBeEnabled();
+
+  // Correcting the field by hand takes the warning away.
+  await device.getByLabel('kcal', { exact: true }).fill('735');
+  await expect(warning).toBeHidden();
+});
+
 test('the scan proposes a shop department in that same one request', async ({ device, gemini }) => {
   // The Phase 17 criterion, seen where the user sees it: the department arrives with the
   // macros, marked „ze zdjęcia" like every other scanned field, and the request count does not

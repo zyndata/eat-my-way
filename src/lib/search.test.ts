@@ -107,3 +107,44 @@ describe('rankCandidates', () => {
     expect(rankCandidates('ser', candidates, 5)).toHaveLength(5);
   });
 });
+
+describe('the contained tier (Phase 18, decision 333)', () => {
+  /** A candidate that also carries the keys of things it holds — a recipe and its ingredients. */
+  const holder = (name: string, contains: string[], useCount = 0): Row => ({
+    ...row(name, [], useCount),
+    containedKeys: contains.map(normalizeKey)
+  });
+
+  const library = [
+    holder('Sernik', ['Ser twarogowy', 'Jajko']),
+    holder('Zapiekanka', ['Ser żółty', 'Makaron'], 9),
+    holder('Sałatka', ['Ser feta', 'Pomidor'], 5)
+  ];
+
+  it('puts a name match above every contained match, however exact', () => {
+    // „Sernik" is a mere infix of the name; „ser" is *exactly* one of the other two recipes'
+    // ingredients. The name still wins — that is the whole rule.
+    expect(names(rankCandidates('ser', library))).toEqual(['Sernik', 'Zapiekanka', 'Sałatka']);
+  });
+
+  it('finds what a candidate contains when nothing it is called matches', () => {
+    const found = rankCandidates('makaron', library);
+    expect(names(found)).toEqual(['Zapiekanka']);
+    expect(found[0]?.tier).toBe(MatchTier.Contained);
+  });
+
+  it('scores every contained match at the same tier, and orders them by use', () => {
+    const found = rankCandidates('ser', library).slice(1);
+    expect(found.every((match) => match.tier === MatchTier.Contained)).toBe(true);
+    // Both are `Contained`, so `useCount` decides: 9 before 5.
+    expect(names(found)).toEqual(['Zapiekanka', 'Sałatka']);
+  });
+
+  it('changes nothing for a candidate that carries no contained keys', () => {
+    // Both are prefix matches on their own name; the shorter one wins, exactly as before.
+    expect(names(rankCandidates('ser', [row('Ser żółty'), row('Sernik')]))).toEqual([
+      'Sernik',
+      'Ser żółty'
+    ]);
+  });
+});

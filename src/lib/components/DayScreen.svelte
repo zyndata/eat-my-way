@@ -13,6 +13,7 @@
   import DateMultiSelect from './DateMultiSelect.svelte';
   import MacroBars from './MacroBars.svelte';
   import MealList from './MealList.svelte';
+  import MenuSheet from './MenuSheet.svelte';
   import MonthGrid from './MonthGrid.svelte';
   import NavIcon from './NavIcon.svelte';
   import PlannerSheet from './PlannerSheet.svelte';
@@ -64,6 +65,9 @@
   let shoppingTitle = $state('');
   /** Days the planner is proposing for; empty while its sheet is closed (Phase 13). */
   let plannerDates = $state<string[]>([]);
+  /** Days the menu export covers; empty while its sheet is closed (Phase 18 task C). */
+  let menuDates = $state<string[]>([]);
+  let menuTitle = $state('');
 
   let dayMenu = $state<HTMLDetailsElement>();
 
@@ -140,6 +144,17 @@
         ? `Lista zakupów — ${formatDayLong(date)}`
         : `Lista zakupów — tydzień ${formatDayMonth(dates[0] ?? date)} – ${formatDayMonth(dates[dates.length - 1] ?? date)}`;
     shoppingDates = dates;
+  }
+
+  /** „Jadłospis" for this day or for its whole week — the shopping list's twin (task C). */
+  function openMenuExport(scope: 'day' | 'week'): void {
+    closeMenu();
+    const dates = scope === 'day' ? [date] : weekDates(date);
+    menuTitle =
+      scope === 'day'
+        ? `Jadłospis — ${formatDayLong(date)}`
+        : `Jadłospis — tydzień ${formatDayMonth(dates[0] ?? date)} – ${formatDayMonth(dates[dates.length - 1] ?? date)}`;
+    menuDates = dates;
   }
 
   function closeMenu(): void {
@@ -365,6 +380,20 @@
           </button>
           <button
             type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openMenuExport('day')}
+          >
+            Jadłospis — dzień
+          </button>
+          <button
+            type="button"
+            class="block w-full rounded-lg px-3 py-2 text-left text-sm"
+            onclick={() => openMenuExport('week')}
+          >
+            Jadłospis — tydzień
+          </button>
+          <button
+            type="button"
             class="block w-full rounded-lg px-3 py-2 text-left text-sm text-(--color-danger) disabled:opacity-40"
             disabled={day.meals.length === 0}
             onclick={() => {
@@ -452,6 +481,13 @@
     title={shoppingTitle}
     dates={shoppingDates}
     onclose={() => (shoppingDates = [])}
+  />
+
+  <MenuSheet
+    open={menuDates.length > 0}
+    title={menuTitle}
+    dates={menuDates}
+    onclose={() => (menuDates = [])}
   />
 
   <DateMultiSelect

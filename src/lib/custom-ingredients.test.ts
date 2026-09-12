@@ -5,6 +5,7 @@ import {
   draftForCopy,
   draftFromIngredient,
   draftProblem,
+  draftSanity,
   draftToIngredient,
   emptyIngredientDraft,
   emptyMeasureDraft,
@@ -195,5 +196,73 @@ describe('household measures on a custom ingredient (Phase 16)', () => {
     expect(replaceIngredientInItems(items, 'usda:4', 'custom:9')).toEqual([
       { ingredientId: 'custom:9', amount: 2, unit: 'szt', gramsPerUnit: 5 }
     ]);
+  });
+});
+
+describe('are these numbers even possible? (Phase 18 task A)', () => {
+  const draft = (kcal: number, protein: number, carbs: number, fat: number) => ({
+    ...emptyIngredientDraft('Coś'),
+    kcal,
+    protein,
+    carbs,
+    fat
+  });
+
+  it('warns when the three macronutrients weigh more than the food does', () => {
+    const impossible = draft(520, 40, 40, 40);
+    const sanity = draftSanity(impossible);
+    expect(sanity?.rule).toBe('sum');
+    expect(sanity?.message).toContain('120 g na 100 g');
+    // The whole point of decision 331: it is a sentence, not a lock.
+    expect(draftProblem(impossible)).toBeNull();
+    expect(canSaveDraft(impossible)).toBe(true);
+  });
+
+  it('says nothing about a perfectly ordinary ingredient', () => {
+    // Ryż biały, straight out of the bundled subset: 360 kcal against 359 implied.
+    expect(draftSanity(draft(360, 7, 79, 1))).toBeNull();
+    // Oil: 900 kcal of pure fat, the extreme end of the range and still fine.
+    expect(draftSanity(draft(884, 0, 0, 100))).toBeNull();
+  });
+
+  it('warns when the stated energy cannot come from those macros, and still saves', () => {
+    // A high-fibre bran: the label is right, Atwater is not. 360 implied against 200 stated.
+    const bran = draft(200, 16, 65, 4);
+    const sanity = draftSanity(bran);
+    expect(sanity?.rule).toBe('energy');
+    expect(sanity?.message).toContain('360 kcal');
+    expect(sanity?.message).toContain('200');
+    expect(canSaveDraft(bran)).toBe(true);
+  });
+
+  it('leaves a 15 kcal vegetable alone — the absolute floor, decision 332', () => {
+    // Sałata: 19 kcal implied against 15 stated. 4 kcal is 27%, and under the 20 kcal floor.
+    expect(draftSanity(draft(15, 1.4, 2.9, 0.2))).toBeNull();
+  });
+
+  it('catches a decimal point in the wrong place', () => {
+    expect(draftSanity(draft(1000, 12, 3, 4))?.rule).toBe('energy');
+    expect(draftSanity(draft(10, 12, 3, 4))?.rule).toBe('energy');
+  });
+
+  it('names the scanned fields it implicates, and only those', () => {
+    const scanned = draftSanity(draft(520, 40, 40, 40), { protein: true, kcal: true });
+    // Sum is about the three macronutrients — the scanned kcal is not one of them.
+    expect(scanned?.message).toContain('pole odczytane ze zdjęcia: białko.');
+    expect(scanned?.message).toContain('zapisz mimo to');
+
+    const energy = draftSanity(draft(1000, 12, 3, 4), { kcal: true, fat: true });
+    expect(energy?.message).toContain('pola odczytane ze zdjęcia: kcal, tłuszcz.');
+  });
+
+  it('falls back to a typo when nothing was scanned', () => {
+    expect(draftSanity(draft(520, 40, 40, 40))?.message).toContain('literówki');
+  });
+
+  it('stays silent while `draftProblem` still has something to say', () => {
+    // Missing and negative values are the save rule's business; two sentences arguing about
+    // one field help nobody.
+    expect(draftSanity({ ...emptyIngredientDraft('Coś'), kcal: 900, protein: 40, carbs: 40 })).toBeNull();
+    expect(draftSanity(draft(900, -40, 40, 40))).toBeNull();
   });
 });

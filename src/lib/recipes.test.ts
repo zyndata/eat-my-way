@@ -141,6 +141,59 @@ describe('searchRecipes', () => {
   });
 });
 
+describe('searchRecipes by what is in the house (Phase 18 task B)', () => {
+  /** An entry whose recipe holds the named ingredient ids. */
+  const holding = (name: string, ingredientIds: string[], plannedCount = 0): RecipeListEntry => ({
+    recipe: makeRecipe({
+      id: `r-${name}`,
+      name,
+      updatedAt: '2026-09-01T09:00:00.000Z',
+      items: ingredientIds.map((id) => item(id, 100))
+    }),
+    usage: { plannedCount }
+  });
+
+  /** What `ingredientIndex.keysById()` hands over: name key first, then the alias keys. */
+  const keys: ReadonlyMap<string, readonly string[]> = new Map([
+    ['i-soczewica', ['soczewica czerwona', 'soczewica']],
+    ['i-kurczak', ['piers z kurczaka', 'kurczak', 'filet']],
+    ['i-ser', ['ser bialy']]
+  ]);
+
+  const library = [
+    holding('Soczewica z curry', ['i-kurczak']),
+    holding('Zupa dnia', ['i-soczewica', 'i-ser'], 4),
+    holding('Placki', ['i-soczewica'], 1),
+    holding('Sernik', ['i-ser'])
+  ];
+
+  const found = (query: string) =>
+    searchRecipes(library, query, [], { ingredientKeys: keys }).map((row) => row.recipe.name);
+
+  it('lists recipes that contain the thing, below every recipe named after it', () => {
+    expect(found('soczewica')).toEqual(['Soczewica z curry', 'Zupa dnia', 'Placki']);
+  });
+
+  it('keeps „Sernik" first for „sernik", ahead of anything merely containing cheese', () => {
+    // „ser" is *exactly* what „Zupa dnia" holds and only an infix of „Sernik". The name wins.
+    expect(found('ser')).toEqual(['Sernik', 'Zupa dnia']);
+    expect(found('sernik')[0]).toBe('Sernik');
+  });
+
+  it('matches an ingredient alias too', () => {
+    // Nothing is called „kurczak"; one recipe uses „Pierś z kurczaka", whose alias it is.
+    expect(found('kurczak')).toEqual(['Soczewica z curry']);
+    expect(found('filet')).toEqual(['Soczewica z curry']);
+  });
+
+  it('searches names only when no keys are handed over — Phase 17 behaviour, unchanged', () => {
+    expect(searchRecipes(library, 'soczewica').map((row) => row.recipe.name)).toEqual([
+      'Soczewica z curry'
+    ]);
+    expect(searchRecipes(library, 'kurczak')).toEqual([]);
+  });
+});
+
 describe('draft items', () => {
   it('omits gramsPerUnit on a gram row and keeps it on a piece row', () => {
     expect(toRecipeItem(draft({ unit: 'g', gramsPerUnit: 58 }))).toEqual({

@@ -24,11 +24,23 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 15    | iPhone                      | done    | 2026-09-11 |
 | 16    | Miary domowe                | done    | 2026-09-12 |
 | 17    | Dział sklepu                | done    | 2026-09-12 |
-| 18    | Trzy drobiazgi              | pending | — |
+| 18    | Trzy drobiazgi              | done    | 2026-09-12 |
 | 19    | Cel dopowiedziany do końca  | pending | — |
 | 20    | Metryczka przepisu          | pending | — |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 18 is **built** (2026-09-12, decisions 367–372). Three small things that touch no data
+model between them. `draftSanity` asks whether the four per-100 g values are *possible* — the
+three macronutrients cannot weigh more than 100 g, and the stated energy cannot sit further
+than 15% and 20 kcal from what Atwater implies — and it **warns without ever blocking**, naming
+the scanned fields it suspects, because the place a decimal point goes silently wrong is the
+reading Gemini takes off a package. `MatchTier` gains a fifth, lowest tier, `Contained`, and
+`searchRecipes` fills it with the names and aliases of a recipe's ingredients, so „soczewica"
+finds the four recipes holding lentils — underneath every recipe with lentils in its name, and
+never level with one. And `menu.ts` is `shopping.ts`'s twin: a day or a week as plain text —
+date, meals, portions, and each day's totals against that day's own goals — out through
+`shareText`, with no ingredients in it at all.
 
 Phase 17 is **built** (2026-09-12, decisions 358–366). The shopping list used to be ordered by
 the order the ingredients were first met, „so a list reads like the recipes it came from". That
@@ -4433,6 +4445,73 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
 - **The container run's known instability (decision 348) is unchanged.** Run serially, the full
   suite passes 109/109 against the dev server, and `screens.spec.ts`, `departments.spec.ts` and
   `scan.spec.ts` all pass against `http://localhost:8080` with zero CSP violations — which is
+  what the „no CSP change" criterion is about. CI, on Linux, is the arbiter.
+
+### 2026-09-12 — Phase 18, trzy drobiazgi
+
+367. **The new lowest `MatchTier` is called `Contained`, and it is a candidate property, not a
+     second ranking pass.** PLAN.md asks for „a new lowest tier for ingredient matches"
+     (decision 333); `search.ts` is the generic ranker the ingredient autocomplete, the tag
+     picker and the recipe library all share, and a tier named after ingredients would be
+     nonsense in two of the three. So `SearchCandidate` gains an optional `containedKeys` —
+     keys of things the candidate *holds* rather than *is called* — and `matchCandidate`
+     consults it only once nothing in the name or the aliases has matched, scoring every such
+     hit `Contained` whatever its quality. That last part is the rule: „ser" is *exactly* one
+     recipe's ingredient and a mere infix of „Sernik", and „Sernik" still wins.
+
+368. **The recipe picker got the same search as the library, though PLAN.md named only the
+     library.** „Finding a recipe by what is in the house" is asked at least as often while
+     adding a meal as while browsing, and `searchRecipes` is one function behind both screens:
+     leaving the picker matching names alone would have made one search box behave differently
+     from the other for no reason anybody could see. Three lines, one extra `keysById()` call
+     on a sheet that already reads the whole library.
+
+369. **`ingredientIndex` gains `keysById()`, and the keys travel as an argument.** Decision 333
+     says the ingredient names come from the autocomplete's in-memory snapshot; this is the
+     shape that takes. `searchRecipes` receives a `ReadonlyMap<string, readonly string[]>` and
+     **searches names alone when it is not given one**, so the pure function keeps a behaviour
+     that can be tested without a database, and no recipe carries a denormalized copy of what
+     its ingredients are called this week.
+
+370. **The energy rule measures its 15% against the implied kcal, not the stated one.** PLAN.md
+     says „beyond 15%, and beyond 20 kcal" without saying of what. The implied value is the one
+     derived from three numbers rather than the single number under suspicion, so the tolerance
+     does not widen in step with the very typo it is meant to catch: a kcal field ten times too
+     large would otherwise be judged against its own inflated self.
+
+371. **An e2e spec was added, as in Phases 16 and 17, and PLAN.md again asked only for unit
+     tests.** Six of the acceptance criteria are about what a *screen* does: that the warning
+     is printed under the fields while the save button stays alive, that the library really
+     lists a recipe by what is in it and in what order, and that a day of meals comes out of a
+     sheet as text with its totals next to its goals. `e2e/drobiazgi.spec.ts` drives all three
+     through the real screens, and one case in `e2e/scan.spec.ts` drives the criterion that
+     only a scan can reach — a value ten times too large, arriving from the model rather than
+     from a keyboard, warned about by name and saveable anyway.
+
+372. **`share.ts` got its first tests, five phases after it was written.** „`navigator.share()`
+     where it exists, the clipboard elsewhere, and the text shown to be copied by hand if both
+     fail" is an acceptance criterion of this phase and was an acceptance criterion of Phase 9;
+     it had never been checked anywhere, because the module was assumed too thin to be wrong.
+     It is not thin: a dismissed sheet must read as `cancelled` and must *not* then write to the
+     clipboard, and a sheet that fails for any other reason must. `share.test.ts` pins both.
+
+### Not verified, and honestly so — Phase 18
+
+- **What the warning does to a real scanned package has not been measured.** The wiring is
+  proved — the form's own record of which fields the last scan filled is what the sentence
+  names, and `e2e/scan.spec.ts` already pins that record — but whether a real key on a real
+  package ever produces a reading that trips the rule is the same open question every scanned
+  field has. That is the direction it is built for, not a claim that it has happened.
+- **The 15%/20 kcal tolerance is a judgement, not a measurement.** It was not fitted against
+  the 1 344 bundled rows; it was chosen to let oil, lettuce and ordinary food through and to
+  catch an order-of-magnitude slip, and `custom-ingredients.test.ts` pins exactly those cases.
+  If it turns out to nag on real packages, the two constants are exported and one line wide.
+- **The share sheet itself is still unverified on iOS** — unchanged from Phase 9, and now one
+  feature wider. `navigator.share()` is called the same way the shopping list calls it, from a
+  button, in a secure context; what an installed iPhone does with it nobody here has seen.
+- **The container run's known instability (decision 348) is unchanged.** Run serially, the full
+  suite passes 115/115 against the dev server, and `screens.spec.ts`, `scan.spec.ts` and the
+  new `drobiazgi.spec.ts` pass against `http://localhost:8080` with zero CSP violations — which is
   what the „no CSP change" criterion is about. CI, on Linux, is the arbiter.
 
 ## Open questions

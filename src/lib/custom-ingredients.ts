@@ -9,7 +9,7 @@ import type {
 } from './types';
 import { COPY_SUFFIX } from './recipes';
 import { newCustomIngredientId, newId, type IdFactory } from './ids';
-import { MEASURE_NAMES } from './text';
+import { MEASURE_NAMES, formatAmount } from './text';
 
 /**
  * The rules behind „Składniki" (PLAN.md Phase 10). Pure: no IndexedDB, no clock, no Svelte —
@@ -151,6 +151,9 @@ export function parseAliases(text: string): string[] {
 
 const MACRO_FIELDS = ['kcal', 'protein', 'carbs', 'fat'] as const;
 
+/** One of the four per-100 g values. */
+export type MacroField = (typeof MACRO_FIELDS)[number];
+
 /** A field counts as entered when it holds a finite number — `0` included. */
 function entered(value: number | null): value is number {
   return value !== null && Number.isFinite(value);
@@ -181,6 +184,123 @@ export function draftProblem(draft: IngredientDraft): string | null {
 
 export function canSaveDraft(draft: IngredientDraft): boolean {
   return draftProblem(draft) === null;
+}
+
+// ---- are these numbers even possible? (PLAN.md Phase 18 task A) --------------------------
+
+/**
+ * `draftProblem` asks whether the four values are *there*. These ask whether they are
+ * *possible* — and they never block (STATE.md decision 331). Fibre, alcohol and polyols miss
+ * Atwater honestly, so a form that refused a package would be wrong more often than the
+ * package is. `draftProblem` keeps owning the disabled button; this owns a sentence under
+ * the fields.
+ *
+ * It matters most where the numbers are not typed at all: the reading Gemini takes off a
+ * photographed label, where a decimal point in the wrong place is silent. So the sentence
+ * names the scanned fields it implicates, because those are the ones worth looking at twice.
+ */
+
+/** kcal per gram — the Atwater factors the energy rule is checked against. */
+const ATWATER: Readonly<Record<Exclude<MacroField, 'kcal'>, number>> = { protein: 4, carbs: 4, fat: 9 };
+
+/** More than this many grams of macronutrient in 100 g of food is arithmetic, not nutrition. */
+export const MAX_MACRO_GRAMS = 100;
+
+/** How far the stated energy may sit from what the macros imply: a share… */
+export const ENERGY_TOLERANCE = 0.15;
+/** …and never less than this, so a 15 kcal vegetable does not trip on rounding (decision 332). */
+export const ENERGY_FLOOR_KCAL = 20;
+
+/** What the three macronutrients weigh together, per 100 g. */
+export function macroGrams(macros: Macros): number {
+  return macros.protein + macros.carbs + macros.fat;
+}
+
+/** The energy those three imply, by Atwater. */
+export function impliedKcal(macros: Macros): number {
+  return macros.protein * ATWATER.protein + macros.carbs * ATWATER.carbs + macros.fat * ATWATER.fat;
+}
+
+/** Which rule a draft trips, if any. */
+export type SanityRule =
+  /** protein + carbs + fat over 100 g per 100 g. */
+  | 'sum'
+  /** The stated kcal too far from what those three imply. */
+  | 'energy';
+
+export interface DraftSanity {
+  rule: SanityRule;
+  /** The fields the rule is about — the ones a correction would touch. */
+  fields: readonly MacroField[];
+  /** The sentence the form prints under the fields. */
+  message: string;
+}
+
+const FIELD_LABELS: Readonly<Record<MacroField, string>> = {
+  kcal: 'kcal',
+  protein: 'białko',
+  carbs: 'węglowodany',
+  fat: 'tłuszcz'
+};
+
+/**
+ * The tail every warning ends with: what to look at, and permission to ignore it.
+ *
+ * A scanned field among the implicated ones is named, because „sprawdź wartości" is no help
+ * when six fields were filled at once and one of them came back ten times too large.
+ */
+function advice(fields: readonly MacroField[], scanned: Partial<Record<MacroField, boolean>>): string {
+  const fromPhoto = fields.filter((field) => scanned[field] === true);
+  const where =
+    fromPhoto.length === 0
+      ? 'Sprawdź, czy nie ma literówki.'
+      : `Sprawdź ${fromPhoto.length === 1 ? 'pole' : 'pola'} odczytane ze zdjęcia: ` +
+        `${fromPhoto.map((field) => FIELD_LABELS[field]).join(', ')}.`;
+  return `${where} Jeśli tak jest na etykiecie, zapisz mimo to.`;
+}
+
+/**
+ * Why these numbers look impossible, or `null` when they do not.
+ *
+ * Silent while anything is still missing or negative: those are `draftProblem`'s to say, and
+ * two sentences arguing about the same field help nobody. `scanned` is the form's own record
+ * of which fields the last scan filled — an empty object is a form that was typed by hand.
+ */
+export function draftSanity(
+  draft: IngredientDraft,
+  scanned: Partial<Record<MacroField, boolean>> = {}
+): DraftSanity | null {
+  if (MACRO_FIELDS.some((field) => !entered(draft[field]) || (draft[field] as number) < 0)) {
+    return null;
+  }
+  const macros = draftMacros(draft);
+
+  const grams = macroGrams(macros);
+  if (grams > MAX_MACRO_GRAMS) {
+    const fields: MacroField[] = ['protein', 'carbs', 'fat'];
+    return {
+      rule: 'sum',
+      fields,
+      message:
+        `Białko, węglowodany i tłuszcz dają razem ${formatAmount(grams)} g na 100 g — ` +
+        `to więcej, niż waży sam produkt. ${advice(fields, scanned)}`
+    };
+  }
+
+  const implied = impliedKcal(macros);
+  const slack = Math.max(ENERGY_FLOOR_KCAL, implied * ENERGY_TOLERANCE);
+  if (Math.abs(macros.kcal - implied) > slack) {
+    const fields: MacroField[] = ['kcal', 'protein', 'carbs', 'fat'];
+    return {
+      rule: 'energy',
+      fields,
+      message:
+        `Z makroskładników wychodzi ${formatAmount(Math.round(implied))} kcal, ` +
+        `a w polu kcal jest ${formatAmount(macros.kcal)}. ${advice(fields, scanned)}`
+    };
+  }
+
+  return null;
 }
 
 /** The four values, once `draftProblem` has confirmed there are four. */

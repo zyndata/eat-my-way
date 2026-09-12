@@ -74,6 +74,16 @@ describe('ingredient index', () => {
     expect(await repository.ingredientUseCounts()).toEqual(new Map([[potato.id, 1]]));
   });
 
+  it('hands every row’s keys to the recipe search, name first (Phase 18 task B)', async () => {
+    const index = createIngredientIndex(repository);
+    const keys = await index.keysById();
+
+    expect(keys.get(cheese.id)).toEqual(['ser zolty gouda', 'gouda', 'ser zolty']);
+    // An ingredient with no aliases still has its one key — an empty array would drop it.
+    expect(keys.get(dessert.id)).toEqual(['deser ryzowy']);
+    expect(keys.size).toBe(4);
+  });
+
   it('caches until invalidated', async () => {
     const index = createIngredientIndex(repository);
     await index.warm();

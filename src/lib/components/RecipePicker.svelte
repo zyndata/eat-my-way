@@ -4,6 +4,7 @@
   import { budgetFit, fitToBudget, searchRecipes } from '../recipes';
   import { dayBudget, remainingGoals } from '../calendar';
   import { todayDate } from '../dates';
+  import { ingredientIndex } from '../ingredients';
   import { repository } from '../repository';
   import BottomSheet from './BottomSheet.svelte';
 
@@ -45,6 +46,8 @@
   let entries = $state<RecipeListEntry[]>([]);
   let tags = $state<Tag[]>([]);
   let macros = $state(new Map<string, Macros>());
+  /** Ingredient search keys, so the query reaches what a recipe contains (Phase 18 task B). */
+  let ingredientKeys = $state(new Map<string, string[]>());
   let loading = $state(false);
 
   let query = $state('');
@@ -58,7 +61,7 @@
   const pool = $derived(
     filtering ? fitToBudget(entries, macros, budget.remaining).map((row) => row.entry) : entries
   );
-  const visible = $derived(searchRecipes(pool, query, selected));
+  const visible = $derived(searchRecipes(pool, query, selected, { ingredientKeys }));
 
   /**
    * Whether each visible recipe needs half a portion to fit. Computed over the *visible*
@@ -81,12 +84,14 @@
 
   async function load(): Promise<void> {
     loading = true;
-    const [library, allTags] = await Promise.all([
+    const [library, allTags, keys] = await Promise.all([
       repository.recipeLibrary(todayDate()),
-      repository.allTags()
+      repository.allTags(),
+      ingredientIndex.keysById()
     ]);
     entries = library;
     tags = allTags;
+    ingredientKeys = keys;
     macros = await repository.recipeMacros(library.map((entry) => entry.recipe));
     loading = false;
   }
@@ -139,11 +144,11 @@
   {/if}
 
   <label class="block text-sm font-medium">
-    <span class="sr-only">Szukaj przepisu</span>
+    <span class="sr-only">Szukaj przepisu lub składnika</span>
     <input
       class="w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)"
       type="search"
-      placeholder="Szukaj przepisu…"
+      placeholder="Szukaj przepisu lub składnika…"
       bind:value={query}
     />
   </label>

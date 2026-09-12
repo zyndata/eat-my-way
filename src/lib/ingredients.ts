@@ -24,6 +24,14 @@ export interface IngredientMatch {
 
 export interface IngredientIndex {
   search(query: string, limit?: number): Promise<IngredientMatch[]>;
+  /**
+   * Every ingredient's search keys by id — name first, then aliases (PLAN.md Phase 18 task B).
+   *
+   * The recipe library ranks „what is in the house" off this, which is why it lives here and
+   * not on the recipe: the snapshot is already in memory and already normalized, so finding a
+   * recipe by its contents costs one map over rows that were read anyway.
+   */
+  keysById(): Promise<Map<string, string[]>>;
   /** Drop the snapshot so the next search re-reads IndexedDB. */
   invalidate(): void;
   /** Load the snapshot now, e.g. right after the first-run import. */
@@ -49,6 +57,12 @@ export function createIngredientIndex(repository: Repository = defaultRepository
         useCount: match.item.useCount,
         tier: match.tier
       }));
+    },
+
+    async keysById(): Promise<Map<string, string[]>> {
+      return new Map(
+        (await entries()).map((entry) => [entry.ingredient.id, [entry.nameKey, ...entry.aliasKeys]])
+      );
     },
 
     invalidate(): void {

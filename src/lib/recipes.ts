@@ -118,10 +118,33 @@ export function filterByTags(
   return entries.filter((entry) => selected.every((key) => entry.recipe.tags.includes(key)));
 }
 
+/**
+ * Every ingredient's search keys by id — its normalized name and its normalized aliases.
+ *
+ * Handed in rather than stored on the recipe: it comes out of the in-memory snapshot the
+ * autocomplete already holds (STATE.md decisions 39 and 333), so a recipe carries no
+ * denormalized copy of what its ingredients happen to be called this week.
+ */
+export type IngredientKeys = ReadonlyMap<string, readonly string[]>;
+
 export interface SearchOptions {
   sort?: RecipeSort;
   /** Per-portion macros, needed only by the `kcal` order. */
   portionMacros?: ReadonlyMap<string, Macros>;
+  /** Omitted, the search is by recipe name alone — exactly what it did before Phase 18. */
+  ingredientKeys?: IngredientKeys;
+}
+
+/** The keys of everything one recipe contains, deduplicated, in item order. */
+function recipeIngredientKeys(recipe: Recipe, keys: IngredientKeys | undefined): string[] {
+  if (keys === undefined) return [];
+  const seen = new Set<string>();
+  for (const item of recipe.items) {
+    for (const key of keys.get(item.ingredientId) ?? []) {
+      if (key !== '') seen.add(key);
+    }
+  }
+  return [...seen];
 }
 
 /**
@@ -132,6 +155,10 @@ export interface SearchOptions {
  * A typed query overrides the sort entirely, exactly as it has always overridden the default
  * order: match quality is the only ranking that makes sense once the user has said what they
  * are looking for.
+ *
+ * Phase 18 widens it from names to contents: given `ingredientKeys`, „soczewica" also finds
+ * the recipes that merely contain lentils — underneath every recipe with lentils in its name,
+ * never level with them.
  */
 export function searchRecipes(
   entries: readonly RecipeListEntry[],
@@ -147,7 +174,10 @@ export function searchRecipes(
   const candidates = filtered.map((entry) => ({
     entry,
     nameKey: normalizeKey(entry.recipe.name),
+    // A recipe has no aliases of its own. What it *contains* ranks below every name match,
+    // which is the whole point of `MatchTier.Contained` (STATE.md decision 333).
     aliasKeys: [] as string[],
+    containedKeys: recipeIngredientKeys(entry.recipe, options.ingredientKeys),
     useCount: entry.usage.plannedCount
   }));
 
