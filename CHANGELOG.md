@@ -8,6 +8,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **cele:** „Wypełnij pola" now says what it filled in, and that it saved nothing
+
 ### CI/CD
 
 - Run the WebKit project on every push
@@ -19,6 +23,8 @@ project adheres to [Semantic Versioning](https://semver.org).
 - The WebKit slowness is Windows, not Safari
 - The WebKit slowness is confirmed as Windows-only, measured on Linux
 - Give the duplicated open question 30 its own number
+- Re-take the screenshots for the 44px icon buttons
+- Record the interaction audit and how to add a button
 
 ### Features
 
@@ -29,6 +35,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 19 — cel dopowiedziany do końca
 - Phase 20 — metryczka przepisu
 - Phase 21 — pierwsze dwadzieścia cztery sekundy
+- **ui:** Give every clickable thing a hover, press and focus state
 
 ### Miscellaneous
 
@@ -42,6 +49,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Update CHANGELOG
 - Update CHANGELOG
 - Regenerate the changelog
+- Regenerate the changelog
+
+### Tests
+
+- **e2e:** Cover the hover, press, focus and disabled states
 
 ## [1.11.0] - 2026-09-08
 
