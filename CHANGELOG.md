@@ -15,6 +15,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Features
 
 - Phase 15 — iPhone
+- Phase 16 — miary domowe
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [1.11.0] - 2026-09-08
 
