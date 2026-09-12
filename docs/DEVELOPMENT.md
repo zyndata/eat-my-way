@@ -119,6 +119,13 @@ These exist because the same checkout is edited on Windows and Linux:
   file on Windows and two different ones on the server. Match the import to the file exactly.
 - **Docker Desktop (Windows) and Docker Engine (Linux)** both run `docker compose` the same way;
   the compose file must not depend on either.
+- **WebKit will not run from a VS Code snap terminal.** On Linux, if VS Code is installed as a
+  snap its integrated terminal exports `GIO_MODULE_DIR` pointing into the snap's GIO module
+  cache. WebKit's network process loads its TLS backend from there, the library is linked
+  against the glibc inside `/snap/core20`, and every navigation dies with „WebKit encountered an
+  internal error" — all of the WebKit specs fail in about 2.5 s each while Chromium passes. Run
+  `env -u GIO_MODULE_DIR E2E_WEBKIT=1 npm run test:e2e`, or use a terminal outside VS Code.
+  Nothing in the repository is involved (STATE.md decision 399).
 - Do not commit `.env.local`, `node_modules/`, `dist/`, or `.claude/settings.local.json`.
 
 ## The service worker
@@ -257,11 +264,16 @@ system timer to 1 ms does not help, and headed is identical to headless. No Appl
 that floor. Treat the WebKit project as a correctness check, never as a performance measurement
 (STATE.md decision 398).
 
-It stays behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — for what is now a
-cost rather than a bug: every test waits out that slow import before it can act, so the run takes
-about four minutes against Chromium's thirty seconds, and installing a second engine in CI is its
-own cost on top. (Both figures are from Windows; on Linux the tick does not exist and the run may
-be far cheaper, which nobody has measured.) Two things follow for anyone writing a spec, and both are in
+**That has now been measured on Linux, and it holds.** Same Playwright 1.62.1, same WebKit 26.5
+build, only the operating system changed: the 15 ms quantum is gone. The 1 344-row import costs
+**198 ms** against 20 234 ms on Windows, IndexedDB callbacks are dispatched 0 ms apart, and
+`MessageChannel` drops from 30 ms to 0. The suite costs **8.1 min against Chromium's 5.4 min on
+the same machine — 1.5×, not the ~8× Windows showed** — and passes 125 of 127 with nothing
+behaving differently than it does on Windows (STATE.md decisions 398 and 397).
+
+It stays behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — but the reason that
+kept it out of CI was Windows arithmetic and no longer applies; adding it to `ci.yml` is proposed
+in STATE.md decision 397. Two things follow for anyone writing a spec, and both are in
 `e2e/fixtures.ts`:
 
 - **The fixture waits for `<html data-nutrition="ready">`** before a test acts, so no test

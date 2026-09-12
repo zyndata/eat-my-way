@@ -39,7 +39,9 @@ transaction, flat to within 60 ms, and 20.3 s for the same rows written straight
 with no Dexie and no app), so the window was sealed. **Decision 398 then corrected what that
 number means:** it is Playwright's WebKit on *Windows* charging one ~15 ms message-loop tick per
 task — `setTimeout`, `fetch` and IndexedDB reads all pay it — and not a property of Safari, which
-independent measurement has as the *fastest* engine at bulk IndexedDB writes. The real first-run
+independent measurement has as the *fastest* engine at bulk IndexedDB writes. **Measured on Linux
+on 2026-09-12, this is confirmed:** the same WebKit 26.5 build does that import in 198 ms, and
+decision 397's „WebKit is too expensive for CI" fell with it. The real first-run
 window is a fraction of a second; the gate is cheap insurance and an ordering fix, and the two
 bugs the WebKit run exposed were real on every engine. The import raises a gate in `src/lib/nutrition/gate.ts`;
 `applyMergedData` and every other writer that opens a transaction over `ingredients` waits at
@@ -4870,6 +4872,32 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      run may cost seconds. The decision stands on an untested premise and should be re-measured
      on Linux before it is quoted as settled.
 
+     **Overturned on Linux, 2026-09-12 — the arithmetic was Windows arithmetic.** Measured on
+     Ubuntu 24.04.4, Intel i5-10310U, 4 workers, same Playwright 1.62.1 and same WebKit 26.5
+     build as the Windows figures. `E2E_WEBKIT=1 npx playwright test --project=webkit`:
+     **125 passed, 2 skipped, 0 failed, 8.1 min**; Chromium alone on the same machine, 127
+     passed, **5.4 min**. WebKit is **1.5× the Chromium suite**, not the ~8× Windows showed —
+     and the slowest single test is 36.4 s against a 240 s timeout, so that timeout is now
+     enormous slack rather than a necessity.
+
+     Absolute seconds do not travel between machines and this entry does not pretend otherwise:
+     this laptop runs the Chromium suite in 5.4 min where the Windows machine runs it in 32 s,
+     so only the *ratio* is comparable. The ratio is what decision 397 rested on, and it is
+     wrong: „four minutes against thirty seconds" described a build tax that does not exist on
+     the platform CI runs (`ubuntu-latest`). **Nothing failed** — the two-device `sync.spec.ts`
+     cases that cost 47–50 s on Windows cost 24.6 s and 30.8 s here, and no test behaves
+     differently on Linux than it does on Windows.
+
+     **Proposed, not done in this conversation** (this was a measurement, not a phase): add the
+     `webkit` project to the `e2e` job in `ci.yml` — extend the `Install Chromium` /
+     `install-deps` steps to `chromium webkit`, set `E2E_WEBKIT=1` on the `End-to-end tests`
+     step, and let the existing browser cache key cover both. The cost is roughly a 1.5×
+     multiplier on one job that already exists, and the return is that the engine Safari uses
+     stops being tested only when somebody remembers to ask for it — which is how open question
+     31's defect survived to phase 21. What this measurement does **not** establish is the wall
+     clock on a GitHub runner; that is worth reading off the first green run rather than
+     predicting here.
+
 398. **Correction to 386, the same day: the twenty seconds are Windows, not Safari, and not
      IndexedDB.** Decision 386 concluded „the cost is per row and it is the engine's". The first
      half of that is right and the second is wrong in a way that matters, because it was read —
@@ -4942,6 +4970,50 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
      this machine's only WSL distribution is Docker Desktop's — so decision 397's „stays out of
      CI" stands on an untested premise and should be re-measured before it is quoted again.
 
+     **Confirmed on Linux, 2026-09-12 — „a fact about Windows, not about Safari" is earned.**
+     Ubuntu 24.04.4 (kernel 7.0.0-30-generic), Intel i5-10310U, 4 workers, the *same* Playwright
+     1.62.1 and the *same* WebKit 26.5 build the Windows numbers came from. The per-dispatch
+     quantum is simply not there:
+
+     | operation | Chromium (Win) | WebKit (Win) | Chromium (Linux) | WebKit (Linux) |
+     |---|---|---|---|---|
+     | `queueMicrotask` | 0 ms | 0 ms | 0 ms | **0 ms** |
+     | `setTimeout(0)` | 4.9 ms | 15 ms | 4.2 ms | **8 ms** |
+     | `fetch` same-origin | 0.9 ms | 15 ms | 5 ms | **4 ms** |
+     | `MessageChannel` | 0 ms | 30 ms | 0.1 ms | **0 ms** |
+     | `requestAnimationFrame` | 16.7 ms | 16 ms | 16.7 ms | 16 ms |
+     | gaps between IndexedDB `put` callbacks | 0 ms | 15 ms | 0 ms | **0 ms** |
+
+     And the shapes that decision 386 blamed on „per row, and it is the engine's" collapse to
+     Chromium's own cost — every one of them within a small factor, several of them faster:
+
+     | shape | WebKit (Win) | Chromium (Linux) | WebKit (Linux) |
+     |---|---|---|---|
+     | 100 puts / 1 tx | 1 507 ms | 12 ms | **17 ms** |
+     | 500 puts / 1 tx | 7 526 ms | 64 ms | **68 ms** |
+     | 1 344 puts / 1 tx | 20 234 ms | 156 ms | **198 ms** |
+     | 2 688 puts / 1 tx | 40 505 ms | 396 ms | **399 ms** |
+     | 1 344 rows as 1 put | 15 ms | 19 ms | 18 ms |
+     | 1 344 rows as 14 puts | 212 ms | 40 ms | 24 ms |
+     | 1 344 `get`s / 1 tx | 20 240 ms | 142 ms | **146 ms** |
+     | 1 344 rows via `getAll` | 15 ms | 20 ms | 21 ms |
+     | 500 puts / 1 tx, 1 index | 7 523 ms | 71 ms | **96 ms** |
+
+     The 1 344-put import — the one this whole thread is about — costs **198 ms on Linux WebKit
+     against 20 234 ms on Windows WebKit**: a factor of 102, on the same build of the same
+     engine, with only the operating system changed. `MessageChannel` going from 30 ms to 0 ms is
+     the cleanest single proof, because nothing about it touches storage. Decision 398 is
+     **confirmed**: the 15 ms is WebKit's Windows message loop, and this repository is right to
+     stop implying an iPhone pays it. The one residue is `setTimeout(0)` at 8 ms against
+     Chromium's 4.2 ms — roughly twice the clamp, not a fixed quantum, and it touches no
+     IndexedDB path.
+
+     **One thing Linux does not confirm: that WebKit is *as fast as* Chromium end to end.** Over
+     the whole suite WebKit costs 2 095 s of test time against Chromium's 848 s — 2.5×, mean
+     16.8 s against 6.7 s per test, slowest case 36.4 s against 17.9 s. That is real, and it is
+     not the message loop; it is page startup and layout. It is also a different claim, and a
+     much smaller one, than „twenty seconds per first run".
+
 ### Not verified, and honestly so — Phase 21
 
 - **Task 6 — the real iPhone — was not done, and nothing here claims otherwise.** It is the one
@@ -4965,6 +5037,40 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
   the phase (`scan.spec.ts`'s vault unlock, `metryczka.spec.ts`'s second import) were each
   diagnosed and fixed rather than re-run until green, but four minutes a run is a real
   disincentive to soak, and nobody has run it twenty times.
+
+### 2026-09-12 — the Linux half of the WebKit measurement
+
+Not a phase: one measurement, run on the Linux machine to settle decisions 397 and 398, which
+both rested on numbers that only a Windows machine had ever produced. The results are recorded
+as amendments in place — decision 398 **confirmed**, decision 397 **overturned**, open question
+30 given its first realistic import figure. One thing found along the way needed a decision of
+its own.
+
+399. **WebKit cannot be launched from a VS Code snap terminal, and this has nothing to do with
+     the app.** The first `E2E_WEBKIT=1` run on Linux failed **125 of 125** WebKit tests in about
+     2.5 s each, every one of them on `page.goto` with „WebKit encountered an internal error".
+     Chromium passed in the same run, which is what made it worth chasing rather than dismissing.
+
+     The cause is environmental and total: this checkout is edited from VS Code installed as a
+     **snap**, whose terminal exports `GIO_MODULE_DIR=~/snap/code/common/.cache/gio-modules`.
+     WebKit's network process loads its TLS backend through GIO, picks up the snap's
+     `libgiognutls.so`, and that library is linked against the glibc inside `/snap/core20` —
+     so the process dies on `symbol lookup error: libpthread.so.0: undefined symbol:
+     __libc_pthread_init, version GLIBC_PRIVATE` before a single byte is fetched. Chromium is
+     untouched because it does not use GIO for networking.
+
+     `env -u GIO_MODULE_DIR` is the whole fix — one variable, no repository change. With it the
+     suite is **125 passed, 2 skipped, 0 failed**. Recorded because the symptom („an internal
+     error", every test, on the engine this project already suspects) points at the app and the
+     cause is a desktop packaging detail three layers away, and because the next person to run
+     WebKit from this machine will hit it again. Noted in
+     [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) beside the other cross-machine rules.
+
+     Two smaller environment notes from the same session, neither of them repository changes:
+     `npx playwright install webkit --with-deps` needs a sudo password this session did not
+     have, and the browser it downloads is short of `libavif16`, `libgav1-1` and `libyuv0` — the
+     three libraries were unpacked into the WebKit bundle's own `sys/lib`, which its launcher
+     puts on `LD_LIBRARY_PATH`. CI installs its own dependencies as root and is unaffected.
 
 ## Open questions
 
@@ -5360,6 +5466,19 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     from Playwright's WebKit on Windows and is a message-loop artifact of that build (decision
     398), so nobody knows how long the import takes on the device — which is itself one of the
     things the procedure would answer.
+
+    **Amended again 2026-09-12, after the Linux measurement (decision 398).** „Nobody knows how
+    long the import takes" is now half answered. On Linux WebKit — the same WebKit 26.5 build,
+    the Windows message loop removed — writing the 1 344 bundled ingredients in one transaction
+    costs **198 ms**, against 156 ms on Chromium and 20 234 ms on Windows WebKit. That is the
+    first realistic number this repository has for a non-Windows build of the engine Safari
+    uses, and it says the import is a fifth of a second of database work, not twenty seconds.
+    It is still not a measurement *on a device*: an iPhone has slower storage and a slower CPU
+    than this laptop, and (h) also covers fetching, parsing and rendering, none of which this
+    figure includes. What it does settle is the order of magnitude — the first-run window the
+    gate protects is a fraction of a second wide, so the tester should not expect a visible
+    pause to aim at, and (h) is now „connect as fast as you can" rather than „connect within
+    the twenty seconds you will notice".
 
 31. **WebKit hangs on a write that overlaps the first-run nutrition import — answered and
     2026-09-12, and the window is four times wider than decision 346 recorded.** Found by phase
