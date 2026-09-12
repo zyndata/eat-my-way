@@ -2215,3 +2215,106 @@ own tests and its own phase.
 - [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
       `npm run docker:up`.
 - [ ] All UI text in Polish; code and comments in English.
+
+## Phase 21 — Pierwsze dwadzieścia cztery sekundy
+
+A fresh install spends its first half-minute writing 1 344 bundled ingredients. Measured on
+2026-09-12 (open question 31): about six seconds on Chromium, **about twenty-four on WebKit**.
+That window is the one in which this app is fragile — and it is exactly the window in which a
+new user does the two things the app asks of them on the way in: leave the first-run wizard, and
+connect Google Drive. Connect inside it and the sync stops for good at „Odczyt i zapis plików na
+Dysku…".
+
+Phase 15 found this and deliberately did not fix it — it was a phase about geometry, and this is
+the data layer (decision 346). The measurement since then did not change the diagnosis; it
+changed the size. `E2E_WEBKIT=1 npm run test:e2e` now fails **82 of 124** tests, and the failures
+are one cause wearing three faces.
+
+### What is actually broken
+
+**One.** A write that touches `ingredients` while the import is running never returns. That is
+the defect as recorded, and it is what stops the sync.
+
+**Two, and it is a bug on any engine.** `src/routes/Setup.svelte` leaves the wizard with
+`void repository.setMeta('setupDone', true)` — the promise is dropped on the floor. Queue that
+write behind the import, let the user move on and the page reload, and the flag is silently
+lost: the wizard comes back as though the user had never been there. Nothing awaits it, so
+nothing can notice. Chromium hides this by being fast; it is not a WebKit defect and it should
+not be fixed as one.
+
+**Three, and it is the tests' problem rather than the app's.** With the engine busy for
+twenty-four seconds, a strict-mode locator resolves against the screen that has not finished
+leaving — `page.goto('#/recipes/new/edit')` followed by `getByLabel('Nazwa')` matching the four
+`slot-name-*` inputs that belong to Settings. The app is slow here, not wrong.
+
+**Hash routing was suspected and is cleared** — `svelte-spa-router` reaches `#/recipes` on WebKit
+by all four routes tried (bare fragment, full URL, `location.hash`, a nav link). Recorded so the
+next person does not re-open it.
+
+### The design call this phase has to make
+
+Decision 346 left three candidate fixes and chose none. **One of them is already out:** narrowing
+`applyMergedData`'s transaction to the tables it writes changes nothing, because
+`src/lib/sync/engine.ts` always passes all six fields, so `ingredients` is never `undefined` on
+the real sync path. What is left is the genuine question — **shorten the window, or seal it** —
+and the answer is likely both, because they fail differently. Sealing it is correct and makes
+the first minute safe at whatever speed the engine manages; shortening it is what a person on an
+iPhone actually feels. Whichever is built, the reasoning goes in STATE.md.
+
+### Tasks
+
+1. **`setupDone` is awaited.** The wizard does not navigate away until the flag is written.
+   This is task one because it is a real bug independent of everything else in this phase, and
+   because it is the smallest thing here that a user meets first. Audit the other `void
+   repository.*` calls on the setup and settings paths while in there and say in STATE.md which
+   ones are deliberate.
+
+2. **A gate the import raises and the writers respect.** The bundled import exposes a promise
+   that settles when it is done; anything that writes `ingredients` — `applyMergedData` first —
+   awaits it before opening its transaction. A sync that arrives during the import waits and
+   then completes, rather than never returning. The UI says it is waiting, in Polish, rather
+   than going quiet.
+
+3. **Ask whether the window can simply be smaller.** 1 344 rows in six transactions of 250 costs
+   about four seconds per transaction on WebKit. Measure the batch size against the clock on
+   both engines before changing it — this is one number, measured, not a guess, and if it does
+   not help, record that and keep the current size.
+
+4. **The suite stops racing the import, and one spec keeps racing it on purpose.** The fixtures
+   wait for the import to settle before a test acts, which is what makes the other eighty
+   honest again; and one new spec deliberately connects Drive mid-import and asserts the sync
+   finishes. Without the second half, task 2 would be covered by nothing.
+
+5. **The WebKit project earns its keep.** Run the full suite under `E2E_WEBKIT=1` and get it
+   green, or record in STATE.md exactly which tests stay red and why, test by test. It stays
+   opt-in and out of CI either way — CI installing a second engine is its own cost and its own
+   decision.
+
+6. **The real device, at last.** Open question 30's procedure has never been run. Install on the
+   iPhone and connect Drive **inside the first half-minute** — twenty-four seconds is the number
+   to aim at, not five — and write what happened back into STATE.md. This is the only task here
+   that cannot be done on a desktop, and the only one that says whether any of this was ever an
+   iPhone problem.
+
+**Not in this phase:** making the nutrition import incremental, lazy, or moved to a worker.
+Each is a plausible answer to „why does this cost twenty-four seconds at all", and each is a
+larger rewrite than sealing the window; if task 3 says the batch size is not the lever, that is
+the finding, not the trigger to start rewriting here.
+
+### Acceptance criteria
+
+- [ ] Leaving the first-run wizard writes `setupDone` before navigating; the wizard does not
+      come back after a reload taken immediately afterwards, on either engine.
+- [ ] Connecting Drive during the bundled import completes the sync instead of stopping at
+      „Odczyt i zapis plików na Dysku…", and an e2e spec drives exactly that overlap.
+- [ ] While the app is waiting on the import it says so in Polish, rather than appearing idle.
+- [ ] `E2E_WEBKIT=1 npm run test:e2e` is green, or every remaining failure is listed in STATE.md
+      with its reason.
+- [ ] `npm run test:e2e` on Chromium is green, and the Chromium timings are unchanged — this
+      phase must not buy WebKit's correctness with everyone else's speed.
+- [ ] The measured cost of the import is written into STATE.md for both engines, whether or not
+      the batch size changed.
+- [ ] No schema version bump and no migration: nothing here changes what is stored, only when.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.

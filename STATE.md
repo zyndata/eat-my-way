@@ -27,6 +27,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 18    | Trzy drobiazgi              | done    | 2026-09-12 |
 | 19    | Cel dopowiedziany do końca  | done    | 2026-09-12 |
 | 20    | Metryczka przepisu          | done    | 2026-09-12 |
+| 21    | Pierwsze 24 sekundy         | pending |            |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
@@ -5059,22 +5060,64 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     still needs the device is unchanged, and (h) now has a reason to be suspicious rather than
     merely unverified — see open question 31.
 
-31. **WebKit hangs on a write that overlaps the first-run nutrition import, and nobody knows
-    yet whether an iPhone does.** Found by phase 15 task 6, the first time this app was ever
-    run on Safari's engine. Decision 346 has the bisection; the short form is that for the six
-    seconds in which a fresh browser writes the 1 344 bundled ingredients, any other write that
-    touches the `ingredients` table never returns, and the app is then stuck at „Odczyt i zapis
-    plików na Dysku…" until it is reloaded. On Chromium the same overlap is queued and works.
+31. **WebKit hangs on a write that overlaps the first-run nutrition import — measured
+    2026-09-12, and the window is four times wider than decision 346 recorded.** Found by phase
+    15 task 6, the first time this app was ever run on Safari's engine. Decision 346 has the
+    original bisection; the short form is that while a fresh browser writes the 1 344 bundled
+    ingredients, any other write that touches the `ingredients` table never returns, and the app
+    is then stuck at „Odczyt i zapis plików na Dysku…" until it is reloaded. On Chromium the
+    same overlap is queued and works.
 
-    **Why it matters beyond the test suite:** this is exactly the first minute of a first
-    install — open the app, go to *Ustawienia*, tap „Połącz Dysk Google". If Safari on iOS
-    behaves like Playwright's WebKit, the very first sync on an iPhone hangs, which would also
-    explain nothing, because nobody has tried it. The same window covers „Wczytaj kopię".
+    **Step (a) has now been run** — `E2E_WEBKIT=1 npm run test:e2e`, on the full suite as it
+    stands after phase 20. It does not change the diagnosis; it changes the size of it.
 
-    **What would answer it, cheapest first:** (a) run `E2E_WEBKIT=1 npm run test:e2e` and read
-    the failures — they are all this; (b) reproduce it in a two-page script with Dexie alone, to
-    tell a WebKit IndexedDB scheduling bug from a Dexie one; (c) on a real iPhone, install the
-    app and connect Drive within the first five seconds. **Candidate fixes, none chosen:** make
-    the writers that touch `ingredients` await the bundled import; give the import a lock the
-    others respect; or narrow `applyMergedData`'s transaction to the tables it actually writes.
-    The choice is a data-layer design call and belongs in its own phase.
+    **124 tests, 42 passed, 82 failed.** Decision 346 stopped its run at 34 reached and 20
+    failed, so the proportion is not new — the reach is. **Not contention:** re-running
+    `safe-area.spec.ts` and `library.spec.ts` at `--workers=2` still fails 13 of 15, several of
+    them in under a second on an assertion rather than on a timeout.
+
+    **The number that matters.** A probe reading IndexedDB directly, past the app, every five
+    seconds from a cold start:
+
+    | | Chromium | WebKit |
+    |---|---|---|
+    | t+0 s  | **1 344 rows, `nutritionDataVersion=4`** | 250 rows, version `undefined` |
+    | t+11 s | — | 750 |
+    | t+19 s | — | 1 250 |
+    | t+24 s | — | **1 344, `nutritionDataVersion=4`** |
+
+    The import takes **about 24 seconds on WebKit**, not the six decision 346 names. Within that
+    window even a `readonly` read of the `meta` table failed to return inside 5 s. The import
+    does complete, and a reload correctly skips it — there is no „an iPhone never gets its
+    ingredient database" scenario.
+
+    **One cause, three symptoms.** Classifying all 82 failures by the page snapshot taken at the
+    moment of failure:
+
+    - **26 — the sync stops** at „Odczyt i zapis plików na Dysku…". This is the defect as
+      originally recorded.
+    - **23 — the first-run wizard comes back** after `e2e/fixtures.ts` skipped it.
+      `src/routes/Setup.svelte` writes the flag as `void repository.setMeta('setupDone', true)` —
+      **not awaited**. The write queues behind the import, the user moves on, the page reloads,
+      and the write is sometimes lost with nothing to notice it. This is a real defect on its
+      own terms, independent of WebKit.
+    - **33 — the UI lags the route.** With the engine busy for 24 s, a strict-mode locator
+      resolves against the screen that has not finished leaving; `page.goto('#/recipes/new/edit')`
+      is followed by `getByLabel('Nazwa')` matching the four `slot-name-*` inputs of
+      `MealPlanSection.svelte`, which belong to Settings.
+
+    **Hash routing on WebKit was suspected and is fine.** A probe reached `#/recipes` four ways —
+    `goto` on a bare fragment, `goto` on a full URL, assigning `location.hash`, and clicking the
+    nav link — and all four land, hash and heading agreeing. `svelte-spa-router` is not
+    implicated. Recorded because it was the most alarming of the hypotheses and is now closed.
+
+    **What is left to decide** is no longer a diagnosis but a design call: shorten the window
+    (a faster import) or seal it (decide who waits for whom). **One candidate fix from decision
+    346 is already out:** narrowing `applyMergedData`'s transaction to the tables it actually
+    writes changes nothing, because `src/lib/sync/engine.ts` always passes all six fields —
+    `ingredients` is never `undefined` on the real sync path.
+
+    Still unobserved on real hardware: whether Safari on iOS behaves like Playwright's WebKit at
+    all, and how long the import takes on a phone rather than a desktop. **On a real iPhone,
+    install the app and connect Drive within the first half-minute** — the window to aim at is
+    24 s, not 5. Carried into Phase 21.
