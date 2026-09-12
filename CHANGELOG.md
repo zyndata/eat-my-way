@@ -19,9 +19,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 - Phase 17 — dział sklepu
 - Phase 18 — trzy drobiazgi
 - Phase 19 — cel dopowiedziany do końca
+- Phase 20 — metryczka przepisu
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
 - Update CHANGELOG
