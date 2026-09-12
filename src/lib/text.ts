@@ -132,3 +132,116 @@ export function formatAmount(value: number): string {
 export function formatAmountWithUnit(amount: number, unit: Unit): string {
   return `${formatAmount(amount)} ${unitLabel(unit)}`;
 }
+
+// ---- household measures (Phase 16) -------------------------------------------------------
+
+/**
+ * The closed vocabulary of household measures (STATE.md decision 324).
+ *
+ * Closed because free text fragments — „ząbek", „ząbeczek", „ząbek czosnku" within a week —
+ * which kills any chance of a suggestion list and makes Polish plural agreement impossible.
+ * The value stored on an ingredient and on a recipe item IS the singular spelling below; there
+ * is no separate key, because a sixteen-entry list gains nothing from one.
+ *
+ * A measure is a **label and a default weight**, never a unit: the arithmetic in `macros.ts`
+ * never sees one (decision 323).
+ */
+export const MEASURE_NAMES = [
+  'szt.',
+  'mała szt.',
+  'średnia szt.',
+  'duża szt.',
+  'ząbek',
+  'kromka',
+  'plaster',
+  'garść',
+  'łyżka',
+  'łyżeczka',
+  'szklanka',
+  'kubek',
+  'pęczek',
+  'gałązka',
+  'opakowanie',
+  'porcja'
+] as const;
+
+export type MeasureName = (typeof MEASURE_NAMES)[number];
+
+/**
+ * The four forms each measure is printed in.
+ *
+ * Three of them are `pluralPl`'s: 1 ząbek, 2 ząbki, 5 ząbków. The fourth is the genitive
+ * singular, which a fraction takes — „1,5 ząbka" — and which `pluralPl` cannot reach because
+ * it truncates (STATE.md decision 349). `portionWord` gets away without it only because
+ * „porcji" happens to be both genitives of „porcja"; „ząbka" and „ząbków" are not one word.
+ *
+ * „szt." is an abbreviation and does not decline in any of the four.
+ */
+export interface MeasureForms {
+  one: string;
+  few: string;
+  many: string;
+  /** Genitive singular, for a non-integer count. */
+  fraction: string;
+}
+
+const MEASURE_FORMS: Record<MeasureName, MeasureForms> = {
+  'szt.': { one: 'szt.', few: 'szt.', many: 'szt.', fraction: 'szt.' },
+  'mała szt.': { one: 'mała szt.', few: 'małe szt.', many: 'małych szt.', fraction: 'małej szt.' },
+  'średnia szt.': {
+    one: 'średnia szt.',
+    few: 'średnie szt.',
+    many: 'średnich szt.',
+    fraction: 'średniej szt.'
+  },
+  'duża szt.': { one: 'duża szt.', few: 'duże szt.', many: 'dużych szt.', fraction: 'dużej szt.' },
+  'ząbek': { one: 'ząbek', few: 'ząbki', many: 'ząbków', fraction: 'ząbka' },
+  'kromka': { one: 'kromka', few: 'kromki', many: 'kromek', fraction: 'kromki' },
+  'plaster': { one: 'plaster', few: 'plastry', many: 'plastrów', fraction: 'plastra' },
+  'garść': { one: 'garść', few: 'garście', many: 'garści', fraction: 'garści' },
+  'łyżka': { one: 'łyżka', few: 'łyżki', many: 'łyżek', fraction: 'łyżki' },
+  'łyżeczka': { one: 'łyżeczka', few: 'łyżeczki', many: 'łyżeczek', fraction: 'łyżeczki' },
+  'szklanka': { one: 'szklanka', few: 'szklanki', many: 'szklanek', fraction: 'szklanki' },
+  'kubek': { one: 'kubek', few: 'kubki', many: 'kubków', fraction: 'kubka' },
+  'pęczek': { one: 'pęczek', few: 'pęczki', many: 'pęczków', fraction: 'pęczka' },
+  'gałązka': { one: 'gałązka', few: 'gałązki', many: 'gałązek', fraction: 'gałązki' },
+  'opakowanie': {
+    one: 'opakowanie',
+    few: 'opakowania',
+    many: 'opakowań',
+    fraction: 'opakowania'
+  },
+  'porcja': { one: 'porcja', few: 'porcje', many: 'porcji', fraction: 'porcji' }
+};
+
+/** True for a value read back out of storage that is still one of the known measures. */
+export function isMeasureName(value: unknown): value is MeasureName {
+  return typeof value === 'string' && (MEASURE_NAMES as readonly string[]).includes(value);
+}
+
+/**
+ * The measure as it is spelled next to `count`: „ząbek", „ząbki", „ząbków", „ząbka".
+ *
+ * A name that is not in the vocabulary is returned untouched rather than dropped — a recipe
+ * written by a newer build must still print something readable on an older one.
+ */
+export function measureWord(name: string, count: number): string {
+  const forms = MEASURE_FORMS[name as MeasureName];
+  if (forms === undefined) return name;
+  if (!Number.isInteger(count)) return forms.fraction;
+  return pluralPl(count, forms);
+}
+
+/**
+ * An amount as it is written next to an ingredient, with a household measure when the row
+ * carries one: „2 ząbki", „1,5 łyżki", „200 g", „2 szt.".
+ *
+ * A measure only ever labels a `szt` row (decision 323). On `g` and `ml` — and on a row with
+ * no measure — this is `formatAmountWithUnit` exactly.
+ */
+export function formatMeasureAmount(amount: number, unit: Unit, measureName?: string): string {
+  if (unit !== 'szt' || measureName === undefined || measureName === '') {
+    return formatAmountWithUnit(amount, unit);
+  }
+  return `${formatAmount(amount)} ${measureWord(measureName, amount)}`;
+}

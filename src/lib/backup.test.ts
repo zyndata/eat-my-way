@@ -167,6 +167,30 @@ describe('reading a backup', () => {
     expect(summarizeBackup(buildBackup({ ...input, vaultFile: '{}' })).vault).toBe(true);
   });
 
+  /**
+   * Phase 19: the body data is an optional profile field, so it must cross the export file
+   * with no schema version bump and no migration — the way `mealPlan` and `adjustments` do.
+   */
+  it('round-trips the body data the goals were calculated from', () => {
+    const body = {
+      sex: 'male' as const,
+      age: 40,
+      height: 180,
+      weight: 80,
+      activity: 'sedentary' as const,
+      split: { protein: 40, carbs: 30, fat: 30 }
+    };
+    const document = buildBackup({ ...input, profile: { ...DEFAULT_PROFILE, body } });
+    const backup = readBackup(JSON.stringify(document));
+
+    expect(backup.profile.body).toEqual(body);
+    expect(backup.schemaVersion).toBe(input.schemaVersion);
+  });
+
+  it('leaves a file written before the calculator without a body', () => {
+    expect(readBackup(JSON.stringify(buildBackup(input))).profile).not.toHaveProperty('body');
+  });
+
   it('fills in profile fields a file predates', () => {
     const document = { ...buildBackup(input), profile: { goals: DEFAULT_PROFILE.goals } };
     const backup = readBackup(JSON.stringify(document));
@@ -243,5 +267,89 @@ describe('reading a backup', () => {
   it('refuses a missing collection instead of importing an empty one', () => {
     const { recipes: _dropped, ...withoutRecipes } = buildBackup(input);
     expect(() => readBackup(JSON.stringify(withoutRecipes))).toThrow(/przepisy/);
+  });
+});
+
+describe('household measures round-trip (Phase 16)', () => {
+  const withMeasures: Ingredient = {
+    ...custom,
+    measures: [
+      { name: 'łyżka', grams: 28 },
+      { name: 'opakowanie', grams: 250 }
+    ]
+  };
+  const labelled: Recipe = {
+    ...recipe,
+    items: [
+      { ingredientId: 'usda-1', amount: 2, unit: 'szt', gramsPerUnit: 5, measureName: 'ząbek' }
+    ]
+  };
+
+  it('survives export and import with no schema version bump and no migration', () => {
+    const built = buildBackup(
+      { ...input, customIngredients: [withMeasures], recipes: [labelled] },
+      new Date('2026-09-11T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]?.measures).toEqual(withMeasures.measures);
+    expect(read.recipes[0]?.items[0]?.measureName).toBe('ząbek');
+    // The point of the phase: nothing about the file's version changed.
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+    expect(read.version).toBe(BACKUP_VERSION);
+  });
+
+  it('reads a file written before measures existed, unchanged', () => {
+    const built = buildBackup(input, new Date('2026-09-11T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]?.measures).toBeUndefined();
+    expect(read.recipes[0]?.items[0]).not.toHaveProperty('measureName');
+  });
+});
+
+describe('preparation time round-trip (Phase 20)', () => {
+  const timed: Recipe = { ...recipe, prepMinutes: 15 };
+
+  it('survives export and import with no schema version bump and no migration', () => {
+    const built = buildBackup(
+      { ...input, recipes: [timed] },
+      new Date('2026-09-12T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.recipes[0]?.prepMinutes).toBe(15);
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+    expect(read.version).toBe(BACKUP_VERSION);
+  });
+
+  it('reads a file written before preparation times existed, unchanged', () => {
+    const built = buildBackup(input, new Date('2026-09-12T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.recipes[0]).not.toHaveProperty('prepMinutes');
+  });
+});
+
+describe('shop department round-trip (Phase 17)', () => {
+  const filed: Ingredient = { ...custom, department: 'mrozonki' };
+
+  it('survives export and import with no schema version bump and no migration', () => {
+    const built = buildBackup(
+      { ...input, customIngredients: [filed] },
+      new Date('2026-09-12T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]?.department).toBe('mrozonki');
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+    expect(read.version).toBe(BACKUP_VERSION);
+  });
+
+  it('reads a file written before departments existed, unchanged', () => {
+    const built = buildBackup(input, new Date('2026-09-12T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.ingredients[0]).not.toHaveProperty('department');
   });
 });

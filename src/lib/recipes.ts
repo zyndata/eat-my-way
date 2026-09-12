@@ -1,4 +1,13 @@
-import type { Ingredient, Macros, Recipe, RecipeItem, Tag, Unit } from './types';
+import type {
+  Ingredient,
+  Macros,
+  Measure,
+  MeasureName,
+  Recipe,
+  RecipeItem,
+  Tag,
+  Unit
+} from './types';
 import { addYears } from './dates';
 import { itemMacros, sumMacros, type IngredientLookup } from './macros';
 import { rankCandidates } from './search';
@@ -109,10 +118,84 @@ export function filterByTags(
   return entries.filter((entry) => selected.every((key) => entry.recipe.tags.includes(key)));
 }
 
+// ---- preparation time -------------------------------------------------------------------
+
+/**
+ * The limits the library's time filter offers, in minutes (PLAN.md Phase 20 task 3). Three
+ * chips and no free number: „do 15 / 30 / 60 min" is how the question is actually asked on a
+ * Wednesday at six, and a spinner asking for an exact ceiling would be a worse way to ask it.
+ */
+export const PREP_LIMITS: readonly number[] = [15, 30, 60];
+
+/**
+ * A stored preparation time, or `undefined` for anything that must not be stored: only a
+ * positive whole number of minutes is a time. Zero is not „instant" and a negative is not a
+ * time at all, so both are refused here rather than written and rendered later.
+ */
+export function readPrepMinutes(value: number | null | undefined): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) return undefined;
+  return value;
+}
+
+/** True while the editor's time field holds something savable — including nothing at all. */
+export function isPrepMinutesValid(value: number | null): boolean {
+  return value === null || readPrepMinutes(value) !== undefined;
+}
+
+/**
+ * Recipes that can be cooked within `limit` minutes. No limit keeps everything, exactly as no
+ * tag selection does.
+ *
+ * A recipe with no time is **hidden** while the filter is on. „do 30 min" is a claim about a
+ * recipe and an untimed one makes no claim, so including it would answer the question with a
+ * maybe; the library says out loud how many it is hiding instead (decision 382).
+ */
+export function filterByPrepMinutes(
+  entries: readonly RecipeListEntry[],
+  limit?: number
+): RecipeListEntry[] {
+  if (limit === undefined) return [...entries];
+  return entries.filter((entry) => {
+    const minutes = entry.recipe.prepMinutes;
+    return minutes !== undefined && minutes <= limit;
+  });
+}
+
+/** How many of these recipes carry no preparation time — what the time filter hides. */
+export function countWithoutPrepMinutes(entries: readonly RecipeListEntry[]): number {
+  return entries.filter((entry) => entry.recipe.prepMinutes === undefined).length;
+}
+
+/**
+ * Every ingredient's search keys by id — its normalized name and its normalized aliases.
+ *
+ * Handed in rather than stored on the recipe: it comes out of the in-memory snapshot the
+ * autocomplete already holds (STATE.md decisions 39 and 333), so a recipe carries no
+ * denormalized copy of what its ingredients happen to be called this week.
+ */
+export type IngredientKeys = ReadonlyMap<string, readonly string[]>;
+
 export interface SearchOptions {
   sort?: RecipeSort;
   /** Per-portion macros, needed only by the `kcal` order. */
   portionMacros?: ReadonlyMap<string, Macros>;
+  /** Omitted, the search is by recipe name alone — exactly what it did before Phase 18. */
+  ingredientKeys?: IngredientKeys;
+  /** The time filter's ceiling in minutes; omitted, no recipe is hidden for its time. */
+  maxPrepMinutes?: number;
+}
+
+/** The keys of everything one recipe contains, deduplicated, in item order. */
+function recipeIngredientKeys(recipe: Recipe, keys: IngredientKeys | undefined): string[] {
+  if (keys === undefined) return [];
+  const seen = new Set<string>();
+  for (const item of recipe.items) {
+    for (const key of keys.get(item.ingredientId) ?? []) {
+      if (key !== '') seen.add(key);
+    }
+  }
+  return [...seen];
 }
 
 /**
@@ -123,6 +206,13 @@ export interface SearchOptions {
  * A typed query overrides the sort entirely, exactly as it has always overridden the default
  * order: match quality is the only ranking that makes sense once the user has said what they
  * are looking for.
+ *
+ * Phase 18 widens it from names to contents: given `ingredientKeys`, „soczewica" also finds
+ * the recipes that merely contain lentils — underneath every recipe with lentils in its name,
+ * never level with them.
+ *
+ * Phase 20 adds the time ceiling. It narrows like the tag chips do — before the query is
+ * ranked, never after — so „do 30 min" and „obiad" and „soczewica" all hold at once.
  */
 export function searchRecipes(
   entries: readonly RecipeListEntry[],
@@ -130,7 +220,10 @@ export function searchRecipes(
   selectedTags: readonly string[] = [],
   options: SearchOptions = {}
 ): RecipeListEntry[] {
-  const filtered = filterByTags(entries, selectedTags);
+  const filtered = filterByPrepMinutes(
+    filterByTags(entries, selectedTags),
+    options.maxPrepMinutes
+  );
   if (normalizeKey(query) === '') {
     return sortRecipes(filtered, options.sort ?? 'activity', options.portionMacros);
   }
@@ -138,7 +231,10 @@ export function searchRecipes(
   const candidates = filtered.map((entry) => ({
     entry,
     nameKey: normalizeKey(entry.recipe.name),
+    // A recipe has no aliases of its own. What it *contains* ranks below every name match,
+    // which is the whole point of `MatchTier.Contained` (STATE.md decision 333).
     aliasKeys: [] as string[],
+    containedKeys: recipeIngredientKeys(entry.recipe, options.ingredientKeys),
     useCount: entry.usage.plannedCount
   }));
 
@@ -261,6 +357,12 @@ export interface DraftItem {
   amount: number | null;
   unit: Unit;
   gramsPerUnit: number | null;
+  /**
+   * The household measure this row is counted in, or `null` for a plain „szt." row. Only ever
+   * a label: tapping a measure chip writes `unit`, `gramsPerUnit` and this together, and from
+   * then on the three move independently — re-weighing a clove keeps it a clove.
+   */
+  measureName: MeasureName | null;
   /** Per-100 g values typed by hand at this point of use; `null` means "use the database". */
   macroOverride: Macros | null;
   /**
@@ -280,6 +382,12 @@ export interface RecipeDraft {
   items: DraftItem[];
   /** The page this recipe came from, or `''`. Cleaned before it ever reaches the draft. */
   sourceUrl: string;
+  /**
+   * Preparation time in minutes, `null` while the field is empty — which is what an emptied
+   * number input reads back as, and it is kept as-is so the field does not fight the user
+   * mid-typing, exactly like `DraftItem.amount` (decision 54).
+   */
+  prepMinutes: number | null;
 }
 
 export function emptyDraftItem(id: string): DraftItem {
@@ -289,13 +397,21 @@ export function emptyDraftItem(id: string): DraftItem {
     amount: null,
     unit: 'g',
     gramsPerUnit: null,
+    measureName: null,
     macroOverride: null,
     sourceName: null
   };
 }
 
 export function emptyDraft(): RecipeDraft {
-  return { name: '', instructions: '', tagLabels: [], items: [], sourceUrl: '' };
+  return {
+    name: '',
+    instructions: '',
+    tagLabels: [],
+    items: [],
+    sourceUrl: '',
+    prepMinutes: null
+  };
 }
 
 /** `null` and non-finite values count as zero once the draft leaves the editor. */
@@ -310,6 +426,7 @@ export function draftFromRecipeItem(item: RecipeItem, id: string): DraftItem {
     amount: item.amount,
     unit: item.unit,
     gramsPerUnit: item.gramsPerUnit ?? null,
+    measureName: item.measureName ?? null,
     macroOverride: item.macroOverride === undefined ? null : { ...item.macroOverride },
     sourceName: null
   };
@@ -326,7 +443,8 @@ export function draftFromRecipe(
     instructions: recipe.instructions,
     tagLabels: [...labels],
     items: recipe.items.map((item) => draftFromRecipeItem(item, nextId())),
-    sourceUrl: recipe.sourceUrl ?? ''
+    sourceUrl: recipe.sourceUrl ?? '',
+    prepMinutes: recipe.prepMinutes ?? null
   };
 }
 
@@ -343,6 +461,9 @@ export function toRecipeItem(draft: DraftItem): RecipeItem {
   };
   const grams = toNumber(draft.gramsPerUnit);
   if (draft.unit !== 'g' && grams > 0) item.gramsPerUnit = grams;
+  // A measure only ever labels a `szt` row (decision 323), so switching the unit to `g` or
+  // `ml` drops the label rather than storing one that nothing would ever print.
+  if (draft.unit === 'szt' && draft.measureName !== null) item.measureName = draft.measureName;
   if (draft.macroOverride !== null) item.macroOverride = { ...draft.macroOverride };
   return item;
 }
@@ -370,9 +491,13 @@ export function incompleteDrafts(drafts: readonly DraftItem[]): DraftItem[] {
   return drafts.filter((draft) => draft.ingredientId !== '' && !isDraftComplete(draft));
 }
 
-/** Only a blank name blocks saving. */
+/**
+ * A blank name blocks saving, and so does a preparation time that is not a time: zero,
+ * a negative and „12,5 min" are refused rather than quietly dropped, because silently not
+ * storing something the user typed is the one outcome they cannot see (PLAN.md Phase 20).
+ */
 export function canSaveDraft(draft: RecipeDraft): boolean {
-  return draft.name.trim() !== '';
+  return draft.name.trim() !== '' && isPrepMinutesValid(draft.prepMinutes);
 }
 
 /**
@@ -386,6 +511,7 @@ export function draftToRecipe(
   options: { id: string; createdAt?: string | undefined; now: string }
 ): Recipe {
   const source = draft.sourceUrl.trim();
+  const prepMinutes = readPrepMinutes(draft.prepMinutes);
   return {
     id: options.id,
     name: draft.name.trim(),
@@ -396,8 +522,44 @@ export function draftToRecipe(
     updatedAt: options.now,
     // Omitted rather than written as `''`, like every other optional field here: an absent
     // source and an empty one must not be two different things in the Drive JSON.
-    ...(source === '' ? {} : { sourceUrl: source })
+    ...(source === '' ? {} : { sourceUrl: source }),
+    // Same rule, and here it carries a meaning: a missing time is „nobody timed this", which
+    // is not the same claim as any number, least of all zero.
+    ...(prepMinutes === undefined ? {} : { prepMinutes })
   };
+}
+
+/**
+ * Apply a household measure to an editor row: the unit, the label and the weight in one act.
+ *
+ * The weight is the ingredient's default for that measure and is a *starting point* — the
+ * grams field stays editable, and editing it does not take the label away, because a clove
+ * re-weighed at 7 g is still a clove (PLAN.md Phase 16 task 4).
+ */
+export function applyMeasure(draft: DraftItem, measure: Measure): void {
+  draft.unit = 'szt';
+  draft.measureName = measure.name;
+  draft.gramsPerUnit = measure.grams;
+}
+
+/**
+ * The measures a row can offer: the ingredient's own, plus the one the row already carries
+ * when the library has since dropped it.
+ *
+ * That second half is what keeps a recipe from changing because the library did — the chip
+ * stays on screen, selected, with the row's own weight, rather than vanishing and leaving
+ * „2 ząbki" unexplained.
+ */
+export function measureChoices(
+  draft: DraftItem,
+  ingredient: Ingredient | undefined
+): Measure[] {
+  const offered = ingredient?.measures ?? [];
+  const current = draft.measureName;
+  if (current === null || offered.some((measure) => measure.name === current)) {
+    return [...offered];
+  }
+  return [...offered, { name: current, grams: toNumber(draft.gramsPerUnit) }];
 }
 
 /** Per-100 g values a row starts an override from: the ingredient's own, or zeros. */
@@ -441,6 +603,8 @@ export function duplicateRecipe(
     updatedAt: options.now,
     // A variant of a recipe still came from the page the original came from, and the row can
     // be cleared on the copy if the variant has drifted too far to claim it.
-    ...(recipe.sourceUrl === undefined ? {} : { sourceUrl: recipe.sourceUrl })
+    ...(recipe.sourceUrl === undefined ? {} : { sourceUrl: recipe.sourceUrl }),
+    // A copy cooks like its original until it is edited, so it inherits the time too.
+    ...(recipe.prepMinutes === undefined ? {} : { prepMinutes: recipe.prepMinutes })
   };
 }

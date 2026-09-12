@@ -8,7 +8,7 @@
   import TagSection from '../lib/components/TagSection.svelte';
   import MealPlanSection from '../lib/components/MealPlanSection.svelte';
   import Spinner from '../lib/components/Spinner.svelte';
-  import type { Macros, Profile } from '../lib/types';
+  import type { BodyData, Macros, Profile } from '../lib/types';
   import { repository } from '../lib/repository';
   import { DEFAULT_GEMINI_MODEL } from '../lib/db';
   import { testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
@@ -164,9 +164,9 @@
     }
   });
 
-  async function saveGoals(next: Macros): Promise<void> {
+  async function saveGoals(next: Macros, body: BodyData): Promise<void> {
     savingGoals = true;
-    await repository.setGoals(next);
+    profile = await repository.setGoals(next, body);
     savingGoals = false;
     goalsSaved = true;
     void syncNow();
@@ -266,9 +266,8 @@
 
   const inputClass =
     'mt-1 w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)';
-  const buttonClass =
-    'rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50';
-  const secondaryClass = 'rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium';
+  const buttonClass = 'emw-press emw-btn emw-btn-primary disabled:opacity-50';
+  const secondaryClass = 'emw-press emw-btn emw-btn-secondary';
 
   /** „Jak system" is the default, so it is listed last — the two explicit answers come first. */
   const THEMES: { value: ThemeChoice; label: string }[] = [
@@ -522,7 +521,7 @@
       <p class="pt-1 text-xs text-(--color-ink-muted)">
         Klucz utworzysz w Google AI Studio —
         <a
-          class="font-medium text-(--color-accent) underline"
+          class="emw-press emw-btn-link font-medium"
           href={AI_STUDIO_KEY_URL}
           target="_blank"
           rel="noopener noreferrer">aistudio.google.com/apikey</a>. Zapisujemy go dopiero po
@@ -552,7 +551,7 @@
         {#if modelOptions.length > 0}
           <button
             type="button"
-            class="pt-1 text-sm text-(--color-accent) underline"
+            class="pt-1 emw-press emw-btn-link text-sm"
             onclick={() => (typingModel = false)}
           >
             Wybierz z listy
@@ -571,7 +570,7 @@
         </select>
         <button
           type="button"
-          class="pt-1 text-sm text-(--color-accent) underline"
+          class="pt-1 emw-press emw-btn-link text-sm"
           onclick={() => (typingModel = true)}
         >
           Wpisz nazwę ręcznie
@@ -624,7 +623,7 @@
         w dniu, w którym model bywa przeciążony, zużycie jest wyższe niż ta liczba. Prawdziwe
         limity i zużycie pokazuje
         <a
-          class="font-medium text-(--color-accent) underline"
+          class="emw-press emw-btn-link font-medium"
           href="https://ai.dev/rate-limit"
           target="_blank"
           rel="noreferrer noopener"
@@ -673,7 +672,12 @@
       <p class="pt-2 text-sm text-(--color-ink-muted)">Wczytywanie…</p>
     {:else}
       <div class="pt-3">
-        <GoalsForm bind:goals saving={savingGoals} onsave={(next) => void saveGoals(next)} />
+        <GoalsForm
+          bind:goals
+          body={profile.body}
+          saving={savingGoals}
+          onsave={(next, body) => void saveGoals(next, body)}
+        />
       </div>
       {#if goalsSaved}
         <p class="pt-2 text-sm text-(--color-ink-muted)" role="status">Zapisano.</p>
@@ -728,7 +732,7 @@
 
   <UpdateSection />
 
-  <a class="mt-4 inline-block text-sm font-medium text-(--color-accent) underline" href="#/about">
+  <a class="mt-4 inline-block emw-press emw-btn-link text-sm font-medium" href="#/about">
     O aplikacji i źródłach danych
   </a>
 </Screen>

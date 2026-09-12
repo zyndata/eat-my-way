@@ -2,9 +2,17 @@
   import Screen from '../lib/components/Screen.svelte';
   import type { Macros, Tag } from '../lib/types';
   import type { RecipeListEntry, RecipeSort } from '../lib/recipes';
-  import { groupByTag, isRecipeSort, searchRecipes } from '../lib/recipes';
+  import {
+    PREP_LIMITS,
+    countWithoutPrepMinutes,
+    filterByTags,
+    groupByTag,
+    isRecipeSort,
+    searchRecipes
+  } from '../lib/recipes';
   import { pluralPl } from '../lib/text';
   import { todayDate } from '../lib/dates';
+  import { ingredientIndex } from '../lib/ingredients';
   import { repository } from '../lib/repository';
   import { scheduleSync, syncState } from '../lib/sync/state.svelte';
 
@@ -14,6 +22,11 @@
    *
    * Everything is read from IndexedDB once when the screen mounts; filtering and ranking
    * then happen in memory, so typing never waits on a database round trip.
+   *
+   * Phase 18 widens the search from names to contents: „soczewica" also lists the recipes
+   * that merely contain lentils, underneath every recipe with lentils in its name. The keys
+   * come from the autocomplete's in-memory snapshot, so nothing is denormalized onto a recipe
+   * (STATE.md decision 333).
    *
    * Phase 9 adds three things on top of that list: a choice of order (task 4), a view grouped
    * by tag (task 1) and „Powiel" (task 3). The first two are remembered in the meta table,
@@ -30,6 +43,8 @@
   let entries = $state<RecipeListEntry[]>([]);
   let tags = $state<Tag[]>([]);
   let macros = $state(new Map<string, Macros>());
+  /** Ingredient search keys, so the query reaches what a recipe contains (Phase 18 task B). */
+  let ingredientKeys = $state(new Map<string, string[]>());
   let loading = $state(true);
   let duplicating = $state<string | null>(null);
 
@@ -37,8 +52,28 @@
   let selected = $state<string[]>([]);
   let sort = $state<RecipeSort>('activity');
   let grouped = $state(false);
+  /**
+   * The time filter's ceiling in minutes, or `null` for „off" (PLAN.md Phase 20 task 3). Not
+   * remembered between visits, unlike the order and the grouping: a ceiling silently still in
+   * force next week would look like a library that had lost half its recipes.
+   */
+  let maxPrep = $state<number | null>(null);
 
-  const visible = $derived(searchRecipes(entries, query, selected, { sort, portionMacros: macros }));
+  const visible = $derived(
+    searchRecipes(entries, query, selected, {
+      sort,
+      portionMacros: macros,
+      ingredientKeys,
+      ...(maxPrep === null ? {} : { maxPrepMinutes: maxPrep })
+    })
+  );
+  /**
+   * How many recipes the time filter alone is hiding — counted after the tags and before the
+   * time, so the number answers „what would come back if I turned this off".
+   */
+  const hiddenByPrep = $derived(
+    maxPrep === null ? 0 : countWithoutPrepMinutes(filterByTags(entries, selected))
+  );
   /**
    * The sections. `tags` is already most-used first, which is the order decision 157 chose,
    * and „Bez tagu" is appended last by `groupByTag`. A recipe with three tags appears three
@@ -50,20 +85,27 @@
 
   async function load(): Promise<void> {
     loading = true;
-    const [library, allTags, storedSort, storedGrouped] = await Promise.all([
+    const [library, allTags, storedSort, storedGrouped, keys] = await Promise.all([
       repository.recipeLibrary(todayDate()),
       repository.allTags(),
       repository.getMeta('recipeSort'),
-      repository.getMeta('recipeGrouped')
+      repository.getMeta('recipeGrouped'),
+      ingredientIndex.keysById()
     ]);
     entries = library;
     tags = allTags;
+    ingredientKeys = keys;
     if (isRecipeSort(storedSort)) sort = storedSort;
     grouped = storedGrouped === true;
     macros = await repository.recipeMacros(library.map((entry) => entry.recipe));
     // A tag can disappear while a chip for it is still selected.
     selected = selected.filter((key) => allTags.some((tag) => tag.key === key));
     loading = false;
+  }
+
+  /** Tapping the chip that is already on turns the filter off — one control, both ways. */
+  function chooseMaxPrep(limit: number): void {
+    maxPrep = maxPrep === limit ? null : limit;
   }
 
   function toggle(key: string): void {
@@ -116,7 +158,7 @@
 {#snippet card(entry: RecipeListEntry)}
   {@const portion = macros.get(entry.recipe.id)}
   <li class="rounded-xl border border-(--color-border) bg-(--color-surface-raised)">
-    <a class="block p-3" href="#/recipes/{entry.recipe.id}/edit">
+    <a class="emw-press emw-row block rounded-xl p-3" href="#/recipes/{entry.recipe.id}/edit">
       <span class="flex items-baseline justify-between gap-3">
         <span class="min-w-0 truncate font-medium">{entry.recipe.name}</span>
         {#if portion}
@@ -133,6 +175,9 @@
           few: 'składniki',
           many: 'składników'
         })}
+        {#if entry.recipe.prepMinutes !== undefined}
+          · {entry.recipe.prepMinutes} min
+        {/if}
         {#if entry.usage.plannedCount > 0}
           <!-- „w ostatnim roku": the count is windowed, see STATE.md decision 147. -->
           · zaplanowany {entry.usage.plannedCount}
@@ -153,7 +198,7 @@
     <div class="flex justify-end border-t border-(--color-border) px-3 py-1.5">
       <button
         type="button"
-        class="text-xs font-medium text-(--color-accent) disabled:opacity-50"
+        class="emw-press emw-btn-link text-xs font-medium no-underline disabled:opacity-50"
         disabled={duplicating !== null}
         onclick={() => void duplicate(entry.recipe.id)}
       >
@@ -166,16 +211,16 @@
 <Screen title="Przepisy" lead="Twoja biblioteka przepisów. Składniki zawsze na 1 porcję.">
   <div class="flex flex-wrap items-center gap-2">
     <label class="min-w-0 flex-1 text-sm font-medium">
-      <span class="sr-only">Szukaj przepisu</span>
+      <span class="sr-only">Szukaj przepisu lub składnika</span>
       <input
         class="w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)"
         type="search"
-        placeholder="Szukaj przepisu…"
+        placeholder="Szukaj przepisu lub składnika…"
         bind:value={query}
       />
     </label>
     <a
-      class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+      class="emw-press emw-btn emw-btn-primary"
       href="#/recipes/new/edit"
     >
       Nowy przepis
@@ -197,9 +242,9 @@
     </label>
     <button
       type="button"
-      class="rounded-full border px-3 py-1 text-sm {grouped
-        ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-        : 'border-(--color-border) text-(--color-ink-muted)'}"
+      class="emw-press emw-btn-chip border px-3 py-1 text-sm {grouped
+        ? 'emw-btn-primary border-(--color-accent)'
+        : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
       aria-pressed={grouped}
       onclick={() => void toggleGrouped()}
     >
@@ -210,6 +255,38 @@
     {/if}
   </div>
 
+  <!-- Hidden on an empty library, like the tag chips: three ways to narrow nothing is noise,
+       and the empty state has two offers of its own to make. -->
+  {#if entries.length > 0}
+    <ul class="flex flex-wrap items-center gap-2 pt-3" aria-label="Filtruj po czasie przygotowania">
+      {#each PREP_LIMITS as limit (limit)}
+        {@const on = maxPrep === limit}
+        <li>
+          <button
+            type="button"
+            class="emw-press emw-btn-chip border px-3 py-1 text-sm {on
+              ? 'emw-btn-primary border-(--color-accent)'
+              : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
+            aria-pressed={on}
+            onclick={() => chooseMaxPrep(limit)}
+          >
+            do {limit} min
+          </button>
+        </li>
+      {/each}
+      {#if maxPrep !== null && hiddenByPrep > 0}
+        <li class="text-xs text-(--color-ink-muted)">
+          Ukryto {hiddenByPrep}
+          {pluralPl(hiddenByPrep, {
+            one: 'przepis bez podanego czasu',
+            few: 'przepisy bez podanego czasu',
+            many: 'przepisów bez podanego czasu'
+          })}.
+        </li>
+      {/if}
+    </ul>
+  {/if}
+
   {#if chips.length > 0}
     <ul class="flex flex-wrap gap-2 pt-3" aria-label="Filtruj po tagach">
       {#each chips as tag (tag.key)}
@@ -217,9 +294,9 @@
         <li>
           <button
             type="button"
-            class="rounded-full border px-3 py-1 text-sm {on
-              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
-              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            class="emw-press emw-btn-chip border px-3 py-1 text-sm {on
+              ? 'emw-btn-primary border-(--color-accent)'
+              : 'emw-tint border-(--color-border) text-(--color-ink-muted)'}"
             aria-pressed={on}
             onclick={() => toggle(tag.key)}
           >
@@ -229,7 +306,7 @@
       {/each}
     </ul>
     {#if selected.length > 0}
-      <button type="button" class="pt-2 text-sm text-(--color-accent) underline" onclick={() => (selected = [])}>
+      <button type="button" class="pt-2 emw-press emw-btn-link text-sm" onclick={() => (selected = [])}>
         Wyczyść filtry
       </button>
     {/if}
@@ -246,13 +323,13 @@
       <p class="text-sm">Biblioteka jest pusta. To Twoje przepisy — zbierasz je sam.</p>
       <div class="flex flex-wrap justify-center gap-2 pt-4">
         <a
-          class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink)"
+          class="emw-press emw-btn emw-btn-primary px-4"
           href="#/recipes/new/edit"
         >
           Nowy przepis
         </a>
         <a
-          class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
+          class="emw-press emw-btn emw-btn-secondary px-4"
           href="#/recipes/new/edit?import"
         >
           Wklej przepis z internetu
@@ -266,7 +343,26 @@
       </p>
     </div>
   {:else if visible.length === 0}
-    <p class="pt-6 text-sm text-(--color-ink-muted)">Nic nie pasuje do tych kryteriów.</p>
+    <p class="pt-6 text-sm text-(--color-ink-muted)">
+      Nic nie pasuje do tych kryteriów.
+      {#if maxPrep !== null}
+        <!-- The library is not empty, it is filtered: a recipe nobody has timed makes no claim
+             about a time ceiling, so it is hidden rather than guessed at (decision 382). -->
+        Filtr „do {maxPrep} min" pokazuje tylko przepisy z podanym czasem przygotowania —
+        {#if hiddenByPrep > 0}
+          {hiddenByPrep}
+          {pluralPl(hiddenByPrep, {
+            one: 'przepis go nie ma',
+            few: 'przepisy go nie mają',
+            many: 'przepisów go nie ma'
+          })}
+          i {hiddenByPrep === 1 ? 'jest ukryty' : 'są ukryte'}.
+        {:else}
+          żaden przepis nie mieści się w tym czasie.
+        {/if}
+        Czas dopiszesz w przepisie, w polu „Czas przygotowania".
+      {/if}
+    </p>
   {:else if grouped}
     <!-- A recipe with several tags is listed under each of them, so the counts add up to more
          than the library holds. That is intended — PLAN.md Phase 9 task 1. -->

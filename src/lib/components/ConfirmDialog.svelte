@@ -50,7 +50,7 @@
 
 <dialog
   bind:this={dialog}
-  class="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-(--color-border) bg-(--color-surface-raised) p-5 text-(--color-ink) shadow-xl backdrop:bg-black/40"
+  class="m-auto w-[min(28rem,calc(100vw-2rem-var(--safe-left)-var(--safe-right)))] rounded-2xl border border-(--color-border) bg-(--color-surface-raised) p-5 text-(--color-ink) shadow-xl backdrop:bg-black/40"
   aria-labelledby={titleId}
   oncancel={(event) => {
     // Escape: let the parent close it by flipping `open`, so both paths behave alike.
@@ -67,16 +67,14 @@
   <div class="flex flex-wrap justify-end gap-2 pt-5">
     <button
       type="button"
-      class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="emw-press emw-btn emw-btn-secondary"
       onclick={oncancel}
     >
       {cancelLabel}
     </button>
     <button
       type="button"
-      class="rounded-lg px-3 py-2 text-sm font-medium {danger
-        ? 'bg-(--color-danger-solid) text-(--color-danger-solid-ink)'
-        : 'bg-(--color-accent) text-(--color-accent-ink)'}"
+      class="emw-press emw-btn {danger ? 'emw-btn-danger-solid' : 'emw-btn-primary'}"
       onclick={onconfirm}
     >
       {confirmLabel}

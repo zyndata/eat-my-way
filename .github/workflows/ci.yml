@@ -46,7 +46,7 @@ jobs:
         run: npm run build
 
   e2e:
-    name: End-to-end (login & sync)
+    name: End-to-end (login & sync, Chromium & WebKit)
     runs-on: ubuntu-latest
     steps:
       # Full history: the app's version comes from `git describe`, and a shallow clone with
@@ -63,27 +63,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Only Chromium, and only when the lockfile changed: the browser download is the one
-      # real cost of this job.
-      - name: Cache the Playwright browser
+      # Both engines, and only when the lockfile changed: the browser download is the one
+      # real cost of this job. The `-browsers-` segment of the key is part of the cache
+      # identity, not decoration — a cache saved when this job installed Chromium alone would
+      # otherwise hit on an unchanged lockfile, skip the install and leave WebKit missing.
+      # Change it whenever the set of installed browsers changes.
+      - name: Cache the Playwright browsers
         id: playwright-cache
         uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          key: playwright-${{ runner.os }}-browsers-chromium-webkit-${{ hashFiles('package-lock.json') }}
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install the browsers
+        run: npx playwright install --with-deps chromium webkit
         if: steps.playwright-cache.outputs.cache-hit != 'true'
 
-      - name: Install Chromium system dependencies
-        run: npx playwright install-deps chromium
+      # A cached browser directory carries no apt packages, so the system libraries WebKit
+      # links against have to be installed even on a hit.
+      - name: Install the browsers' system dependencies
+        run: npx playwright install-deps chromium webkit
         if: steps.playwright-cache.outputs.cache-hit == 'true'
 
+      # Both engines run here. WebKit is the one Safari uses and the only reason this project
+      # ever learned that a Drive sync overlapping the first-run import hung (STATE.md open
+      # question 31); it stayed out of CI only while its cost was believed to be four minutes,
+      # which turned out to be an artifact of Playwright's WebKit on Windows. On Linux it costs
+      # about 1.5x the Chromium suite (STATE.md decisions 397 and 398).
+      #
       # No Google credentials are involved: the suite answers every request to
       # accounts.google.com and www.googleapis.com itself, and playwright.config.ts builds
       # the app with a placeholder client id.
       - name: End-to-end tests
+        env:
+          E2E_WEBKIT: '1'
         run: npm run test:e2e
 
       - uses: actions/upload-artifact@v7

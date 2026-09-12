@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { readDaysDocument, readMealPlan, readProfileDocument } from './documents';
+import {
+  readDaysDocument,
+  readIngredientsDocument,
+  readMealPlan,
+  readProfileDocument,
+  readRecipesDocument
+} from './documents';
 import { DEFAULT_PROFILE } from '../db';
 
 /**
@@ -56,6 +62,37 @@ describe('readMealPlan', () => {
   });
 });
 
+/** The Phase 19 body data, which needs a reader here for exactly the same reason. */
+describe('body data in profile.json', () => {
+  const body = {
+    sex: 'male' as const,
+    age: 40,
+    height: 180,
+    weight: 80,
+    activity: 'sedentary' as const,
+    split: { protein: 40, carbs: 30, fat: 30 }
+  };
+
+  it('survives a round trip through the document', () => {
+    const written = JSON.parse(JSON.stringify({ ...PROFILE_JSON, body }));
+    expect(readProfileDocument(written, DEFAULT_PROFILE).body).toEqual(body);
+  });
+
+  it('keeps the body this device holds when the remote document has none', () => {
+    const { split: _ignored, ...plain } = body;
+    const local = { ...DEFAULT_PROFILE, body: plain };
+    expect(readProfileDocument(PROFILE_JSON, local).body).toEqual(local.body);
+    expect(readProfileDocument(PROFILE_JSON, DEFAULT_PROFILE)).not.toHaveProperty('body');
+  });
+
+  it('ignores a damaged body rather than importing half of one', () => {
+    const local = { ...DEFAULT_PROFILE, body: { ...body } };
+    const damaged = { ...PROFILE_JSON, body: { sex: 'male', age: 40 } };
+    expect(readProfileDocument(damaged, local).body).toEqual(local.body);
+    expect(readProfileDocument(damaged, DEFAULT_PROFILE)).not.toHaveProperty('body');
+  });
+});
+
 describe('readDaysDocument', () => {
   /**
    * The days document is spread through rather than rebuilt field by field, which is what
@@ -95,5 +132,135 @@ describe('readDaysDocument', () => {
 
     const read = readDaysDocument({ '2026-09-10': { ...day, meals: [meal] } });
     expect(read['2026-09-10']?.meals[0]).not.toHaveProperty('adjustments');
+  });
+});
+
+describe('household measures in the Drive documents (Phase 16)', () => {
+  it('keeps an ingredient\u2019s measures, because the reader keeps the fields it does not know', () => {
+    const document = {
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom',
+          measures: [{ name: 'łyżka', grams: 28 }]
+        }
+      ],
+      corrections: []
+    };
+
+    const read = readIngredientsDocument(JSON.parse(JSON.stringify(document)));
+    expect(read.ingredients[0]?.measures).toEqual([{ name: 'łyżka', grams: 28 }]);
+  });
+
+  it('keeps a recipe item\u2019s measureName', () => {
+    const document = {
+      recipes: [
+        {
+          id: 'recipe-1',
+          name: 'Czosnkowa',
+          items: [
+            { ingredientId: 'usda:4', amount: 2, unit: 'szt', gramsPerUnit: 5, measureName: 'ząbek' }
+          ],
+          tags: [],
+          instructions: '',
+          createdAt: '2026-09-11T10:00:00.000Z',
+          updatedAt: '2026-09-11T10:00:00.000Z'
+        }
+      ],
+      tags: []
+    };
+
+    const read = readRecipesDocument(JSON.parse(JSON.stringify(document)));
+    expect(read.recipes[0]?.items[0]?.measureName).toBe('ząbek');
+  });
+
+  it('reads a document written before measures existed, unchanged', () => {
+    const read = readIngredientsDocument({
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom'
+        }
+      ],
+      corrections: []
+    });
+    expect(read.ingredients[0]?.measures).toBeUndefined();
+  });
+});
+
+describe('the preparation time in the Drive documents (Phase 20)', () => {
+  const document = (prepMinutes?: number) => ({
+    recipes: [
+      {
+        id: 'recipe-1',
+        name: 'Jajecznica',
+        items: [],
+        tags: [],
+        instructions: '',
+        createdAt: '2026-09-12T10:00:00.000Z',
+        updatedAt: '2026-09-12T10:00:00.000Z',
+        ...(prepMinutes === undefined ? {} : { prepMinutes })
+      }
+    ],
+    tags: []
+  });
+
+  it('keeps a recipe’s prepMinutes, with no schema version and no migration', () => {
+    const read = readRecipesDocument(JSON.parse(JSON.stringify(document(15))));
+    expect(read.recipes[0]?.prepMinutes).toBe(15);
+  });
+
+  it('reads a document written before preparation times existed, unchanged', () => {
+    const read = readRecipesDocument(JSON.parse(JSON.stringify(document())));
+    expect(read.recipes[0]?.prepMinutes).toBeUndefined();
+    // Absent, not zero: an old recipe is untimed, not instant.
+    expect('prepMinutes' in (read.recipes[0] ?? {})).toBe(false);
+  });
+});
+
+describe('the shopping department in the Drive documents (Phase 17)', () => {
+  it('keeps an ingredient’s department, with no schema version and no migration', () => {
+    const document = {
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom',
+          department: 'nabial'
+        }
+      ],
+      corrections: []
+    };
+
+    const read = readIngredientsDocument(JSON.parse(JSON.stringify(document)));
+    expect(read.ingredients[0]?.department).toBe('nabial');
+  });
+
+  it('reads a document written before departments existed, unchanged', () => {
+    const read = readIngredientsDocument({
+      ingredients: [
+        {
+          id: 'custom:1',
+          name: 'Twaróg',
+          aliases: [],
+          state: 'raw',
+          per100g: { kcal: 100, protein: 5, carbs: 10, fat: 2 },
+          source: 'custom'
+        }
+      ],
+      corrections: []
+    });
+    expect(read.ingredients[0]).not.toHaveProperty('department');
   });
 });

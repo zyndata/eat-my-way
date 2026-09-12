@@ -30,6 +30,24 @@
   --color-danger-surface: oklch(97.1% 0.013 17);
   --color-danger-solid: oklch(57.7% 0.24 27);
   --color-danger-solid-ink: oklch(99% 0.01 27);
+
+  /*
+   * Interaction states (Phase 20 UI audit). A hover and a press are colours like any other, so
+   * they are tokens rather than a `brightness()` filter or a `color-mix()` against the ink —
+   * both of those move the wrong way in one of the two themes.
+   *
+   * In the light theme a surface gets *darker* as the pointer closes in; the dark theme reverses
+   * every one of these below. `--color-border-strong` is the outline button's hover border: the
+   * fill alone is too quiet a change on a raised card.
+   */
+  --color-accent-hover: oklch(58% 0.082 177);
+  --color-accent-active: oklch(53% 0.086 177);
+  --color-surface-hover: oklch(96% 0.008 95);
+  --color-surface-active: oklch(92.5% 0.01 95);
+  --color-border-strong: oklch(80% 0.012 95);
+  --color-danger-solid-hover: oklch(52% 0.235 27);
+  --color-danger-solid-active: oklch(47% 0.225 27);
+  --color-danger-surface-active: oklch(94% 0.025 17);
 }
 
 @layer base {
@@ -59,6 +77,49 @@
     --color-danger-surface: oklch(28% 0.06 22);
     --color-danger-solid: oklch(52% 0.21 27);
     --color-danger-solid-ink: oklch(97% 0.01 27);
+
+    /*
+     * The interaction states, mirrored. Every one of these moves up in lightness where the light
+     * theme moves down: on a dark ground "closer" is brighter, and a button that darkened on
+     * press would read as receding into the page instead of being pushed.
+     */
+    --color-accent-hover: oklch(79% 0.07 177);
+    --color-accent-active: oklch(84% 0.064 177);
+    --color-surface-hover: oklch(31% 0.01 95);
+    --color-surface-active: oklch(36% 0.012 95);
+    --color-border-strong: oklch(46% 0.012 95);
+    --color-danger-solid-hover: oklch(58% 0.215 27);
+    --color-danger-solid-active: oklch(64% 0.205 27);
+    --color-danger-surface-active: oklch(34% 0.07 22);
+  }
+
+  /*
+   * Safe-area geometry (Phase 15). An installed iPhone reserves a strip at the bottom of the
+   * screen for the home indicator and, in landscape, a strip at the side for the notch. The
+   * app asks for that space with `viewport-fit=cover`, so every element that has to clear the
+   * bottom navigation has to know how tall the bar actually is — which is not a constant.
+   *
+   * The insets reach the stylesheet through these properties rather than being written as
+   * `env()` at each use site for one reason: Chromium cannot be told to report an inset, so
+   * nothing in this repository could ever render a viewport that has one. A test can set a
+   * custom property (STATE.md decision 320); it cannot set `env()`.
+   *
+   * `--nav-h` is BottomNav's own height: 3.8125rem is its content box (py-2 + a size-6 icon +
+   * gap-1 + a text-xs line + border-t = 61px), plus the inset the bar pads itself with. The
+   * bar asserts this as its `min-height`, so the token and the bar cannot drift apart.
+   */
+  :root {
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-left: env(safe-area-inset-left, 0px);
+    --safe-right: env(safe-area-inset-right, 0px);
+    --nav-h: calc(3.8125rem + var(--safe-bottom));
+  }
+
+  /* From md up Sidebar replaces BottomNav, so there is no bar left to clear. */
+  @media (min-width: 48rem) {
+    :root {
+      --nav-h: 0px;
+    }
   }
 
   html {
@@ -115,4 +176,314 @@
       opacity: 0.45;
     }
   }
+
+  /* ---- interaction feedback ------------------------------------------------------------
+   *
+   * Added after a UI audit (Phase 20): the app had 157 clickable elements and exactly one
+   * `hover:` rule between them. Every button was inert under the cursor, and because `body`
+   * sets `-webkit-tap-highlight-color: transparent` the native flash was gone on touch too, so
+   * a press painted *nothing* on either input. That is what made the goals calculator's
+   * „Wypełnij pola" read as a broken button: it was filling four fields that had scrolled out
+   * of sight, and nothing under the finger said the press had landed.
+   *
+   * Three rules hold the whole system together:
+   *
+   *  - **Hover is gated behind `@media (hover: hover)`.** On a touchscreen `:hover` latches
+   *    after a tap and stays painted until something else is tapped, so an ungated rule leaves
+   *    the last-pressed button looking stuck. This is the one that cannot be skipped in a PWA.
+   *  - **The press state carries a colour shift *and* a 2% scale,** so it reads even where the
+   *    colour move is subtle — and it is the state a touch user actually sees, since they never
+   *    get a hover.
+   *  - **Disabled outranks both.** `:disabled` is listed last and re-asserts the resting look,
+   *    so a disabled button cannot be made to light up or shrink.
+   */
+  .emw-press {
+    cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease,
+      color 120ms ease,
+      opacity 120ms ease,
+      transform 120ms ease;
+  }
+
+  .emw-press:active {
+    transform: scale(0.97);
+  }
+
+  /*
+   * A keyboard focus ring, once, for everything. Buttons here had only the browser default —
+   * which the inputs deliberately drop with `outline-none` — so focus looked different on every
+   * control. `focus-visible` keeps it off a mouse press.
+   */
+  .emw-press:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  .emw-press:disabled,
+  .emw-press[aria-disabled='true'] {
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /*
+   * The press scale is motion, so it goes when motion is declined — the colour shift stays and
+   * carries the feedback on its own.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    .emw-press {
+      transition-property: background-color, border-color, color, opacity;
+    }
+
+    .emw-press:active {
+      transform: none;
+    }
+  }
+
+  /* ---- button variants ----------------------------------------------------------------
+   *
+   * Geometry included, because it was already identical at every call site — the three
+   * `const buttonClass = '…'` strings in Settings, Setup and BackupSection were the same
+   * declaration copied three times. Layout still belongs to the call site: a utility class
+   * (`mt-3`, `w-full`, `px-4`) sits in Tailwind's utilities layer and so overrides anything
+   * here, which is how the wider sheet buttons keep their padding.
+   *
+   * **Each variant states its three states together, in the order resting → hover → press,**
+   * and that order is load-bearing rather than tidiness. `:hover` and `:active` have the same
+   * specificity and both match while a mouse button is held down, so whichever is written last
+   * wins: with a single shared `@media (hover: hover)` block at the foot of the file, every
+   * press on a desktop painted the *hover* colour and the press state was dead on the one input
+   * that can produce both. `e2e/interaction.spec.ts` asserts the two colours differ.
+   */
+  .emw-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border-radius: var(--radius-lg);
+    padding: 0.5rem 0.75rem;
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-weight: 500;
+  }
+
+  /* The accent fill: primary actions — save, confirm, add. */
+  .emw-btn-primary {
+    background-color: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+
+  @media (hover: hover) {
+    .emw-btn-primary:hover:not(:disabled) {
+      background-color: var(--color-accent-hover);
+    }
+  }
+
+  .emw-btn-primary:active:not(:disabled) {
+    background-color: var(--color-accent-active);
+  }
+
+  /* The outline: secondary actions — cancel, close, toggle a panel. */
+  .emw-btn-secondary {
+    border: 1px solid var(--color-border);
+    background-color: transparent;
+    color: inherit;
+  }
+
+  @media (hover: hover) {
+    .emw-btn-secondary:hover:not(:disabled) {
+      border-color: var(--color-border-strong);
+      background-color: var(--color-surface-hover);
+    }
+  }
+
+  .emw-btn-secondary:active:not(:disabled) {
+    border-color: var(--color-border-strong);
+    background-color: var(--color-surface-active);
+  }
+
+  /* Destructive, outlined: delete a recipe, clear a day. */
+  .emw-btn-danger {
+    border: 1px solid var(--color-danger-border);
+    background-color: transparent;
+    color: var(--color-danger);
+  }
+
+  @media (hover: hover) {
+    .emw-btn-danger:hover:not(:disabled) {
+      border-color: var(--color-danger-solid);
+      background-color: var(--color-danger-surface);
+    }
+  }
+
+  .emw-btn-danger:active:not(:disabled) {
+    border-color: var(--color-danger-solid);
+    background-color: var(--color-danger-surface-active);
+  }
+
+  /* Destructive, filled: the confirm press inside a delete dialog. */
+  .emw-btn-danger-solid {
+    background-color: var(--color-danger-solid);
+    color: var(--color-danger-solid-ink);
+  }
+
+  @media (hover: hover) {
+    .emw-btn-danger-solid:hover:not(:disabled) {
+      background-color: var(--color-danger-solid-hover);
+    }
+  }
+
+  .emw-btn-danger-solid:active:not(:disabled) {
+    background-color: var(--color-danger-solid-active);
+  }
+
+  /*
+   * Text-only, underlined. No padding of its own — these sit inside sentences — so the press is
+   * carried by the colour alone and the scale is dropped: a 3% shrink on a word inside a
+   * paragraph reads as a rendering glitch rather than as a button.
+   */
+  .emw-btn-link {
+    color: var(--color-accent);
+    text-decoration-line: underline;
+  }
+
+  @media (hover: hover) {
+    .emw-btn-link:hover:not(:disabled) {
+      color: var(--color-accent-hover);
+    }
+  }
+
+  .emw-btn-link:active:not(:disabled) {
+    color: var(--color-accent-active);
+    transform: none;
+  }
+
+  /* The same shape for a link that must not compete with the accent for attention. */
+  .emw-btn-link-muted {
+    color: var(--color-ink-muted);
+    text-decoration-line: underline;
+  }
+
+  @media (hover: hover) {
+    .emw-btn-link-muted:hover:not(:disabled) {
+      color: var(--color-ink);
+    }
+  }
+
+  .emw-btn-link-muted:active:not(:disabled) {
+    color: var(--color-ink);
+    transform: none;
+  }
+
+  .emw-btn-link-danger {
+    color: var(--color-danger);
+    text-decoration-line: underline;
+  }
+
+  @media (hover: hover) {
+    .emw-btn-link-danger:hover:not(:disabled) {
+      color: var(--color-danger-solid);
+    }
+  }
+
+  .emw-btn-link-danger:active:not(:disabled) {
+    color: var(--color-danger-solid);
+    transform: none;
+  }
+
+  /*
+   * Icon-only buttons. A minimum rather than more padding, because the audit's other finding was
+   * that these were 36px squares — under the 44px a fingertip actually needs — and a minimum
+   * grows the hit area without moving the icon inside it.
+   */
+  .emw-btn-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    border-radius: var(--radius-lg);
+  }
+
+  @media (hover: hover) {
+    .emw-btn-icon:hover:not(:disabled) {
+      background-color: var(--color-surface-hover);
+      color: var(--color-ink);
+    }
+  }
+
+  .emw-btn-icon:active:not(:disabled) {
+    background-color: var(--color-surface-active);
+  }
+
+  /*
+   * A pill: the date chips, the quick filters, the floating action button.
+   *
+   * **Shape only, deliberately.** A chip is the one control in the app that is also a *state* —
+   * a filter is on or off, a day is picked or not — and the selected half is painted with
+   * `.emw-btn-primary`. If the pill carried a neutral tint of its own, that tint and the accent
+   * would collide on the selected chip, and which one won would come down to their order in
+   * this file. So the pill gives geometry, and the interactive fill comes from `.emw-tint` for
+   * the unselected half and from `.emw-btn-primary` for the selected one — never both.
+   *
+   * `9999px` rather than `var(--radius-full)`, which does not exist: Tailwind v4 ships
+   * `--radius-xs` through `--radius-4xl` and compiles `rounded-full` to `calc(infinity * 1px)`
+   * rather than to a token. The undefined variable made the declaration invalid and the floating
+   * „Dodaj posiłek" button came out square. `.emw-spinner` above already uses this literal.
+   */
+  .emw-btn-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    border-radius: 9999px;
+  }
+
+  /*
+   * The neutral fill, on its own so it can be composed. Anything that is tappable but has no
+   * colour of its own wears this: an unselected chip, a segment of a segmented control, an
+   * accent-outlined button whose fill has to stay empty at rest.
+   *
+   * It states no resting background on purpose: the class is meant to be added to things that
+   * already have one (or deliberately have none), and a `background-color: transparent` here
+   * would silently blank whatever it was composed with.
+   */
+  @media (hover: hover) {
+    .emw-tint:hover:not(:disabled) {
+      background-color: var(--color-surface-hover);
+    }
+  }
+
+  .emw-tint:active:not(:disabled) {
+    background-color: var(--color-surface-active);
+  }
+
+  /*
+   * A full-width tappable row: the action menus, the recipe picker's results, a day in the
+   * calendar. These are large targets, so they take the tint and skip the scale — a whole row
+   * shrinking under the finger pulls the eye away from the list it sits in.
+   */
+  .emw-row {
+    text-align: left;
+  }
+
+  @media (hover: hover) {
+    .emw-row:hover:not(:disabled) {
+      background-color: var(--color-surface-hover);
+    }
+  }
+
+  .emw-row:active:not(:disabled) {
+    background-color: var(--color-surface-active);
+    transform: none;
+  }
+
+  /*
+   * There is deliberately no blanket `.emw-press:disabled:hover` reset. The obvious one —
+   * `background-color: revert-layer` — reverts to the *previous cascade layer* rather than to
+   * the variant's resting colour, which on a disabled primary button resolves to very nearly
+   * transparent. Every hover above carries its own `:not(:disabled)` instead, which is what
+   * actually keeps a disabled control from lighting up; `e2e/interaction.spec.ts` holds that
+   * assertion, and it is what caught the `revert-layer` version.
+   */
 }

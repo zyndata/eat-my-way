@@ -213,7 +213,7 @@
       {#if oncreate}
         <button
           type="button"
-          class="mt-2 text-sm font-medium text-(--color-accent) underline"
+          class="mt-2 emw-press emw-btn-link text-sm font-medium"
           onclick={() => oncreate?.(query.trim())}
         >
           Dodaj własny składnik „{query.trim()}”

@@ -20,7 +20,8 @@ export type { SyncStage };
 /** What each stage is called on screen. One sentence fragment, not a status line. */
 export const STAGE_LABELS: Record<SyncStage, string> = {
   authenticating: 'Łączenie z kontem Google…',
-  transferring: 'Odczyt i zapis plików na Dysku…'
+  transferring: 'Odczyt i zapis plików na Dysku…',
+  'waiting-ingredients': 'Czekam na bazę składników…'
 };
 
 export const syncState = $state<{

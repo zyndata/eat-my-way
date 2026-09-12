@@ -23,7 +23,7 @@
 
 <div class="flex items-center gap-1">
   <a
-    class="rounded-lg p-2 text-(--color-ink-muted)"
+    class="emw-press emw-btn-icon text-(--color-ink-muted)"
     href="#/day/{addDays(selected, -7)}"
     aria-label="Poprzedni tydzień"
   >
@@ -36,7 +36,7 @@
       {@const isToday = day.date === today}
       <li class="flex-1">
         <a
-          class="flex flex-col items-center gap-1 rounded-xl border px-1 py-2 {isSelected
+          class="emw-press emw-row flex flex-col items-center gap-1 rounded-xl border px-1 py-2 {isSelected
             ? 'border-(--color-accent) bg-(--color-surface-raised)'
             : 'border-transparent'}"
           href="#/day/{day.date}"
@@ -63,7 +63,7 @@
   </ul>
 
   <a
-    class="rounded-lg p-2 text-(--color-ink-muted)"
+    class="emw-press emw-btn-icon text-(--color-ink-muted)"
     href="#/day/{addDays(selected, 7)}"
     aria-label="Następny tydzień"
   >

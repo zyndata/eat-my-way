@@ -120,7 +120,7 @@
           {label}
           <button
             type="button"
-            class="rounded-full px-1.5 leading-none"
+            class="emw-press emw-btn-chip px-1.5 leading-none"
             aria-label="Usuń tag {label}"
             onclick={() => remove(index)}
           >

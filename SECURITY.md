@@ -21,7 +21,11 @@ browser and in their own Google Drive:
 - a **Gemini API key**, held in an encrypted vault (Argon2id → AES-GCM);
 - a **Google OAuth token** with the `drive.appdata` scope — access to this app's private Drive
   folder only, never to the rest of the user's Drive;
-- the user's meal history, recipes and nutrition goals.
+- the user's meal history, recipes and nutrition goals;
+- the **body data the goals calculator was given** — sex, age, height, weight and activity
+  level — if it was ever used. It is stored on the profile rather than on the device, so it
+  travels to the same private `appDataFolder` and into the export file described below. It is
+  entered by the user, it is never sent anywhere else, and nothing in the app requires it.
 
 The vault's master password is never stored and cannot be recovered. The decrypted vault key
 exists only in page memory for the duration of the session.
@@ -30,10 +34,11 @@ When sync adopts the vault from Drive, the copy this device held is kept locally
 be undone (STATE.md decision 150). It is the same ciphertext under the same protection, it is
 never uploaded, and it is discarded as soon as the user restores it or writes a vault here.
 
-The data export in settings (*Zapisz kopię*) writes a JSON file holding the goals, recipes,
-tags, custom ingredients and planned days — and **deliberately not the vault**. A backup file
-ends up in Downloads, in mail attachments and in other people's cloud drives; an API key does
-not travel that way. An export that contained the key, in any form, would be a vulnerability.
+The data export in settings (*Zapisz kopię*) writes a JSON file holding the goals, the body data
+behind them, recipes, tags, custom ingredients and planned days — and **deliberately not the
+vault**. A backup file ends up in Downloads, in mail attachments and in other people's cloud
+drives; an API key does not travel that way. An export that contained the key, in any form,
+would be a vulnerability.
 
 „Zeskanuj opakowanie" sends one photograph to Google's Gemini API, with the user's own key,
 only when the button is pressed. It is downscaled in the browser first, it is used for that one

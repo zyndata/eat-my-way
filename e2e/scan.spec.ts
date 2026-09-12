@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { cspViolations } from './fake-google';
 import { modelCalls } from './fake-gemini';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * „Zeskanuj opakowanie", driven through the real screens (PLAN.md Phase 12, stage A).
@@ -88,6 +88,66 @@ test('a photographed label fills the four macros and the name', async ({ device,
 
   expect(await cspViolations(device)).toEqual([]);
   expect(errors).toEqual([]);
+});
+
+test('a scanned value ten times too large is warned about, and still saveable', async ({
+  device,
+  gemini
+}) => {
+  // The Phase 18 criterion, seen where it actually matters: a decimal point in the wrong
+  // place is silent when nobody typed the number. 7350 kcal against 82 g of fat is the same
+  // butter with its kcal shifted one digit.
+  gemini.script.label = { ...BUTTER, kcal: 7350 };
+
+  await setUpVault(device, true);
+  await openNewIngredient(device);
+  await photograph(device);
+
+  const warning = device.getByTestId('sanity-warning');
+  // It names the scanned fields it implicates — the form already knows which the scan filled.
+  await expect(warning).toContainText('odczytane ze zdjęcia');
+  await expect(warning).toContainText('kcal');
+  await expect(warning).toContainText('7350');
+
+  // …and it never blocks: a label is allowed to be right and Atwater wrong (decision 331).
+  await expect(device.getByRole('button', { name: 'Zapisz składnik' })).toBeEnabled();
+
+  // Correcting the field by hand takes the warning away.
+  await device.getByLabel('kcal', { exact: true }).fill('735');
+  await expect(warning).toBeHidden();
+});
+
+test('the scan proposes a shop department in that same one request', async ({ device, gemini }) => {
+  // The Phase 17 criterion, seen where the user sees it: the department arrives with the
+  // macros, marked „ze zdjęcia" like every other scanned field, and the request count does not
+  // move — it rides on the scan already being made (STATE.md decision 330).
+  gemini.script.label = { ...BUTTER, category: 'nabial' };
+
+  await setUpVault(device, true);
+  await openNewIngredient(device);
+  await photograph(device);
+
+  await expect(device.getByLabel('Dział sklepu')).toHaveValue('nabial');
+  await expect(device.getByText(/Ze zdjęcia:.*dział sklepu/)).toBeVisible();
+  expect(modelCalls(gemini)).toHaveLength(1);
+});
+
+test('a scan that cannot tell the department leaves the field empty rather than guessing', async ({
+  device,
+  gemini
+}) => {
+  // `null`, not „inne": „I could not tell" and „it goes on the miscellaneous shelf" are
+  // different answers, and only the first one leaves the choice to the user.
+  gemini.script.label = { ...BUTTER, category: null };
+
+  await setUpVault(device, true);
+  await openNewIngredient(device);
+  await photograph(device);
+
+  await expect(device.getByLabel('kcal')).toHaveValue('735');
+  await expect(device.getByLabel('Dział sklepu')).toHaveValue('');
+  // …and the ingredient still saves, because the department never blocked anything.
+  await expect(device.getByRole('button', { name: 'Zapisz składnik' })).toBeEnabled();
 });
 
 test('a value the model could not read stays empty, and the save stays refused', async ({
@@ -185,7 +245,9 @@ test('a locked vault is unlocked at the moment the scan needs the key', async ({
   await unlock.getByLabel('Hasło główne').fill('bardzo-tajne-haslo');
   await unlock.getByRole('button', { name: 'Odblokuj' }).click();
 
-  await expect(device.getByLabel('kcal')).toHaveValue('735');
+  // Unlocking derives the key before the scan can even start, and a KDF is deliberately
+  // expensive — on WebKit the two together take longer than the default five seconds.
+  await expect(device.getByLabel('kcal')).toHaveValue('735', { timeout: 30_000 });
 });
 
 test('offline, the scan says so rather than failing generically', async ({ device }) => {
@@ -203,7 +265,7 @@ test('the recipe editor’s inline form offers the same scan', async ({ device, 
   gemini.script.label = BUTTER;
 
   await setUpVault(device, true);
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill('masło extra od Zosi');
   await device.getByRole('button', { name: /Dodaj własny składnik/ }).click();

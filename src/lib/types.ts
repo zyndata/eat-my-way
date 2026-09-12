@@ -1,6 +1,12 @@
 import type { MealAdjustment } from './adjustments';
+import type { MeasureName } from './text';
+import type { Department } from './departments';
+import type { BodyData } from './goals';
 
 export type { MealAdjustment };
+export type { MeasureName };
+export type { Department };
+export type { BodyData };
 
 /**
  * Data model. These are the *wire* shapes: exactly what PLAN.md specifies and exactly
@@ -25,6 +31,20 @@ export type IngredientSource = 'usda' | 'off' | 'custom';
 /** Unit a recipe item is measured in. `szt` is Polish for "pieces". */
 export type Unit = 'g' | 'ml' | 'szt';
 
+/**
+ * A household measure an ingredient can be counted in: „ząbek", and what one of them weighs.
+ *
+ * Deliberately NOT a unit (STATE.md decision 323). A measure is a label and a default weight
+ * that an ingredient offers to a recipe row; `macros.ts` never sees one, and `gramsPerUnit`
+ * stays the single source of weight.
+ */
+export interface Measure {
+  /** One of `MEASURE_NAMES` — a closed vocabulary, not free text (decision 324). */
+  name: MeasureName;
+  /** Grams in one of them. Always > 0. */
+  grams: number;
+}
+
 export interface Ingredient {
   /** Namespaced: `usda:1097473`, `off:...`, `custom:<uuid>`. */
   id: string;
@@ -44,6 +64,27 @@ export interface Ingredient {
    * decision 182).
    */
   updatedAt?: string;
+  /**
+   * Household measures this ingredient offers to a recipe row (Phase 16): one clove of garlic
+   * is 5 g, one slice of bread is 35 g. Optional for the same reason `updatedAt` is — no
+   * schema version, no migration, nothing new in the transport — and absent on most rows,
+   * because a measure is only filled in where a piece means something (decision 326).
+   *
+   * On a `usda:*` row these come from `data/pl-ingredients.tsv` and are rewritten wholesale by
+   * every data refresh; only a `custom:*` row carries measures the user typed (decision 321).
+   */
+  measures?: Measure[];
+  /**
+   * Which part of the shop this is bought in (Phase 17), which is the only thing that orders
+   * a shopping list. Optional like the fields above — no schema version, no migration — and a
+   * missing value means `inne` rather than an error, because the form that takes this field is
+   * the form that reads a photographed package and must never block on it (decision 330).
+   *
+   * Bundled rows all carry one: the build script derives it from the USDA food category and
+   * `data/pl-ingredients.tsv` overrides it per row where the derivation is wrong (decision
+   * 328). A `custom:*` row carries what the user chose, or what a scan proposed and they kept.
+   */
+  department?: Department;
 }
 
 export interface RecipeItem {
@@ -54,6 +95,15 @@ export interface RecipeItem {
   gramsPerUnit?: number;
   /** Manual per-100 g values used at this point of use instead of the ingredient's own. */
   macroOverride?: Macros;
+  /**
+   * The household measure this row is counted in — „2 ząbki" rather than „2 szt." — and
+   * nothing more than that. It is only ever a **label for a `szt` row**: it takes part in no
+   * calculation, because `gramsPerUnit` remains the single source of weight (decision 323).
+   *
+   * An item carrying a name the ingredient no longer offers keeps printing the label and keeps
+   * its own `gramsPerUnit`: the recipe does not change because the library did.
+   */
+  measureName?: MeasureName;
 }
 
 export interface Recipe {
@@ -79,6 +129,17 @@ export interface Recipe {
    * format, because `readRecipesDocument` keeps the fields it does not know.
    */
   sourceUrl?: string;
+  /**
+   * How long the recipe takes to prepare, in whole minutes. A positive integer — „what can I
+   * cook in twenty minutes" is the question this answers (PLAN.md Phase 20).
+   *
+   * Absent means **unknown**, never zero: a recipe nobody has timed is not an instant one, so
+   * the library shows it whenever the time filter is off and hides it when it is on. Optional
+   * like `sourceUrl` and for the same reason — it costs no schema version, no migration and
+   * nothing in the Drive format, because `readRecipesDocument` keeps the fields it does not
+   * know (decision 381).
+   */
+  prepMinutes?: number;
 }
 
 /** `key` is lowercase with diacritics stripped; `label` is the spelling first typed. */
@@ -208,4 +269,15 @@ export interface Profile {
    * template the first time the planner is opened (STATE.md decision 261).
    */
   mealPlan?: MealPlanTemplate;
+  /**
+   * What the goals calculator was last told: sex, age, height, weight, activity level and the
+   * macro split (Phase 19, decision 336). Optional for the same reason `mealPlan` is — no
+   * schema version, no migration, and an older build ignores the key instead of breaking on
+   * it — and absent for everyone who has never opened the calculator.
+   *
+   * It lives on the profile, not in device-local `meta`, so a second phone and a restored
+   * backup do not ask for it again. That means it travels to Drive and into the export file,
+   * which is why README.md and SECURITY.md name it.
+   */
+  body?: BodyData;
 }

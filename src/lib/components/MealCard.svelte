@@ -83,19 +83,19 @@
   <div class="absolute inset-y-0 right-0 flex items-stretch" inert={!actionsOpen}>
     <button
       type="button"
-      class="px-3 text-xs font-medium text-(--color-ink-muted)"
+      class="emw-press emw-btn-link-muted px-3 text-xs font-medium no-underline"
       onclick={() => act(onduplicate)}
     >
       Powiel
     </button>
     <button
       type="button"
-      class="px-3 text-xs font-medium text-(--color-ink-muted)"
+      class="emw-press emw-btn-link-muted px-3 text-xs font-medium no-underline"
       onclick={() => act(oncopy)}
     >
       Kopiuj do…
     </button>
-    <button type="button" class="px-3 text-xs font-medium text-(--color-danger)" onclick={() => act(onremove)}>
+    <button type="button" class="emw-press emw-btn-link-danger px-3 text-xs font-medium no-underline" onclick={() => act(onremove)}>
       Usuń
     </button>
   </div>
@@ -114,7 +114,7 @@
     ontouchend={onTouchEnd}
   >
     <span
-      class="shrink-0 cursor-grab touch-none rounded-lg p-2 text-(--color-ink-muted)"
+      class="shrink-0 cursor-grab touch-none emw-press emw-btn-icon text-(--color-ink-muted)"
       use:dragHandle
       aria-label="Przeciągnij, aby zmienić kolejność: {name}"
     >
@@ -122,7 +122,7 @@
     </span>
 
     <a
-      class="min-w-0 flex-1 py-1"
+      class="emw-press emw-row min-w-0 flex-1 py-1"
       href="#/day/{date}/{meal.id}"
       onclick={(event) => {
         if (!suppressClick) return;
@@ -146,7 +146,7 @@
 
     <button
       type="button"
-      class="shrink-0 rounded-lg p-2 text-(--color-ink-muted)"
+      class="shrink-0 emw-press emw-btn-icon text-(--color-ink-muted)"
       aria-label="Akcje posiłku: {name}"
       aria-expanded={actionsOpen}
       onclick={() => (actionsOpen = !actionsOpen)}

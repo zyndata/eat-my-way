@@ -31,6 +31,12 @@ export interface ParsedRecipe {
   portions: number;
   ingredients: ParsedIngredient[];
   instructions: string;
+  /**
+   * Preparation time in whole minutes, as the page states it. Absent when the page states
+   * none — the prompt forbids estimating, because a guessed „30 min" is indistinguishable on
+   * screen from one the cook actually measured (PLAN.md Phase 20 task 2).
+   */
+  prepMinutes?: number;
 }
 
 /**
@@ -41,10 +47,15 @@ export interface ParsedRecipe {
 export const RECIPE_SCHEMA: ResponseSchema = {
   type: 'object',
   required: ['name', 'portions', 'ingredients', 'instructions'],
-  propertyOrdering: ['name', 'portions', 'ingredients', 'instructions'],
+  propertyOrdering: ['name', 'portions', 'prepMinutes', 'ingredients', 'instructions'],
   properties: {
     name: { type: 'string', description: 'Nazwa dania po polsku.' },
     portions: { type: 'integer', description: 'Na ile porcji są podane ilości.' },
+    prepMinutes: {
+      type: 'integer',
+      nullable: true,
+      description: 'Czas przygotowania w minutach, tylko jeśli przepis go podaje. Inaczej null.'
+    },
     ingredients: {
       type: 'array',
       items: {
@@ -96,7 +107,10 @@ export const PARSE_SYSTEM = [
   '   (np. „300 g ugotowanego ryżu”). W każdym innym wypadku "raw".',
   '6. portions to liczba porcji, której dotyczą podane ilości. Jeśli przepis nie mówi, wpisz 1.',
   '7. Nie wymyślaj składników, których w przepisie nie ma.',
-  '8. Pomiń wodę i lód — nie wnoszą wartości odżywczych, a zaśmiecają listę składników.'
+  '8. Pomiń wodę i lód — nie wnoszą wartości odżywczych, a zaśmiecają listę składników.',
+  '9. prepMinutes to czas przygotowania w minutach, ale TYLKO wtedy, gdy przepis go podaje',
+  '   (np. „gotowe w 25 minut”, „czas przygotowania: 1 h”). Godziny przelicz na minuty.',
+  '   Jeśli przepis nie podaje czasu, wpisz null. Nigdy nie szacuj i nie zgaduj.'
 ].join('\n');
 
 export function parsePrompt(recipeText: string): string {
@@ -249,6 +263,17 @@ function readString(value: unknown): string {
 }
 
 /**
+ * A preparation time the model returned, or `undefined`. Whole minutes above zero and nothing
+ * else: `null` is the answer the prompt asks for when the page gives no time, and a „0" or a
+ * „-5" is the model failing that instruction rather than a recipe that takes no time.
+ */
+function readPrepMinutes(value: unknown): number | undefined {
+  const minutes = readNumber(value);
+  if (minutes === undefined || minutes <= 0) return undefined;
+  return Math.round(minutes);
+}
+
+/**
  * Turn whatever came back into a `ParsedRecipe`, or throw nothing and return an empty
  * ingredient list — the caller decides what an empty import means.
  *
@@ -287,11 +312,14 @@ export function readParsedRecipe(value: unknown): ParsedRecipe {
     ingredients.push(parsed);
   }
 
+  const prepMinutes = readPrepMinutes(doc.prepMinutes);
+
   return {
     name: readString(doc.name),
     portions: portions !== undefined && portions >= 1 ? Math.round(portions) : 1,
     ingredients,
-    instructions: readString(doc.instructions)
+    instructions: readString(doc.instructions),
+    ...(prepMinutes === undefined ? {} : { prepMinutes })
   };
 }
 

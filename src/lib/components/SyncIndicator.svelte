@@ -19,7 +19,12 @@
 </script>
 
 {#if visible}
-  <div class="px-4 pt-2" role="status" aria-live="polite">
+  <!-- Same side padding as `main`: in landscape it has to clear the notch too (Phase 15). -->
+  <div
+    class="pt-2 pr-[max(1rem,var(--safe-right))] pl-[max(1rem,var(--safe-left))]"
+    role="status"
+    aria-live="polite"
+  >
     {#if syncState.phase === 'syncing'}
       <p class="flex items-center gap-2 text-xs text-(--color-ink-muted)">
         <Spinner class="size-3" />
@@ -30,12 +35,12 @@
         Połączone inne konto Google{syncState.foreignAccount.account.label
           ? ` (${syncState.foreignAccount.account.label})`
           : ''}.
-        <a class="underline" href="#/settings">Rozstrzygnij w Ustawieniach</a>
+        <a class="emw-press emw-btn-link-muted" href="#/settings">Rozstrzygnij w Ustawieniach</a>
       </p>
     {:else}
       <p class="text-xs text-(--color-warn)">
         {syncState.message}
-        <button type="button" class="underline" onclick={() => void syncNow({ interactive: true })}>
+        <button type="button" class="emw-press emw-btn-link-muted" onclick={() => void syncNow({ interactive: true })}>
           Spróbuj ponownie
         </button>
       </p>

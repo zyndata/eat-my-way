@@ -28,6 +28,17 @@ describe('the import schema and prompt', () => {
   it('drops water, which a live import showed arriving as a macro-free row', () => {
     expect(PARSE_SYSTEM).toContain('Pomiń wodę');
   });
+
+  it('asks for a preparation time only when the page states one', () => {
+    expect(RECIPE_SCHEMA.properties?.prepMinutes).toEqual({
+      type: 'integer',
+      nullable: true,
+      description: 'Czas przygotowania w minutach, tylko jeśli przepis go podaje. Inaczej null.'
+    });
+    // Not required: a page without a time must not force the model to invent one.
+    expect(RECIPE_SCHEMA.required).not.toContain('prepMinutes');
+    expect(PARSE_SYSTEM).toContain('Nigdy nie szacuj i nie zgaduj');
+  });
 });
 
 describe('readParsedRecipe', () => {
@@ -51,6 +62,17 @@ describe('readParsedRecipe', () => {
         { name: 'masło', amount: 20, unit: 'g', state: 'raw' }
       ]
     });
+  });
+
+  it('reads a preparation time, and leaves it out when the model said null', () => {
+    expect(readParsedRecipe({ ...base, prepMinutes: 25 }).prepMinutes).toBe(25);
+    expect('prepMinutes' in readParsedRecipe({ ...base, prepMinutes: null })).toBe(false);
+    expect('prepMinutes' in readParsedRecipe(base)).toBe(false);
+    // „0 minut" is the model failing rule 9, not a recipe that cooks itself.
+    expect('prepMinutes' in readParsedRecipe({ ...base, prepMinutes: 0 })).toBe(false);
+    expect('prepMinutes' in readParsedRecipe({ ...base, prepMinutes: -10 })).toBe(false);
+    expect(readParsedRecipe({ ...base, prepMinutes: '20' }).prepMinutes).toBe(20);
+    expect(readParsedRecipe({ ...base, prepMinutes: 24.6 }).prepMinutes).toBe(25);
   });
 
   it('ignores nutrition numbers a model volunteers anyway', () => {
@@ -156,6 +178,17 @@ describe('toSinglePortion', () => {
 
     expect(single.portions).toBe(1);
     expect(single.ingredients.map((row) => row.amount)).toEqual([100, 0.5]);
+  });
+
+  it('does not divide the preparation time along with the amounts', () => {
+    const single = toSinglePortion({
+      name: 'x',
+      portions: 4,
+      instructions: '',
+      prepMinutes: 60,
+      ingredients: [{ name: 'ryż', amount: 400, unit: 'g' as const, state: 'raw' as const }]
+    });
+    expect(single.prepMinutes).toBe(60);
   });
 
   it('leaves a one-portion recipe alone', () => {

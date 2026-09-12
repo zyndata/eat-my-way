@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MEASURE_NAMES,
   formatBytes,
+  formatMeasureAmount,
   formatPortions,
+  isMeasureName,
+  measureWord,
   normalizeKey,
   pluralPl,
   portionWord,
@@ -93,5 +97,86 @@ describe('sourceHost', () => {
 
   it('falls back to the value rather than rendering an empty row', () => {
     expect(sourceHost('nie-adres')).toBe('nie-adres');
+  });
+});
+
+describe('household measures', () => {
+  it('declines each name over the counts that actually occur', () => {
+    // The four shapes, on the name the phase was written for.
+    expect(measureWord('ząbek', 1)).toBe('ząbek');
+    expect(measureWord('ząbek', 2)).toBe('ząbki');
+    expect(measureWord('ząbek', 5)).toBe('ząbków');
+    expect(measureWord('ząbek', 1.5)).toBe('ząbka');
+
+    expect(measureWord('kromka', 1)).toBe('kromka');
+    expect(measureWord('kromka', 3)).toBe('kromki');
+    expect(measureWord('kromka', 5)).toBe('kromek');
+
+    expect(measureWord('plaster', 2)).toBe('plastry');
+    expect(measureWord('plaster', 7)).toBe('plastrów');
+
+    expect(measureWord('łyżka', 2)).toBe('łyżki');
+    expect(measureWord('łyżka', 5)).toBe('łyżek');
+    expect(measureWord('łyżeczka', 5)).toBe('łyżeczek');
+
+    expect(measureWord('szklanka', 2)).toBe('szklanki');
+    expect(measureWord('szklanka', 5)).toBe('szklanek');
+    expect(measureWord('kubek', 5)).toBe('kubków');
+
+    expect(measureWord('garść', 2)).toBe('garście');
+    expect(measureWord('garść', 5)).toBe('garści');
+
+    expect(measureWord('pęczek', 2)).toBe('pęczki');
+    expect(measureWord('pęczek', 5)).toBe('pęczków');
+    expect(measureWord('gałązka', 5)).toBe('gałązek');
+
+    expect(measureWord('opakowanie', 2)).toBe('opakowania');
+    expect(measureWord('opakowanie', 5)).toBe('opakowań');
+    expect(measureWord('porcja', 5)).toBe('porcji');
+  });
+
+  it('keeps the teens on the many form, like every other Polish count', () => {
+    expect(measureWord('ząbek', 12)).toBe('ząbków');
+    expect(measureWord('ząbek', 22)).toBe('ząbki');
+    expect(measureWord('kromka', 14)).toBe('kromek');
+    expect(measureWord('kromka', 24)).toBe('kromki');
+    // Zero is `many`, not `one`.
+    expect(measureWord('ząbek', 0)).toBe('ząbków');
+  });
+
+  it('leaves the abbreviated szt. undeclined and declines the sized ones', () => {
+    expect(measureWord('szt.', 1)).toBe('szt.');
+    expect(measureWord('szt.', 5)).toBe('szt.');
+    expect(measureWord('szt.', 1.5)).toBe('szt.');
+    expect(measureWord('średnia szt.', 1)).toBe('średnia szt.');
+    expect(measureWord('średnia szt.', 2)).toBe('średnie szt.');
+    expect(measureWord('średnia szt.', 5)).toBe('średnich szt.');
+    expect(measureWord('duża szt.', 5)).toBe('dużych szt.');
+  });
+
+  it('prints an unknown name untouched rather than dropping it', () => {
+    // A recipe written by a newer build must still read as something on an older one.
+    expect(measureWord('szczypta', 3)).toBe('szczypta');
+    expect(isMeasureName('szczypta')).toBe(false);
+    expect(isMeasureName('ząbek')).toBe(true);
+    expect(isMeasureName(7)).toBe(false);
+  });
+
+  it('has a plural table covering exactly the closed vocabulary', () => {
+    expect(MEASURE_NAMES).toHaveLength(16);
+    for (const name of MEASURE_NAMES) {
+      // No form may fall through to the name itself — that is the unknown-name path.
+      expect(measureWord(name, 5).length).toBeGreaterThan(0);
+      expect(measureWord(name, 1)).toBe(name);
+    }
+  });
+
+  it('labels a szt row and leaves every other row exactly as it was', () => {
+    expect(formatMeasureAmount(2, 'szt', 'ząbek')).toBe('2 ząbki');
+    expect(formatMeasureAmount(1.5, 'szt', 'łyżka')).toBe('1,5 łyżki');
+    // No measure, or a unit that cannot carry one: the old spelling, unchanged.
+    expect(formatMeasureAmount(2, 'szt')).toBe('2 szt.');
+    expect(formatMeasureAmount(200, 'g', 'ząbek')).toBe('200 g');
+    expect(formatMeasureAmount(100, 'ml')).toBe('100 ml');
   });
 });

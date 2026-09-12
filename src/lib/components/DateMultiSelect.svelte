@@ -85,14 +85,14 @@
   <div class="flex flex-wrap gap-2 {single ? 'hidden' : ''}">
     <button
       type="button"
-      class="rounded-full border border-(--color-border) px-3 py-1.5 text-sm font-medium"
+      class="emw-press emw-btn-chip border border-(--color-border) px-3 py-1.5 text-sm font-medium"
       onclick={() => addAll([addDays(today, 1)])}
     >
       Jutro
     </button>
     <button
       type="button"
-      class="rounded-full border border-(--color-border) px-3 py-1.5 text-sm font-medium"
+      class="emw-press emw-btn-chip border border-(--color-border) px-3 py-1.5 text-sm font-medium"
       onclick={() => addAll(nextWeekDates(today))}
     >
       Cały przyszły tydzień
@@ -100,7 +100,7 @@
     {#if selected.length > 0}
       <button
         type="button"
-        class="rounded-full px-3 py-1.5 text-sm text-(--color-accent) underline"
+        class="rounded-full px-3 py-1.5 emw-press emw-btn-link text-sm"
         onclick={() => (selected = [])}
       >
         Wyczyść wybór
@@ -112,7 +112,7 @@
     <header class="flex items-center justify-between gap-2">
       <button
         type="button"
-        class="rounded-lg p-2 text-(--color-ink-muted)"
+        class="emw-press emw-btn-icon text-(--color-ink-muted)"
         aria-label="Poprzedni miesiąc"
         onclick={() => (anchor = addDays(`${anchor.slice(0, 7)}-01`, -1))}
       >
@@ -121,7 +121,7 @@
       <h3 class="text-sm font-semibold first-letter:uppercase">{formatMonthYear(anchor)}</h3>
       <button
         type="button"
-        class="rounded-lg p-2 text-(--color-ink-muted)"
+        class="emw-press emw-btn-icon text-(--color-ink-muted)"
         aria-label="Następny miesiąc"
         onclick={() => (anchor = addDays(`${anchor.slice(0, 7)}-01`, 32))}
       >
@@ -142,9 +142,9 @@
           {@const isSource = date === source}
           <button
             type="button"
-            class="rounded-lg py-2 text-sm tabular-nums {on
-              ? 'bg-(--color-accent) font-semibold text-(--color-accent-ink)'
-              : 'border border-(--color-border)'} {isSameMonth(date, anchor)
+            class="emw-press rounded-lg py-2 text-sm tabular-nums {on
+              ? 'emw-btn-primary font-semibold'
+              : 'emw-tint border border-(--color-border)'} {isSameMonth(date, anchor)
               ? ''
               : 'opacity-40'} {date === today && !on ? 'text-(--color-accent)' : ''}"
             aria-pressed={on}
@@ -173,14 +173,14 @@
   <div class="flex flex-wrap justify-end gap-2 pt-4">
     <button
       type="button"
-      class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="emw-press emw-btn emw-btn-secondary"
       onclick={oncancel}
     >
       Anuluj
     </button>
     <button
       type="button"
-      class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+      class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-50"
       disabled={chosen.length === 0}
       onclick={() => onconfirm(chosen)}
     >

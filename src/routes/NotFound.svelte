@@ -3,5 +3,5 @@
 </script>
 
 <Screen title="Nie znaleziono" lead="Ta strona nie istnieje.">
-  <a class="text-sm font-medium text-(--color-accent) underline" href="#/">Wróć do kalendarza</a>
+  <a class="emw-press emw-btn-link text-sm font-medium" href="#/">Wróć do kalendarza</a>
 </Screen>

@@ -22,7 +22,7 @@
     type MealAdjustment
   } from '../lib/adjustments';
   import { findMeal } from '../lib/day';
-  import { portionWord, sourceHost } from '../lib/text';
+  import { measureWord, portionWord, sourceHost } from '../lib/text';
   import {
     addDays,
     formatDayLong,
@@ -218,7 +218,10 @@
   /**
    * „Zmień": the row is eaten as another ingredient, keeping its amount and unit (STATE.md
    * decision 66). A `macroOverride` does not travel — it described the ingredient that is
-   * leaving.
+   * leaving. Neither does a `measureName`: a measure is a claim about the ingredient, not a
+   * measurement of the plate, and „2 ząbki" of yoghurt is nonsense (decision 354). The weight
+   * per piece does travel, because that is what was actually eaten — which is why `swapped` is
+   * built field by field rather than spread.
    */
   async function pickIngredient(ingredient: Ingredient): Promise<void> {
     const target = pickerFor;
@@ -272,12 +275,12 @@
   <section>
     <h1 class="text-2xl font-semibold tracking-tight">Nie ma takiej daty</h1>
     <p class="pt-2 text-sm text-(--color-ink-muted)">
-      <a class="font-medium text-(--color-accent) underline" href="#/">Wróć do dzisiaj</a>.
+      <a class="emw-press emw-btn-link font-medium" href="#/">Wróć do dzisiaj</a>.
     </p>
   </section>
 {:else}
   <a
-    class="inline-flex items-center gap-1 text-sm font-medium text-(--color-accent)"
+    class="emw-press emw-btn-link inline-flex items-center gap-1 text-sm font-medium no-underline"
     href="#/day/{date}"
   >
     <NavIcon path={CHEVRON_LEFT} class="size-4" />
@@ -361,7 +364,16 @@
                             void setRowAmount(row, event.currentTarget.valueAsNumber)}
                         />
                       </label>
-                      <span>{row.item.unit === 'szt' ? 'szt.' : row.item.unit}</span>
+                      <!-- The measure replaces „szt." and agrees with the number in the box,
+                           so the row reads „2 ząbki (10 g)" and „1 ząbek (5 g)". -->
+                      <span>
+                        {row.item.unit === 'szt'
+                          ? measureWord(
+                              row.item.measureName ?? 'szt.',
+                              displayedAmount(row.item, scale)
+                            )
+                          : row.item.unit}
+                      </span>
                       {#if row.item.unit !== 'g'}
                         <span class="font-normal text-(--color-ink-muted)">
                           ({Math.round(displayedGrams(row.item, scale))} g)
@@ -375,7 +387,7 @@
                   {#if skipped}
                     <button
                       type="button"
-                      class="font-medium text-(--color-accent) underline"
+                      class="emw-press emw-btn-link font-medium"
                       onclick={() => void writeLayer(restoreRow(layer, row.key))}
                     >
                       Przywróć
@@ -383,21 +395,21 @@
                   {:else}
                     <button
                       type="button"
-                      class="text-(--color-ink-muted) underline"
+                      class="emw-press emw-btn-link-muted"
                       onclick={() => void writeLayer(skipRow(layer, row.key))}
                     >
                       Pomiń
                     </button>
                     <button
                       type="button"
-                      class="text-(--color-ink-muted) underline"
+                      class="emw-press emw-btn-link-muted"
                       onclick={() => (pickerFor = row.key)}
                     >
                       Zmień
                     </button>
                     <button
                       type="button"
-                      class="text-(--color-ink-muted) underline"
+                      class="emw-press emw-btn-link-muted"
                       onclick={() => void keepOnly(row)}
                     >
                       Zostaw tylko ten składnik
@@ -417,7 +429,7 @@
         <div class="flex flex-wrap items-center gap-4 pt-3">
           <button
             type="button"
-            class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+            class="emw-press emw-btn emw-btn-secondary"
             onclick={() => (pickerFor = 'add')}
           >
             Dodaj składnik
@@ -425,7 +437,7 @@
           {#if changed}
             <button
               type="button"
-              class="text-sm font-medium text-(--color-accent) underline"
+              class="emw-press emw-btn-link text-sm font-medium"
               onclick={() => (restoreOpen = true)}
             >
               Przywróć oryginał
@@ -449,7 +461,7 @@
             <h3 class="text-sm font-semibold">Źródło</h3>
             <p class="pt-1 text-sm">
               <a
-                class="font-medium text-(--color-accent) underline"
+                class="emw-press emw-btn-link font-medium"
                 href={recipe.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer">{sourceHost(recipe.sourceUrl)}</a>
@@ -468,7 +480,7 @@
       <div class="flex items-center gap-2 pt-3">
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Mniej porcji do ugotowania"
           onclick={() => void setScale(Math.max(1, scale - 1))}
         >
@@ -488,7 +500,7 @@
         </label>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Więcej porcji do ugotowania"
           onclick={() => void setScale(scale + 1)}
         >
@@ -504,7 +516,7 @@
              (PLAN.md Phase 9 task 7). A day's or a week's list lives on the day screen. -->
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="emw-press emw-btn emw-btn-secondary"
           onclick={() => (shoppingOpen = true)}
         >
           Lista zakupów
@@ -530,7 +542,7 @@
         <p class="pt-1 pl-6 text-xs text-(--color-ink-muted)">
           {#if alreadyTomorrow}
             Ten przepis jest zaplanowany na
-            <a class="text-(--color-accent) underline" href="#/day/{tomorrow}">jutro</a>. Odznacz,
+            <a class="emw-press emw-btn-link" href="#/day/{tomorrow}">jutro</a>. Odznacz,
             żeby usunąć tamten posiłek.
           {:else}
             Ugotuje się na dwa dni: ustawimy 2 porcje i dopiszemy jeden posiłek do jutra.
@@ -548,7 +560,7 @@
       <div class="flex items-center gap-2 pt-3">
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Mniej zjedzonych porcji"
           onclick={() => void setPortions(Math.max(0, portions - 0.5))}
         >
@@ -568,7 +580,7 @@
         </label>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) p-2"
+          class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Więcej zjedzonych porcji"
           onclick={() => void setPortions(portions + 0.5)}
         >

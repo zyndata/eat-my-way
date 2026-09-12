@@ -55,7 +55,7 @@
   <header class="flex items-center justify-between gap-2">
     <button
       type="button"
-      class="rounded-lg p-2 text-(--color-ink-muted)"
+      class="emw-press emw-btn-icon text-(--color-ink-muted)"
       aria-label="Poprzedni miesiąc"
       onclick={() => onmonthchange(addDays(`${anchor.slice(0, 7)}-01`, -1))}
     >
@@ -64,7 +64,7 @@
     <h2 class="text-sm font-semibold first-letter:uppercase">{formatMonthYear(anchor)}</h2>
     <button
       type="button"
-      class="rounded-lg p-2 text-(--color-ink-muted)"
+      class="emw-press emw-btn-icon text-(--color-ink-muted)"
       aria-label="Następny miesiąc"
       onclick={() => onmonthchange(addDays(`${anchor.slice(0, 7)}-01`, 32))}
     >
@@ -84,7 +84,7 @@
         {@const summary = summaries.get(date)}
         {@const inMonth = isSameMonth(date, anchor)}
         <a
-          class="flex justify-center rounded-lg py-1 {date === selected
+          class="emw-press emw-row flex justify-center rounded-lg py-1 {date === selected
             ? 'bg-(--color-accent)/10 ring-1 ring-(--color-accent)'
             : ''} {inMonth ? '' : 'opacity-40'}"
           href="#/day/{date}"

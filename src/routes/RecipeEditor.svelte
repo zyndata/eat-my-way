@@ -15,7 +15,8 @@
     draftToRecipe,
     emptyDraft,
     emptyDraftItem,
-    incompleteDrafts
+    incompleteDrafts,
+    isPrepMinutesValid
   } from '../lib/recipes';
   import type { RecipeReferences } from '../lib/repository';
   import { repository } from '../lib/repository';
@@ -92,6 +93,8 @@
   const sum = $derived(draftMacros(draft.items, lookup));
   const incomplete = $derived(incompleteDrafts(draft.items));
   const canSave = $derived(canSaveDraft(draft) && !saving);
+  /** Split out of `canSave` so the form can say *which* of the two rules is unmet. */
+  const prepValid = $derived(isPrepMinutesValid(draft.prepMinutes));
 
   async function load(id: string): Promise<void> {
     loading = true;
@@ -195,6 +198,11 @@
     draft.items = [...draft.items, ...result.items];
     if (draft.name.trim() === '' && result.name !== '') draft.name = result.name;
     if (draft.instructions.trim() === '') draft.instructions = result.instructions;
+    // A blank is filled, a typed time is never overwritten — the same rule as the name and
+    // the instructions above it (PLAN.md Phase 20 task 2).
+    if (draft.prepMinutes === null && result.prepMinutes !== undefined) {
+      draft.prepMinutes = result.prepMinutes;
+    }
     if (draft.sourceUrl === '' && result.sourceUrl !== undefined) {
       draft.sourceUrl = result.sourceUrl;
     }
@@ -298,7 +306,7 @@
   {:else if notFound}
     <p class="text-sm text-(--color-ink-muted)">
       Nie znaleziono takiego przepisu.
-      <a class="font-medium text-(--color-accent) underline" href="#/recipes">Wróć do biblioteki</a>.
+      <a class="emw-press emw-btn-link font-medium" href="#/recipes">Wróć do biblioteki</a>.
     </p>
   {:else}
     <div class="flex flex-col gap-5">
@@ -312,6 +320,28 @@
         />
       </label>
 
+      <label class="block text-sm font-medium">
+        Czas przygotowania
+        <span class="flex items-baseline gap-2">
+          <input
+            class="mt-1 w-28 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            step="1"
+            placeholder="np. 20"
+            bind:value={draft.prepMinutes}
+          />
+          <span class="text-sm font-normal text-(--color-ink-muted)">minut — pole opcjonalne</span>
+        </span>
+        {#if !prepValid}
+          <span class="block pt-1 text-xs font-normal text-(--color-danger)">
+            Czas przygotowania musi być pełną liczbą minut większą od zera. Zostaw pole puste,
+            jeśli nie wiesz.
+          </span>
+        {/if}
+      </label>
+
       <TagInput bind:labels={draft.tagLabels} {tags} />
 
       <!-- Import creates a recipe; it does not edit one. On an existing recipe the button only
@@ -321,7 +351,7 @@
       <div>
         <button
           type="button"
-          class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="emw-press emw-btn emw-btn-secondary"
           onclick={() => (importOpen = true)}
         >
           Wklej przepis z internetu
@@ -382,7 +412,7 @@
 
         <button
           type="button"
-          class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="mt-3 emw-press emw-btn emw-btn-secondary"
           onclick={addRow}
         >
           Dodaj składnik
@@ -426,13 +456,13 @@
           <h2 class="text-sm font-semibold">Źródło</h2>
           <p class="flex flex-wrap items-baseline gap-2 pt-1 text-sm">
             <a
-              class="font-medium text-(--color-accent) underline"
+              class="emw-press emw-btn-link font-medium"
               href={draft.sourceUrl}
               target="_blank"
               rel="noopener noreferrer">{sourceHost(draft.sourceUrl)}</a>
             <button
               type="button"
-              class="text-xs text-(--color-ink-muted) underline"
+              class="emw-press emw-btn-link-muted text-xs"
               onclick={() => (draft.sourceUrl = '')}
             >
               Usuń źródło
@@ -463,7 +493,7 @@
       <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+          class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-50"
           disabled={!canSave}
           onclick={() => void save()}
         >
@@ -472,20 +502,20 @@
         {#if existing !== undefined}
           <button
             type="button"
-            class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium disabled:opacity-50"
+            class="emw-press emw-btn emw-btn-secondary px-4 disabled:opacity-50"
             disabled={!canSave}
             onclick={() => void saveAsCopy()}
           >
             Zapisz jako kopię
           </button>
         {/if}
-        <a class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium" href="#/recipes">
+        <a class="emw-press emw-btn emw-btn-secondary px-4" href="#/recipes">
           Anuluj
         </a>
         {#if existing !== undefined}
           <button
             type="button"
-            class="ml-auto rounded-lg border border-(--color-danger-border) px-3 py-2 text-sm font-medium text-(--color-danger)"
+            class="ml-auto emw-press emw-btn emw-btn-danger"
             onclick={() => (deleteOpen = true)}
           >
             Usuń przepis
@@ -493,7 +523,7 @@
         {/if}
       </div>
 
-      {#if !canSaveDraft(draft)}
+      {#if draft.name.trim() === ''}
         <p class="text-xs text-(--color-ink-muted)">Przepis musi mieć nazwę.</p>
       {/if}
     </div>

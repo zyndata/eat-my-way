@@ -18,7 +18,16 @@ export const MatchTier = {
   /** Every query word starts a word of the same name — „zolty ser" vs „ser zolty". */
   WordPrefix: 2,
   /** Every query word appears somewhere inside the same name. */
-  Infix: 3
+  Infix: 3,
+  /**
+   * Nothing the candidate is *called* matched — something it *contains* did, at any quality.
+   *
+   * The lowest tier on purpose (STATE.md decision 333). The recipe library uses it for
+   * ingredient names: „ser" must find „Sernik" first and list every recipe merely containing
+   * cheese underneath. The autocomplete sets no `containedKeys` at all, so nothing there
+   * reaches this tier.
+   */
+  Contained: 4
 } as const;
 
 export type MatchTier = (typeof MatchTier)[keyof typeof MatchTier];
@@ -29,6 +38,12 @@ export interface SearchCandidate {
   nameKey: string;
   /** `normalizeKey` of every alias. */
   aliasKeys: readonly string[];
+  /**
+   * Normalized keys of things the candidate *contains* rather than is called — the names and
+   * aliases of a recipe's ingredients. Matching one of these never beats a name match, however
+   * exact it is: it scores `MatchTier.Contained` and nothing better.
+   */
+  containedKeys?: readonly string[];
   useCount: number;
 }
 
@@ -92,14 +107,27 @@ export function matchCandidate(
     }
   }
 
+  if (best !== undefined) return best;
+
+  // Only once nothing the candidate is called has matched. The quality of the contained match
+  // is deliberately discarded — every one of them is `Contained`, so a name match of any kind
+  // always sorts above them (decision 333). The offset survives as the tie-break inside the tier.
+  for (const field of candidate.containedKeys ?? []) {
+    const scored = scoreField(field, query, tokens);
+    if (scored === undefined) continue;
+    if (best === undefined || scored.offset < best.offset) {
+      best = { tier: MatchTier.Contained, offset: scored.offset };
+    }
+  }
+
   return best;
 }
 
 /**
  * Rank candidates for `query`.
  *
- * Order: match quality first (exact → prefix → word-prefix → infix), then ingredients the
- * user has already put in a recipe, then the earlier match, then the shorter and
+ * Order: match quality first (exact → prefix → word-prefix → infix → contained), then the
+ * candidates the user has already used, then the earlier match, then the shorter and
  * alphabetically first name. An empty query returns the most-used ingredients, which is
  * what the field should offer before anything is typed.
  */

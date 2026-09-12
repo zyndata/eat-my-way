@@ -18,7 +18,14 @@ describe('readScannedLabel', () => {
   it('takes the four macros and the name as sent', () => {
     expect(
       readScannedLabel({ name: '  Masło extra  ', kcal: 735, protein: 0.7, carbs: 0.8, fat: 82 })
-    ).toEqual({ name: 'Masło extra', kcal: 735, protein: 0.7, carbs: 0.8, fat: 82 });
+    ).toEqual({
+      name: 'Masło extra',
+      kcal: 735,
+      protein: 0.7,
+      carbs: 0.8,
+      fat: 82,
+      department: null
+    });
   });
 
   it('maps a value it could not read to null, never to 0', () => {
@@ -34,7 +41,8 @@ describe('readScannedLabel', () => {
       kcal: 0,
       protein: 0,
       carbs: 0,
-      fat: 0
+      fat: 0,
+      department: null
     });
   });
 
@@ -72,7 +80,14 @@ describe('readScannedLabel', () => {
       saturated: 2.1,
       per_portion: { kcal: 110 }
     });
-    expect(label).toEqual({ name: 'Jogurt', kcal: 61, protein: 3.5, carbs: 4.7, fat: 3.2 });
+    expect(label).toEqual({
+      name: 'Jogurt',
+      kcal: 61,
+      protein: 3.5,
+      carbs: 4.7,
+      fat: 3.2,
+      department: null
+    });
   });
 });
 
@@ -84,23 +99,24 @@ describe('the prompt and the schema', () => {
   });
 
   it('has no field for `state` — raw versus cooked is not printed on a label', () => {
-    expect(Object.keys(LABEL_SCHEMA.properties ?? {})).toEqual([
-      'name',
-      'kcal',
-      'protein',
-      'carbs',
-      'fat'
-    ]);
+    expect(Object.keys(LABEL_SCHEMA.properties ?? {})).not.toContain('state');
   });
 });
 
 describe('applyScannedLabel', () => {
-  const label = { name: 'Masło extra', kcal: 735, protein: 0.7, carbs: 0.8, fat: 82 };
+  const label = {
+    name: 'Masło extra',
+    kcal: 735,
+    protein: 0.7,
+    carbs: 0.8,
+    fat: 82,
+    department: 'nabial'
+  } as const;
 
   it('fills an empty draft and reports what it filled', () => {
     const { draft, filled } = applyScannedLabel(emptyIngredientDraft(), label);
     expect(draft).toMatchObject({ name: 'Masło extra', kcal: 735, protein: 0.7, fat: 82 });
-    expect(filled).toEqual(['name', 'kcal', 'protein', 'carbs', 'fat']);
+    expect(filled).toEqual(['name', 'kcal', 'protein', 'carbs', 'fat', 'department']);
     // Filled completely, so the ordinary save becomes possible — nothing else changed.
     expect(draftProblem(draft)).toBeNull();
     expect(draft.state).toBe('raw');
@@ -121,7 +137,7 @@ describe('applyScannedLabel', () => {
     const { draft, filled } = applyScannedLabel(edited, label, { name: true, kcal: true });
     expect(draft.name).toBe('Moje masło');
     expect(draft.kcal).toBe(700);
-    expect(filled).toEqual(['protein', 'carbs', 'fat']);
+    expect(filled).toEqual(['protein', 'carbs', 'fat', 'department']);
   });
 
   it('replaces its own earlier proposal on a second scan', () => {
@@ -137,9 +153,112 @@ describe('applyScannedLabel', () => {
       kcal: null,
       protein: null,
       carbs: null,
-      fat: null
+      fat: null,
+      department: null
     });
     expect(second.draft).toEqual(first.draft);
     expect(second.filled).toEqual([]);
+  });
+});
+
+describe('the shopping department the scan proposes (Phase 17)', () => {
+  it('asks for it in the same request, as one enumerated property', () => {
+    // The whole reason this is acceptable at all: it rides on the scan already being made
+    // (decision 330). One property, one prompt rule, no second call anywhere in this file.
+    expect(Object.keys(LABEL_SCHEMA.properties ?? {})).toEqual([
+      'name',
+      'kcal',
+      'protein',
+      'carbs',
+      'fat',
+      'category'
+    ]);
+    expect(LABEL_SCHEMA.properties?.category?.enum).toEqual([
+      'warzywa',
+      'nabial',
+      'mieso',
+      'pieczywo',
+      'sypkie',
+      'przyprawy',
+      'mrozonki',
+      'napoje',
+      'inne'
+    ]);
+    expect(LABEL_SCHEMA.properties?.category?.nullable).toBe(true);
+  });
+
+  it('tells the model to answer null rather than guess „inne"', () => {
+    expect(SCAN_SYSTEM).toContain('category to dział sklepu');
+    expect(SCAN_SYSTEM).toContain('wpisz null, a nie „inne”');
+  });
+
+  it('reads a category the model returned', () => {
+    expect(readScannedLabel({ name: 'Mleko', kcal: 46, category: 'nabial' }).department).toBe(
+      'nabial'
+    );
+  });
+
+  it('reads a missing category as null', () => {
+    expect(readScannedLabel({ name: 'Mleko', kcal: 46 }).department).toBeNull();
+    expect(readScannedLabel({ name: 'Mleko', category: null }).department).toBeNull();
+  });
+
+  it('drops a category outside the enum instead of coercing it to „inne"', () => {
+    // A Polish label instead of an id, a shelf we do not have, a whole sentence. All null:
+    // an empty field the user fills in beats a wrong guess they have to notice.
+    expect(readScannedLabel({ category: 'delikatesy' }).department).toBeNull();
+    expect(readScannedLabel({ category: 'Nabiał i jaja' }).department).toBeNull();
+    expect(readScannedLabel({ category: 7 }).department).toBeNull();
+  });
+
+  it('writes the proposal into the draft and marks it as filled', () => {
+    const { draft, filled } = applyScannedLabel(emptyIngredientDraft(), {
+      name: 'Mleko 2%',
+      kcal: 51,
+      protein: 3.3,
+      carbs: 4.7,
+      fat: 2,
+      department: 'nabial'
+    });
+    expect(draft.department).toBe('nabial');
+    expect(filled).toContain('department');
+  });
+
+  it('leaves the field alone when the scan could not tell', () => {
+    const { draft, filled } = applyScannedLabel(emptyIngredientDraft(), {
+      name: 'Mleko 2%',
+      kcal: 51,
+      protein: 3.3,
+      carbs: 4.7,
+      fat: 2,
+      department: null
+    });
+    expect(draft.department).toBe('');
+    expect(filled).not.toContain('department');
+    // And it never stood in the way of saving: the department is not part of the problem.
+    expect(draftProblem(draft)).toBeNull();
+  });
+
+  it('never overwrites a department the user chose', () => {
+    const chosen = { ...emptyIngredientDraft('Mleko'), department: 'napoje' as const };
+    const { draft } = applyScannedLabel(
+      chosen,
+      { name: 'Mleko 2%', kcal: 51, protein: 3.3, carbs: 4.7, fat: 2, department: 'nabial' },
+      { department: true }
+    );
+    expect(draft.department).toBe('napoje');
+  });
+
+  it('counts a photo that yielded only a department as an unreadable one', () => {
+    expect(
+      labelIsEmpty({
+        name: '',
+        kcal: null,
+        protein: null,
+        carbs: null,
+        fat: null,
+        department: 'nabial'
+      })
+    ).toBe(true);
   });
 });

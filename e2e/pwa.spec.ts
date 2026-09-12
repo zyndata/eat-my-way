@@ -1,5 +1,15 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test as base } from './fixtures';
+
+/**
+ * Every test here needs the worker the rest of the suite blocks, so the shared `device` is
+ * re-opened with it allowed. See `DeviceOptions.serviceWorker` for why blocking is the default.
+ */
+const test = base.extend<{ device: Page }>({
+  device: async ({ openDevice }, use) => {
+    await use(await openDevice({ serviceWorker: true }));
+  }
+});
 
 /**
  * The Phase 8 acceptance criterion nobody can check by reading code: with the network gone,
@@ -38,7 +48,7 @@ test('the calendar, the library and the editor all work with the network gone', 
 
   // The bundled ingredients are fetched once, on the first run. Visiting the editor before
   // going offline is what proves the offline load is not the one that needs them.
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await expect(device.getByLabel('Nazwa')).toBeVisible();
 
   await context.setOffline(true);
@@ -67,7 +77,7 @@ test('the calendar, the library and the editor all work with the network gone', 
   await device.goto('#/recipes');
   await expect(device.getByRole('link', { name: 'Nowy przepis' }).first()).toBeVisible();
 
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Kanapka offline');
   await expect(device.getByLabel('Nazwa')).toHaveValue('Kanapka offline');
 

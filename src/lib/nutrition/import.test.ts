@@ -3,6 +3,7 @@ import type { EatMyWayDb } from '../db';
 import { createRepository, type Repository } from '../repository';
 import { freshDb } from '../../test/fixtures';
 import { importBundledNutrition } from './import';
+import { ingredientsHeld } from './gate';
 import type { NutritionBundle } from './bundle';
 import { NUTRITION_DATA_VERSION } from './meta';
 
@@ -93,6 +94,42 @@ describe('importBundledNutrition', () => {
 
     expect(await repository.getIngredient('custom:mine')).toMatchObject({ name: 'Babcine ciasto' });
     expect(await repository.countIngredients()).toBe(3);
+  });
+
+  /**
+   * Phase 21 task 2. Everything else that writes `ingredients` waits at this gate, so an
+   * import that raised it and never lowered it again would hang the app for good — worse
+   * than the WebKit defect it exists to seal (STATE.md open question 31).
+   */
+  it('holds the ingredient gate while it writes, and lets go afterwards', async () => {
+    const held: boolean[] = [];
+    const watched: Repository = {
+      ...repository,
+      async putIngredients(rows) {
+        held.push(ingredientsHeld());
+        await repository.putIngredients(rows);
+      }
+    };
+
+    expect(ingredientsHeld()).toBe(false);
+    await importBundledNutrition({ repository: watched, load: async () => bundle() });
+
+    expect(held).toEqual([true]);
+    expect(ingredientsHeld()).toBe(false);
+  });
+
+  it('lets go of the gate when a write throws half way through', async () => {
+    const failing: Repository = {
+      ...repository,
+      async putIngredients() {
+        throw new Error('quota exceeded');
+      }
+    };
+
+    const outcome = await importBundledNutrition({ repository: failing, load: async () => bundle() });
+
+    expect(outcome.status).toBe('failed');
+    expect(ingredientsHeld(), 'a failed import left every later write hanging').toBe(false);
   });
 
   it('reports a failure without setting the flag, so the next load retries', async () => {

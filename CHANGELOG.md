@@ -6,6 +6,55 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Bug Fixes
+
+- **cele:** „Wypełnij pola" now says what it filled in, and that it saved nothing
+
+### CI/CD
+
+- Run the WebKit project on every push
+
+### Documentation
+
+- Plan phases 15-20 — the iPhone defect first, then six ideas
+- Plan phase 21 — the first twenty-four seconds
+- The WebKit slowness is Windows, not Safari
+- The WebKit slowness is confirmed as Windows-only, measured on Linux
+- Give the duplicated open question 30 its own number
+- Re-take the screenshots for the 44px icon buttons
+- Record the interaction audit and how to add a button
+
+### Features
+
+- Phase 15 — iPhone
+- Phase 16 — miary domowe
+- Phase 17 — dział sklepu
+- Phase 18 — trzy drobiazgi
+- Phase 19 — cel dopowiedziany do końca
+- Phase 20 — metryczka przepisu
+- Phase 21 — pierwsze dwadzieścia cztery sekundy
+- **ui:** Give every clickable thing a hover, press and focus state
+
+### Miscellaneous
+
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Update CHANGELOG
+- Regenerate the changelog
+- Regenerate the changelog
+
+### Tests
+
+- **e2e:** Cover the hover, press, focus and disabled states
+
 ## [1.11.0] - 2026-09-08
 
 ### Features

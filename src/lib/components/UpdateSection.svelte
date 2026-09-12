@@ -43,7 +43,7 @@
     </p>
     <button
       type="button"
-      class="mt-3 rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+      class="mt-3 emw-press emw-btn emw-btn-primary"
       onclick={applyUpdate}
     >
       Wczytaj nową wersję
@@ -51,7 +51,7 @@
   {:else if pwaState.canCheckUpdates}
     <button
       type="button"
-      class="mt-3 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium disabled:opacity-60"
+      class="mt-3 emw-press emw-btn emw-btn-secondary disabled:opacity-60"
       disabled={checking}
       onclick={() => void check()}
     >
@@ -80,7 +80,7 @@
              that whatever is standing in front of the server finally gets to ask its question
              where a person can see it and answer. -->
         <a
-          class="mt-3 inline-block rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+          class="mt-3 inline-block emw-press emw-btn emw-btn-secondary"
           href={NETWORK_CHECK_PATH}
           target="_blank"
           rel="noopener"

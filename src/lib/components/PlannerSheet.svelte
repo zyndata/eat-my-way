@@ -145,7 +145,26 @@
     return dayRows.find((row) => row.date === date)?.meals ?? [];
   }
 
+  /**
+   * Which `load` is the current one. „Pierwszy dzień" changes the range, and the effect below
+   * starts a fresh load for it — while the previous one is still reading. Both then wrote their
+   * results into the same state, and a run drawn for the week that was being left could arrive
+   * after the header had moved: the sheet ended up holding a proposal for one range and a
+   * `picked` list for another, said „nie zmieściło się w zaplanowanym zakresie", and dropped
+   * the proposal. „Zastosuj" then did nothing at all, silently, because `apply` returns on a
+   * null proposal — and the sheet simply sat there.
+   *
+   * Nothing here was WebKit-specific except the odds: five reads apiece on an engine that
+   * charges milliseconds a row is a wide enough window to lose the race every time, where
+   * Chromium wins it every time (STATE.md decision 394).
+   */
+  let loadRun = 0;
+
   async function load(): Promise<void> {
+    const run = ++loadRun;
+    /** True once a newer load has started; everything this one read is then out of date. */
+    const stale = (): boolean => run !== loadRun;
+
     loading = true;
     error = '';
     proposal = null;
@@ -156,13 +175,16 @@
     picked = [...range];
 
     const profile = await repository.getProfile();
+    if (stale()) return;
     goals = profile.goals;
     template = templateOf(profile.mealPlan);
 
     // The whole week around the range, because the balance is measured over a week even when
     // only one day is being planned.
     const span = [...new Set([...range, ...weekDates(range[0] ?? today)])].sort();
-    dayRows = await repository.getDays(span[0] ?? today, span[span.length - 1] ?? today);
+    const rows = await repository.getDays(span[0] ?? today, span[span.length - 1] ?? today);
+    if (stale()) return;
+    dayRows = rows;
 
     const [recipes, usage] = await Promise.all([
       repository.allRecipes(),
@@ -173,6 +195,7 @@
         recipes.flatMap((recipe: Recipe) => recipe.items.map((item) => item.ingredientId))
       )
     );
+    if (stale()) return;
 
     const built = planCandidates(recipes, lookup, usage);
     candidatesRef.list = built.candidates;
@@ -291,10 +314,30 @@
     }
   }
 
-  /** Opening re-anchors the range on what the caller proposed; „Pierwszy dzień" moves it from there. */
+  /**
+   * Opening re-anchors the range on what the caller proposed; „Pierwszy dzień" moves it from
+   * there.
+   *
+   * The guard is the whole point: this effect re-runs on later updates too, and without it
+   * every re-run put the range back on the caller's first day — so „Pierwszy dzień" was set by
+   * the user and then silently taken away again, the proposal was solved for a week the header
+   * no longer showed, and „Zastosuj" wrote a week the user had not asked for or, when the
+   * solve came back empty, did nothing at all. Chromium raced through the whole sequence
+   * fast enough to hide it; WebKit lost it every time (STATE.md decision 394).
+   *
+   * `anchored` is a plain variable on purpose: it must not become a dependency of the effect
+   * that maintains it.
+   */
+  let anchored = false;
   $effect(() => {
-    if (!open) return;
-    start = dates[0] ?? today;
+    if (!open) {
+      anchored = false;
+      return;
+    }
+    const first = dates[0] ?? today;
+    if (anchored) return;
+    anchored = true;
+    start = first;
   });
 
   $effect(() => {
@@ -319,7 +362,7 @@
       <span class="text-xs text-(--color-ink-muted)">Pierwszy dzień</span>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
         aria-label="Zacznij dzień wcześniej"
         onclick={() => setStart(addDays(start, -1))}
       >
@@ -334,7 +377,7 @@
       />
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
         aria-label="Zacznij dzień później"
         onclick={() => setStart(addDays(start, 1))}
       >
@@ -371,7 +414,7 @@
           </span>
           <button
             type="button"
-            class="rounded-lg border px-2 py-1 font-medium {replace
+            class="emw-press emw-tint rounded-lg border px-2 py-1 font-medium {replace
               ? 'border-(--color-border)'
               : 'border-(--color-accent) text-(--color-accent)'}"
             onclick={() => setReplace(false)}
@@ -380,7 +423,7 @@
           </button>
           <button
             type="button"
-            class="rounded-lg border px-2 py-1 font-medium {replace
+            class="emw-press emw-tint rounded-lg border px-2 py-1 font-medium {replace
               ? 'border-(--color-accent) text-(--color-accent)'
               : 'border-(--color-border)'}"
             onclick={() => setReplace(true)}
@@ -487,9 +530,9 @@
                           {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
                             <button
                               type="button"
-                              class="px-2 py-1 text-xs tabular-nums {run.dates.length === length
-                                ? 'bg-(--color-accent) text-(--color-accent-ink)'
-                                : ''}"
+                              class="emw-press px-2 py-1 text-xs tabular-nums {run.dates.length === length
+                                ? 'emw-btn-primary'
+                                : 'emw-tint'}"
                               aria-label="Gotuj na {length} dni"
                               title="Gotuj na {length} dni"
                               aria-pressed={run.dates.length === length}
@@ -502,7 +545,7 @@
                       {/if}
                       <button
                         type="button"
-                        class="rounded-lg border border-(--color-border) p-1.5 {locks.includes(run.id)
+                        class="emw-press emw-btn-icon border border-(--color-border) {locks.includes(run.id)
                           ? 'text-(--color-accent)'
                           : 'text-(--color-ink-muted)'}"
                         aria-label="{locks.includes(run.id) ? 'Odblokuj' : 'Zablokuj'} {run.recipeName}"
@@ -516,7 +559,7 @@
                       </button>
                       <button
                         type="button"
-                        class="rounded-lg border border-(--color-border) p-1.5 text-(--color-ink-muted)"
+                        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
                         aria-label="Przelosuj {slotLabel(run.slotId)}"
                         title="Przelosuj tylko ten posiłek — reszta zostaje"
                         onclick={() => solve(run.id)}
@@ -563,7 +606,7 @@
     <div class="flex flex-wrap justify-end gap-2 pt-4">
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         disabled={proposal === null}
         onclick={() => solve()}
       >
@@ -571,7 +614,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-40"
+        class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-40"
         disabled={proposal === null || applying || picked.length === 0}
         onclick={() => void apply()}
       >

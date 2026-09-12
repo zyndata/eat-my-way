@@ -1,7 +1,8 @@
-import type { Ingredient, PlannedMeal, Recipe, Unit } from './types';
+import type { Department, Ingredient, MeasureName, PlannedMeal, Recipe, Unit } from './types';
 import type { IngredientLookup } from './macros';
 import { displayedAmount, displayedGrams } from './macros';
-import { formatAmountWithUnit } from './text';
+import { DEPARTMENT_LABELS, departmentIndex, departmentOf } from './departments';
+import { formatMeasureAmount } from './text';
 import { effectiveItems } from './adjustments';
 
 /**
@@ -15,6 +16,13 @@ import { effectiveItems } from './adjustments';
  * Nothing here touches the network. The list leaves through `navigator.share()` or the
  * clipboard, neither of which is governed by `connect-src`, so the feature costs no CSP
  * change at all (STATE.md decisions 144 and 158).
+ *
+ * **Phase 17 reverses one stated intent of this file.** The order used to be the order the
+ * ingredients were first met, „so a list reads like the recipes it came from". A list is read
+ * in a shop, though, where flour between two vegetables costs a walk back across the building,
+ * so lines are now grouped by department in the order a shop is walked (STATE.md decision 329).
+ * Within a department the old order is kept exactly, so a department still reads the way the
+ * whole list used to.
  */
 
 /** One line of a shopping list: an ingredient, in one unit, summed over the scope. */
@@ -27,6 +35,31 @@ export interface ShoppingLine {
   amount: number;
   /** The same amount in grams, so a `szt` line can still be weighed. */
   grams: number;
+  /**
+   * The household measure this line prints itself in — „2 ząbki" rather than „2 szt.".
+   *
+   * Kept only while every row that merged into the line agrees (STATE.md decision 351). Lines
+   * are still keyed by `ingredientId + unit` and nothing about that changes, so a recipe
+   * counting cloves and one counting plain pieces land together; printing either label would
+   * be a claim about the other recipe's row, so the line falls back to „szt." instead, which
+   * is what it said before measures existed and is true of both.
+   */
+  measureName?: MeasureName;
+  /**
+   * Which part of the shop this line is bought in — the ingredient's, or `inne` when it has
+   * none and when the ingredient is gone from the database altogether. Always set, because a
+   * line has to print under some heading; „not chosen" is a fact about an ingredient, not
+   * about a list (STATE.md decision 330).
+   */
+  department: Department;
+}
+
+/** One heading of a shopping list, and the lines under it. Never empty — see `groupByDepartment`. */
+export interface ShoppingGroup {
+  department: Department;
+  /** The Polish heading, so a caller prints it without reaching for the label table. */
+  label: string;
+  lines: ShoppingLine[];
 }
 
 /** A planned meal paired with the recipe it came from, which is what a list is built out of. */
@@ -101,8 +134,11 @@ function showGrams(line: ShoppingLine): boolean {
  * Sum the ingredients of every meal in the scope.
  *
  * Lines are keyed by ingredient **and unit**: 2 szt and 100 g of the same thing cannot be
- * added, and pretending otherwise would print a number nobody can shop by. The order is the
- * order the ingredients were first met, so a list reads like the recipes it came from.
+ * added, and pretending otherwise would print a number nobody can shop by.
+ *
+ * The order is the shop's: by department first, and within a department by the order the
+ * ingredients were first met (decision 329). The sort is stable, which is what makes the second
+ * half of that sentence true without the first half having to know anything about it.
  *
  * A meal whose recipe was deleted contributes nothing. Its macros still count towards the
  * day (STATE.md decisions 51 and 73) — but there is no ingredient list left to buy.
@@ -136,22 +172,53 @@ export function shoppingLines(
           name: ingredient?.name ?? 'Nieznany składnik',
           unit: item.unit,
           amount,
-          grams
+          grams,
+          ...(item.measureName === undefined ? {} : { measureName: item.measureName }),
+          department: departmentOf(ingredient)
         });
         continue;
       }
 
       existing.amount += amount;
       existing.grams += grams;
+      // Disagreement drops the label for good — see `ShoppingLine.measureName`.
+      if (existing.measureName !== item.measureName) delete existing.measureName;
     }
   }
 
-  return [...lines.values()];
+  return [...lines.values()].sort(
+    (a, b) => departmentIndex(a.department) - departmentIndex(b.department)
+  );
 }
 
-/** One line as the share sheet will show it: „Pierś z kurczaka — 400 g". */
+/**
+ * The lines under their headings, in walk order, **with empty departments left out**.
+ *
+ * One function for both readers of a list — the sheet on screen and the shared text — so the
+ * two can never disagree about what is grouped where or which headings exist.
+ */
+export function groupByDepartment(lines: readonly ShoppingLine[]): ShoppingGroup[] {
+  const groups = new Map<Department, ShoppingGroup>();
+  for (const line of lines) {
+    const group = groups.get(line.department);
+    if (group === undefined) {
+      groups.set(line.department, {
+        department: line.department,
+        label: DEPARTMENT_LABELS[line.department],
+        lines: [line]
+      });
+      continue;
+    }
+    group.lines.push(line);
+  }
+  return [...groups.values()].sort(
+    (a, b) => departmentIndex(a.department) - departmentIndex(b.department)
+  );
+}
+
+/** One line as the share sheet will show it: „Pierś z kurczaka — 400 g", „Czosnek — 2 ząbki (10 g)". */
 export function formatShoppingLine(line: ShoppingLine): string {
-  const amount = formatAmountWithUnit(line.amount, line.unit);
+  const amount = formatMeasureAmount(line.amount, line.unit, line.measureName);
   return showGrams(line)
     ? `${line.name} — ${amount} (${Math.round(line.grams)} g)`
     : `${line.name} — ${amount}`;
@@ -161,11 +228,20 @@ export function formatShoppingLine(line: ShoppingLine): string {
  * The whole list as plain text. Plain text on purpose: it is what a share target accepts,
  * what a clipboard paste produces everywhere, and what a person can still read when the app
  * it was shared into turns out not to parse anything.
+ *
+ * Headings included, for the same reason they are on screen: this is the copy that is actually
+ * carried around a shop, in whatever messenger it was pasted into.
  */
 export function formatShoppingList(title: string, lines: readonly ShoppingLine[]): string {
   const body =
     lines.length === 0
       ? 'Brak składników do kupienia.'
-      : lines.map((line) => `• ${formatShoppingLine(line)}`).join('\n');
+      : groupByDepartment(lines)
+          .map(
+            (group) =>
+              `${group.label}\n` +
+              group.lines.map((line) => `• ${formatShoppingLine(line)}`).join('\n')
+          )
+          .join('\n\n');
   return `${title}\n\n${body}\n`;
 }

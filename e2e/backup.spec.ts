@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * Declared rather than pulled in with `@types/node`, the same way `playwright.config.ts`
@@ -23,7 +23,7 @@ test('a backup taken on one device restores the whole calendar on a fresh one', 
   const source = await openDevice();
 
   // Something worth backing up: a recipe, and a day that plans it.
-  await source.goto('#/recipes/new/edit');
+  await openRecipeEditor(source);
   await source.getByLabel('Nazwa').fill('Owsianka z jajkiem');
   await source.getByRole('button', { name: 'Dodaj składnik' }).click();
   await source.getByLabel('Składnik 1').fill('jajko');

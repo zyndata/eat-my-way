@@ -47,14 +47,14 @@
       <h2 id="bottom-sheet-title" class="text-base font-semibold">{title}</h2>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-1.5 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary py-1.5"
         onclick={onclose}
       >
         Zamknij
       </button>
     </header>
 
-    <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div class="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,var(--safe-bottom))]">
       {#if children}{@render children()}{/if}
     </div>
   </div>

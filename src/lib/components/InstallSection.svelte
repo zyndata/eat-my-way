@@ -64,7 +64,7 @@
       {#if pwaState.installable}
         <button
           type="button"
-          class="mt-3 rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+          class="mt-3 emw-press emw-btn emw-btn-primary"
           onclick={() => void promptInstall().then((result) => (outcome = result))}
         >
           Zainstaluj aplikację

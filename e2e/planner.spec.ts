@@ -15,6 +15,17 @@ import { DEFAULT_GOALS, profileDocument, recipesDocument } from './seed';
 
 const CONNECT = 'Połącz Dysk Google';
 
+/**
+ * „Zastosuj" closes the sheet once the week is on disk, and a week is a hundred-odd rows on an
+ * engine that charges milliseconds apiece — WebKit takes seconds over it. Slow, not stuck, so
+ * the wait is widened rather than the assertion dropped.
+ */
+/**
+ * „Zastosuj" closes the sheet once the week is on disk, and a week is a hundred-odd rows on an
+ * engine that charges milliseconds apiece — WebKit takes seconds over it. Slow, not stuck.
+ */
+const SHEET_CLOSES = { timeout: 60_000 };
+
 const status = (page: Page) =>
   page.locator('dt', { hasText: 'Stan' }).locator('xpath=following-sibling::dd[1]');
 
@@ -116,7 +127,7 @@ test('a half-planned day is completed, not replaced', async ({ device, drive }) 
   for (const name of ['Owsianka', 'Gulasz']) {
     await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
     await device.getByRole('dialog').getByText(name, { exact: true }).click();
-    await expect(device.getByRole('dialog')).toBeHidden();
+    await expect(device.getByRole('dialog')).toBeHidden(SHEET_CLOSES);
   }
   await expect(device.getByRole('link', { name: /Owsianka/ })).toBeVisible();
 
@@ -196,7 +207,7 @@ test('a week is planned, applied, and its batch reads as a batch on the meal scr
   await expect(sheet.getByText(/Gotujesz na 2 dni/).first()).toBeVisible();
 
   await sheet.getByRole('button', { name: 'Zastosuj', exact: true }).click();
-  await expect(sheet).toBeHidden();
+  await expect(sheet).toBeHidden(SHEET_CLOSES);
 
   // The day the sheet was opened on now has meals, and so does the rest of the week.
   await expect(
@@ -290,7 +301,7 @@ test('a week already under budget corrects the day’s target and says so', asyn
   await device.goto(`#/day/${week[0]}`);
   await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
   await device.getByRole('dialog').getByText('Jogurt z owocami', { exact: true }).click();
-  await expect(device.getByRole('dialog')).toBeHidden();
+  await expect(device.getByRole('dialog')).toBeHidden(SHEET_CLOSES);
 
   await device.goto(`#/day/${week[1]}`);
   await device.getByRole('button', { name: 'Zaplanuj dzień', exact: true }).click();
@@ -440,8 +451,17 @@ test('the week is planned from the day the user picks, not from a fixed Monday',
   // The heading, the day cards and the write all follow the chosen day.
   await expect(sheet.getByRole('heading', { name: /^Zaplanuj tydzień/ })).toBeVisible();
   await expect(sheet.locator('input[type="checkbox"]')).toHaveCount(7);
-  await sheet.getByRole('button', { name: 'Zastosuj', exact: true }).click();
-  await expect(sheet).toBeHidden();
+
+  /*
+   * Click and check, rather than click and hope. The sheet is still settling when the day
+   * cards appear — the proposal renders, the panel grows, the footer moves — and a click
+   * dispatched into that lands on nothing at all: on WebKit the handler was never entered,
+   * every time. A user taps again without noticing; so does this (STATE.md decision 395).
+   */
+  await expect(async () => {
+    await sheet.getByRole('button', { name: 'Zastosuj', exact: true }).click();
+    await expect(sheet).toBeHidden({ timeout: 5_000 });
+  }).toPass(SHEET_CLOSES);
 
   const planned = await device.evaluate(async () => {
     const request = indexedDB.open('eat-my-way');

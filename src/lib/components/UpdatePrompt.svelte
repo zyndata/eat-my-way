@@ -10,7 +10,7 @@
 
 {#if pwaState.updateReady}
   <div
-    class="fixed inset-x-3 bottom-20 z-40 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3 shadow-lg md:inset-x-auto md:right-4 md:bottom-4 md:max-w-sm"
+    class="fixed right-[max(0.75rem,var(--safe-right))] bottom-[calc(var(--nav-h)+1.1875rem)] left-[max(0.75rem,var(--safe-left))] z-40 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3 shadow-lg md:right-4 md:bottom-4 md:left-auto md:max-w-sm"
     role="status"
   >
     <p class="text-sm">
@@ -19,14 +19,14 @@
     <div class="flex gap-2">
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary"
         onclick={() => (pwaState.updateReady = false)}
       >
         Później
       </button>
       <button
         type="button"
-        class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink)"
+        class="emw-press emw-btn emw-btn-primary"
         onclick={applyUpdate}
       >
         Odśwież

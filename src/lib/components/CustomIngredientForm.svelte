@@ -1,7 +1,16 @@
 <script lang="ts">
   import type { Ingredient } from '../types';
   import type { IngredientDraft } from '../custom-ingredients';
-  import { draftProblem, draftToIngredient, emptyIngredientDraft } from '../custom-ingredients';
+  import {
+    draftProblem,
+    draftSanity,
+    draftToIngredient,
+    emptyIngredientDraft,
+    emptyMeasureDraft
+  } from '../custom-ingredients';
+  import { MEASURE_NAMES, measureWord } from '../text';
+  import { DEPARTMENTS, DEPARTMENT_LABELS } from '../departments';
+  import { newId } from '../ids';
   import Spinner from './Spinner.svelte';
   import { GeminiError } from '../gemini/client';
   import {
@@ -33,6 +42,18 @@
    * *proposal* into the draft — nothing is persisted until the ordinary „Zapisz składnik" —
    * and a field the scan could not read stays empty rather than becoming `0`, which is the
    * same rule as above seen from the other side.
+   *
+   * Phase 16 adds the household measures: a repeating row of „name + weight in grams", optional
+   * in every direction. An ingredient offering none is complete, which is why there is no empty
+   * row waiting to be filled — the list starts closed and „Dodaj miarę" opens it.
+   *
+   * Phase 17 adds the shopping department, on the same terms: it defaults to nothing, it shows
+   * „Inne" as what that means, and it never blocks a save (decision 330). A scan proposes one
+   * alongside the macros and marks it like every other scanned field.
+   *
+   * Phase 18 adds a sentence under the macros when the four numbers cannot all be true at
+   * once. It warns and never blocks, for the reason fibre and polyols exist — see
+   * `draftSanity`.
    */
 
   let {
@@ -92,6 +113,13 @@
   /** Fields whose current value came from the last scan, so they can be marked on screen. */
   let scanned = $state<Partial<Record<ScannedField, boolean>>>({});
 
+  /**
+   * Whether the four values are *possible* — separate from `problem`, which is whether they
+   * are there. This one never disables anything (STATE.md decision 331); it names the scanned
+   * fields it implicates, because that is where a misplaced decimal point actually comes from.
+   */
+  const sanity = $derived(draftSanity(draft, scanned));
+
   let scanning = $state(false);
   /** What the scan is waiting for. A model call takes seconds; a dead button explains none. */
   let stage = $state('');
@@ -111,7 +139,8 @@
     kcal: 'kcal',
     protein: 'białko',
     carbs: 'węglowodany',
-    fat: 'tłuszcz'
+    fat: 'tłuszcz',
+    department: 'dział sklepu'
   };
 
   /** Typing into a field claims it: the scan stops owning it and stops marking it. */
@@ -169,6 +198,14 @@
   const fieldClass =
     'mt-1 w-full rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)';
 
+  function addMeasure(): void {
+    draft.measures = [...draft.measures, emptyMeasureDraft(draft, newId())];
+  }
+
+  function removeMeasure(id: string): void {
+    draft.measures = draft.measures.filter((measure) => measure.id !== id);
+  }
+
   function save(): void {
     if (problem !== null) return;
     onsave(draftToIngredient(draft, editingId === undefined ? {} : { id: editingId }));
@@ -205,7 +242,7 @@
       />
       <button
         type="button"
-        class="inline-flex items-center gap-2 rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium disabled:opacity-50"
+        class="inline-flex items-center gap-2 emw-press emw-btn emw-btn-secondary disabled:opacity-50"
         disabled={scanning}
         onclick={() => fileInput?.click()}
       >
@@ -302,6 +339,39 @@
     </label>
   </div>
 
+  <!-- Warns, never blocks (STATE.md decision 331): the save button above is `problem`'s, and
+       a label that genuinely misses Atwater — fibre, alcohol, polyols — has to stay saveable. -->
+  {#if sanity !== null}
+    <p
+      class="mt-3 rounded-lg border border-(--color-warn-border) bg-(--color-warn-surface) px-3 py-2 text-sm text-(--color-warn)"
+      role="status"
+      data-testid="sanity-warning"
+    >
+      {sanity.message}
+    </p>
+  {/if}
+
+  <!-- The department orders the shopping list and nothing else. „— (Inne)" is a real choice
+       and the default one: an ingredient nobody has filed still has to be buyable, so it
+       shops under „Inne" rather than holding up the save (STATE.md decision 330). -->
+  <label class="block pt-3 text-sm font-medium">
+    Dział sklepu
+    <select
+      class={fieldClass + scannedClass('department')}
+      bind:value={draft.department}
+      onchange={() => claim('department')}
+    >
+      <option value="">— (Inne)</option>
+      {#each DEPARTMENTS as department (department)}
+        <option value={department}>{DEPARTMENT_LABELS[department]}</option>
+      {/each}
+    </select>
+  </label>
+  <p class="pt-1 text-xs text-(--color-ink-muted)">
+    Po tym grupujemy listę zakupów, w kolejności obchodzenia sklepu. Możesz to pominąć —
+    składnik bez działu trafi na koniec, do „Inne”.
+  </p>
+
   <!-- Aliases were indexed from schema v2 on and until now had no way of ever being filled.
        They widen both the autocomplete and Gemini's ingredient matching. -->
   <label class="block pt-3 text-sm font-medium">
@@ -318,10 +388,66 @@
     przepisu łatwiej go dopasuje.
   </p>
 
+  <!-- Measures are a label and a default weight, never a unit: a recipe row that takes one
+       still stores its grams, and the macros are computed from those grams exactly as before
+       (STATE.md decision 323). -->
+  <fieldset class="mt-4 rounded-lg border border-(--color-border) p-3">
+    <legend class="px-1 text-xs font-medium text-(--color-ink-muted)">Miary domowe</legend>
+    <p class="text-xs text-(--color-ink-muted)">
+      Ile waży jedna sztuka, jeden ząbek, jedna łyżka. Dzięki temu w przepisie wpiszesz „2 ząbki”
+      zamiast „2 szt. po 5 g”. Możesz to pominąć — składnik bez miar działa tak samo.
+    </p>
+
+    {#each draft.measures as measure (measure.id)}
+      <div class="flex items-end gap-2 pt-3">
+        <label class="min-w-0 flex-1 text-sm font-medium">
+          Miara
+          <select class={fieldClass} bind:value={measure.name}>
+            {#each MEASURE_NAMES as name (name)}
+              <option value={name}>{name}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="w-28 shrink-0 text-sm font-medium">
+          Waga (g)
+          <input
+            class={fieldClass}
+            type="number"
+            inputmode="decimal"
+            min="0"
+            step="any"
+            bind:value={measure.grams}
+          />
+        </label>
+        <button
+          type="button"
+          class="shrink-0 emw-press emw-btn emw-btn-secondary font-normal text-(--color-ink-muted)"
+          aria-label="Usuń miarę {measure.name}"
+          onclick={() => removeMeasure(measure.id)}
+        >
+          Usuń
+        </button>
+      </div>
+      {#if measure.grams !== null && measure.grams > 0}
+        <p class="pt-1 text-xs text-(--color-ink-muted)">
+          2 {measureWord(measure.name, 2)} = {Math.round(measure.grams * 2)} g
+        </p>
+      {/if}
+    {/each}
+
+    <button
+      type="button"
+      class="mt-3 emw-press emw-btn emw-btn-secondary"
+      onclick={addMeasure}
+    >
+      Dodaj miarę
+    </button>
+  </fieldset>
+
   <div class="flex flex-wrap gap-2 pt-4">
     <button
       type="button"
-      class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+      class="emw-press emw-btn emw-btn-primary disabled:opacity-50"
       disabled={problem !== null}
       onclick={save}
     >
@@ -329,7 +455,7 @@
     </button>
     <button
       type="button"
-      class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+      class="emw-press emw-btn emw-btn-secondary"
       onclick={oncancel}
     >
       Anuluj

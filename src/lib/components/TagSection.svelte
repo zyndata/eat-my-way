@@ -156,7 +156,7 @@
             <div class="flex flex-wrap gap-2 pt-2">
               <button
                 type="button"
-                class="rounded-lg bg-(--color-accent) px-3 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+                class="emw-press emw-btn emw-btn-primary disabled:opacity-50"
                 disabled={busy}
                 onclick={() => void applyRename(tag)}
               >
@@ -164,7 +164,7 @@
               </button>
               <button
                 type="button"
-                class="rounded-lg border border-(--color-border) px-3 py-2 text-sm font-medium"
+                class="emw-press emw-btn emw-btn-secondary"
                 onclick={cancelEdit}
               >
                 Anuluj
@@ -179,7 +179,7 @@
               <div class="flex shrink-0 gap-2">
                 <button
                   type="button"
-                  class="rounded-lg border border-(--color-border) px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                  class="emw-press emw-btn emw-btn-secondary py-1.5 disabled:opacity-50"
                   disabled={busy}
                   onclick={() => startEdit(tag)}
                 >
@@ -187,7 +187,7 @@
                 </button>
                 <button
                   type="button"
-                  class="rounded-lg border border-(--color-danger-border) px-3 py-1.5 text-sm font-medium text-(--color-danger) disabled:opacity-50"
+                  class="emw-press emw-btn emw-btn-danger py-1.5 disabled:opacity-50"
                   disabled={busy}
                   onclick={() => (deleting = tag)}
                 >

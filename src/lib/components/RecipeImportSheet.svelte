@@ -154,7 +154,7 @@
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        class="inline-flex items-center gap-2 rounded-lg bg-(--color-accent) px-4 py-2 text-sm font-medium text-(--color-accent-ink) disabled:opacity-50"
+        class="inline-flex items-center gap-2 emw-press emw-btn emw-btn-primary px-4 disabled:opacity-50"
         disabled={busy || input.trim() === ''}
         onclick={() => void run()}
       >
@@ -165,7 +165,7 @@
       </button>
       <button
         type="button"
-        class="rounded-lg border border-(--color-border) px-4 py-2 text-sm font-medium"
+        class="emw-press emw-btn emw-btn-secondary px-4"
         disabled={busy}
         onclick={onclose}
       >

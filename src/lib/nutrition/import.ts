@@ -1,6 +1,7 @@
 import type { Repository } from '../repository';
 import { repository as defaultRepository } from '../repository';
 import { loadNutritionBundle, type NutritionBundle } from './bundle';
+import { holdIngredients } from './gate';
 import { NUTRITION_DATA_VERSION } from './meta';
 
 /**
@@ -41,13 +42,22 @@ export async function importBundledNutrition(options: ImportOptions = {}): Promi
     }
 
     const bundle = await load();
-    for (let start = 0; start < bundle.ingredients.length; start += BATCH_SIZE) {
-      await repository.putIngredients(bundle.ingredients.slice(start, start + BATCH_SIZE));
-    }
 
-    // Written last: a crash mid-import leaves the flag behind, so the next load retries.
-    await repository.setMeta('nutritionDataVersion', bundle.dataVersion);
-    await repository.setMeta('nutritionImportedAt', new Date().toISOString());
+    // Everything else that writes `ingredients` waits here until the loop below is done.
+    // Raised around the writes only: the fetch touches no table, and a sync that lands while
+    // it is in flight has nothing to collide with (STATE.md decision 388).
+    const release = holdIngredients();
+    try {
+      for (let start = 0; start < bundle.ingredients.length; start += BATCH_SIZE) {
+        await repository.putIngredients(bundle.ingredients.slice(start, start + BATCH_SIZE));
+      }
+
+      // Written last: a crash mid-import leaves the flag behind, so the next load retries.
+      await repository.setMeta('nutritionDataVersion', bundle.dataVersion);
+      await repository.setMeta('nutritionImportedAt', new Date().toISOString());
+    } finally {
+      release();
+    }
 
     return { status: 'imported', dataVersion: bundle.dataVersion, imported: bundle.ingredients.length };
   } catch (cause) {

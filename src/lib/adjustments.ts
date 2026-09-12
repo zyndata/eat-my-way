@@ -1,6 +1,6 @@
 import type { Macros, PlannedMeal, Recipe, RecipeItem } from './types';
 import { itemMacros, sumMacros, type IngredientLookup } from './macros';
-import { formatAmountWithUnit } from './text';
+import { formatMeasureAmount } from './text';
 
 /**
  * Per-meal changes to a recipe (PLAN.md Phase 14), pure. No database, no clock, no ids.
@@ -218,11 +218,15 @@ export function adjustmentSummary(
       case 'skipped':
         return [`− ${name(row.item)}`];
       case 'added':
-        return [`+ ${name(row.item)} ${formatAmountWithUnit(row.item.amount, row.item.unit)}`];
+        return [
+          `+ ${name(row.item)} ${formatMeasureAmount(row.item.amount, row.item.unit, row.item.measureName)}`
+        ];
       case 'swap':
         return [`${name(row.original ?? row.item)} → ${name(row.item)}`];
       case 'amount':
-        return [`${name(row.item)} → ${formatAmountWithUnit(row.item.amount, row.item.unit)}`];
+        return [
+          `${name(row.item)} → ${formatMeasureAmount(row.item.amount, row.item.unit, row.item.measureName)}`
+        ];
     }
   });
 }

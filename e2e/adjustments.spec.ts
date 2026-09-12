@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 import { cspViolations } from './fake-google';
 
 /**
@@ -43,7 +43,7 @@ async function dayKcal(page: Page): Promise<number> {
 
 /** One recipe of two ingredients, planned onto today, and the meal screen open. */
 async function seedMeal(page: Page): Promise<void> {
-  await page.goto('#/recipes/new/edit');
+  await openRecipeEditor(page);
   await page.getByLabel('Nazwa').fill(RECIPE);
 
   // Scoped to the combobox's own listbox: the unit `<select>` on a filled row also has

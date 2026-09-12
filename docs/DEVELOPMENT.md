@@ -119,6 +119,13 @@ These exist because the same checkout is edited on Windows and Linux:
   file on Windows and two different ones on the server. Match the import to the file exactly.
 - **Docker Desktop (Windows) and Docker Engine (Linux)** both run `docker compose` the same way;
   the compose file must not depend on either.
+- **WebKit will not run from a VS Code snap terminal.** On Linux, if VS Code is installed as a
+  snap its integrated terminal exports `GIO_MODULE_DIR` pointing into the snap's GIO module
+  cache. WebKit's network process loads its TLS backend from there, the library is linked
+  against the glibc inside `/snap/core20`, and every navigation dies with „WebKit encountered an
+  internal error" — all of the WebKit specs fail in about 2.5 s each while Chromium passes. Run
+  `env -u GIO_MODULE_DIR E2E_WEBKIT=1 npm run test:e2e`, or use a terminal outside VS Code.
+  Nothing in the repository is involved (STATE.md decision 399).
 - Do not commit `.env.local`, `node_modules/`, `dist/`, or `.claude/settings.local.json`.
 
 ## The service worker
@@ -153,6 +160,45 @@ Two things that are easy to get wrong when switching machines:
 2. **STATE.md is the handover.** If you stop mid-phase on one machine, record where you stopped
    in STATE.md and commit — that file is how the other machine (and the next conversation)
    learns what happened.
+
+## Buttons and interaction states
+
+Every clickable thing in the app — `<button>`, `<a>`, a chip, a calendar day, a list row —
+carries **`emw-press`** plus one variant class. They are defined in
+[`src/app.css`](../src/app.css) under `@layer components`, and they exist because before them
+the app had 157 clickable elements and one `hover:` rule between them: nothing answered the
+cursor, and `body`'s `-webkit-tap-highlight-color: transparent` had removed the native flash on
+touch as well, so a press painted nothing on either input (STATE.md decisions 400–407).
+
+| Class | For |
+|---|---|
+| `emw-btn emw-btn-primary` | The accent fill: save, confirm, add |
+| `emw-btn emw-btn-secondary` | The outline: cancel, close, toggle a panel |
+| `emw-btn emw-btn-danger` / `emw-btn-danger-solid` | Destructive, outlined / filled |
+| `emw-btn-link`, `-link-muted`, `-link-danger` | Text inside a sentence |
+| `emw-btn-icon` | Icon-only, 44px minimum hit area |
+| `emw-btn-chip` | Pill shape — geometry only, see below |
+| `emw-tint` | Neutral hover/press fill, for anything with no colour of its own |
+| `emw-row` | A full-width tappable row; tints without the press scale |
+
+`emw-btn` carries the shared geometry. Layout stays at the call site: a utility class (`mt-3`,
+`w-full`, `px-4`) is in Tailwind's utilities layer and so overrides anything here.
+
+Four things worth knowing before adding a variant:
+
+1. **Write resting → hover → press, in that order, per variant.** `:hover` and `:active` have
+   the same specificity, so whichever is written last wins while a mouse button is held down.
+   A single shared hover block at the foot of the file kills every press state on desktop.
+2. **Hover belongs inside `@media (hover: hover)`.** On a touchscreen `:hover` latches after a
+   tap and stays painted until something else is tapped.
+3. **A chip's shape and a chip's fill are separate classes.** A chip is also a *state* — a
+   filter is on or off — so the selected half takes `emw-btn-primary` and the unselected half
+   `emw-tint`, never both. If the pill carried a tint of its own, the two would collide.
+4. **Check the token name you typed.** An undefined custom property makes the declaration
+   invalid and nothing in this repo reports it — `var(--radius-full)` (which Tailwind v4 does
+   not define) silently turned the floating action button into a rectangle, with every test
+   still green. `e2e/interaction.spec.ts` covers these states; add to it rather than trusting
+   a build to catch a stylesheet.
 
 ## Commits and branches
 
@@ -228,7 +274,7 @@ falls. „The two are indistinguishable, keep the one with 500 requests a day" i
 
 ## End-to-end tests
 
-`e2e/` drives the built app in Chromium:
+`e2e/` drives the built app in Chromium and, since 2026-09-12, in WebKit on every CI run:
 
 | Spec | What it covers |
 |---|---|
@@ -240,6 +286,41 @@ falls. „The two are indistinguishable, keep the one with 500 requests a day" i
 | `backup.spec.ts` | „Zapisz kopię" on one device, „Wczytaj kopię" on a fresh one |
 | `swipe.spec.ts` | The meal card's swipe-left, as a real touch gesture on a phone context |
 | `screens.spec.ts` | Every route in one session, asserting no CSP violation and no console error |
+| `safe-area.spec.ts` | The layout with an iPhone's home indicator and notch, moved from the test |
+
+A second Playwright project runs the same specs under **WebKit**, the engine Safari uses, and
+since phase 21 it passes: 125 of the 127, with `swipe.spec.ts` skipped because its touch drag is
+dispatched over CDP, which only Chromium has. Its first run had found a WebKit-only defect in
+the data layer: anything that touched the `ingredients` table while the 1 344 bundled rows were
+being written never came back. The import now holds a gate and every other writer waits at it.
+
+**On the slowness itself, so nobody repeats the mistake this project made:** writing those rows
+takes about twenty seconds under this build against a fifth of a second on Chromium, and that is
+**not** a fact about Safari. Playwright's WebKit on Windows charges about 15 ms for every
+task-queue dispatch — `setTimeout(0)`, a same-origin `fetch` and an IndexedDB *read* all cost the
+same — because that port's run loop is bound to the Windows message-timer tick. Raising the
+system timer to 1 ms does not help, and headed is identical to headless. No Apple platform has
+that floor. Treat the WebKit project as a correctness check, never as a performance measurement
+(STATE.md decision 398).
+
+**That has now been measured on Linux, and it holds.** Same Playwright 1.62.1, same WebKit 26.5
+build, only the operating system changed: the 15 ms quantum is gone. The 1 344-row import costs
+**198 ms** against 20 234 ms on Windows, IndexedDB callbacks are dispatched 0 ms apart, and
+`MessageChannel` drops from 30 ms to 0. The suite costs **8.1 min against Chromium's 5.4 min on
+the same machine — 1.5×, not the ~8× Windows showed** — and passes 125 of 127 with nothing
+behaving differently than it does on Windows (STATE.md decisions 398 and 397).
+
+**CI runs both engines** — the `e2e` job sets `E2E_WEBKIT=1`, so nothing about Safari's engine
+now depends on somebody remembering to ask for it. Locally the flag still gates it, because a
+one-engine run is the faster loop: `npm run test:e2e` is Chromium only, `E2E_WEBKIT=1 npm run
+test:e2e` is both, and `E2E_WEBKIT=1 npx playwright test --project=webkit` is WebKit alone. Two
+things follow for anyone writing a spec, and both are in `e2e/fixtures.ts`:
+
+- **The fixture waits for `<html data-nutrition="ready">`** before a test acts, so no test
+  races the import. `e2e/import-race.spec.ts` is the one that opts out, on purpose.
+- **Service workers are blocked** in every context except the two specs that are about them.
+  Playwright only intercepts a worker's requests on Chromium; on WebKit the app's Drive calls
+  went past the fakes to the real `googleapis.com`.
 
 The Drive flow is the deepest of them: connecting, the silent renewal on reload, a revoked
 grant, a foreign account, two devices merging, the same-day conflict prompt, and the debounced
