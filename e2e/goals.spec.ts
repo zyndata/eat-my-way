@@ -187,3 +187,38 @@ test('the split is remembered and still only filling the fields saves nothing', 
   await expect(device.getByLabel(/Białko \(%\)/)).toHaveValue('40');
   await expect(device.getByLabel(/Tłuszcz \(%\)/)).toHaveValue('30');
 });
+
+/**
+ * The confirmation under „Wypełnij pola" (Phase 20 UI audit).
+ *
+ * The press was reported as doing nothing, and the report was fair: it fills the four fields at
+ * the top of the section, which on a phone have scrolled out of sight behind the calculator
+ * panel by the time the button is reachable. Nothing moved anywhere the eye was looking, and
+ * the button itself painted no press state either.
+ *
+ * This asserts the half that is behaviour rather than styling — that the press says what it
+ * did, and says that it has not saved it.
+ */
+test('filling the fields confirms itself, in the numbers it filled in', async ({ device }) => {
+  await openCalculator(device);
+  await device.getByLabel('Płeć').selectOption('male');
+  await device.getByLabel(/Wiek/).fill('40');
+  await device.getByLabel(/Wzrost/).fill('180');
+  await device.getByLabel(/Waga/).fill('80');
+  await device.getByLabel('Aktywność').selectOption('sedentary');
+
+  const confirmation = device.getByTestId('fill-confirmation');
+  await expect(confirmation).toBeHidden();
+
+  await device.getByRole('button', { name: 'Wypełnij pola' }).click();
+
+  // The same numbers the fields above now hold — readable without scrolling back up to them.
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText('2076');
+  await expect(confirmation).toContainText('130');
+  await expect(confirmation).toContainText('234');
+  await expect(confirmation).toContainText('69');
+
+  // And the trap the panel's preamble only hints at: the press has saved nothing.
+  await expect(confirmation).toContainText('Nic jeszcze nie zostało zapisane');
+});
