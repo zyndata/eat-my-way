@@ -16,9 +16,11 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - Phase 15 — iPhone
 - Phase 16 — miary domowe
+- Phase 17 — dział sklepu
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 
 ## [1.11.0] - 2026-09-08
