@@ -308,6 +308,29 @@ describe('household measures round-trip (Phase 16)', () => {
   });
 });
 
+describe('preparation time round-trip (Phase 20)', () => {
+  const timed: Recipe = { ...recipe, prepMinutes: 15 };
+
+  it('survives export and import with no schema version bump and no migration', () => {
+    const built = buildBackup(
+      { ...input, recipes: [timed] },
+      new Date('2026-09-12T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.recipes[0]?.prepMinutes).toBe(15);
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+    expect(read.version).toBe(BACKUP_VERSION);
+  });
+
+  it('reads a file written before preparation times existed, unchanged', () => {
+    const built = buildBackup(input, new Date('2026-09-12T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(built));
+
+    expect(read.recipes[0]).not.toHaveProperty('prepMinutes');
+  });
+});
+
 describe('shop department round-trip (Phase 17)', () => {
   const filed: Ingredient = { ...custom, department: 'mrozonki' };
 

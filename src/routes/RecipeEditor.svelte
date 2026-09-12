@@ -15,7 +15,8 @@
     draftToRecipe,
     emptyDraft,
     emptyDraftItem,
-    incompleteDrafts
+    incompleteDrafts,
+    isPrepMinutesValid
   } from '../lib/recipes';
   import type { RecipeReferences } from '../lib/repository';
   import { repository } from '../lib/repository';
@@ -92,6 +93,8 @@
   const sum = $derived(draftMacros(draft.items, lookup));
   const incomplete = $derived(incompleteDrafts(draft.items));
   const canSave = $derived(canSaveDraft(draft) && !saving);
+  /** Split out of `canSave` so the form can say *which* of the two rules is unmet. */
+  const prepValid = $derived(isPrepMinutesValid(draft.prepMinutes));
 
   async function load(id: string): Promise<void> {
     loading = true;
@@ -195,6 +198,11 @@
     draft.items = [...draft.items, ...result.items];
     if (draft.name.trim() === '' && result.name !== '') draft.name = result.name;
     if (draft.instructions.trim() === '') draft.instructions = result.instructions;
+    // A blank is filled, a typed time is never overwritten — the same rule as the name and
+    // the instructions above it (PLAN.md Phase 20 task 2).
+    if (draft.prepMinutes === null && result.prepMinutes !== undefined) {
+      draft.prepMinutes = result.prepMinutes;
+    }
     if (draft.sourceUrl === '' && result.sourceUrl !== undefined) {
       draft.sourceUrl = result.sourceUrl;
     }
@@ -310,6 +318,28 @@
           placeholder="np. Owsianka z bananem"
           bind:value={draft.name}
         />
+      </label>
+
+      <label class="block text-sm font-medium">
+        Czas przygotowania
+        <span class="flex items-baseline gap-2">
+          <input
+            class="mt-1 w-28 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-3 py-2 text-base font-normal outline-none focus:border-(--color-accent)"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            step="1"
+            placeholder="np. 20"
+            bind:value={draft.prepMinutes}
+          />
+          <span class="text-sm font-normal text-(--color-ink-muted)">minut — pole opcjonalne</span>
+        </span>
+        {#if !prepValid}
+          <span class="block pt-1 text-xs font-normal text-(--color-danger)">
+            Czas przygotowania musi być pełną liczbą minut większą od zera. Zostaw pole puste,
+            jeśli nie wiesz.
+          </span>
+        {/if}
       </label>
 
       <TagInput bind:labels={draft.tagLabels} {tags} />
@@ -493,7 +523,7 @@
         {/if}
       </div>
 
-      {#if !canSaveDraft(draft)}
+      {#if draft.name.trim() === ''}
         <p class="text-xs text-(--color-ink-muted)">Przepis musi mieć nazwę.</p>
       {/if}
     </div>

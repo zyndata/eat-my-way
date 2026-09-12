@@ -26,9 +26,22 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 17    | Dział sklepu                | done    | 2026-09-12 |
 | 18    | Trzy drobiazgi              | done    | 2026-09-12 |
 | 19    | Cel dopowiedziany do końca  | done    | 2026-09-12 |
-| 20    | Metryczka przepisu          | pending | — |
+| 20    | Metryczka przepisu          | done    | 2026-09-12 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 20 is **built** (2026-09-12, decisions 381–385). „What can I cook in twenty minutes"
+was a question the library could not answer. `Recipe` gains one optional field, `prepMinutes` —
+a positive whole number of minutes, absent when nobody has timed the recipe, and absent is not
+zero. The editor takes it in a number field beside the name and refuses a zero, a negative and a
+fraction by blocking the save rather than dropping what was typed; the Gemini schema gains one
+nullable property and the prompt one rule — read the time off the page, never estimate — and the
+import fills only a blank field, like the name and the instructions before it. The library gains
+three chips, „do 15 / 30 / 60 min", which stack with the tag chips and the search; a recipe with
+no time is hidden while a chip is on, and the list says how many it is hiding so a filtered
+library never reads as an empty one. No schema version, no migration, no dependency, no CSP or
+`Caddyfile` change — and the planner was not touched, which was its own acceptance criterion
+(decision 339).
 
 Phase 19 is **built** (2026-09-12, decisions 373–380). The Mifflin-St Jeor calculator has been
 in `goals.ts` since Phase 5 and was used once and then never again, for three reasons that are
@@ -4600,6 +4613,66 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
   one of them green in isolation; at four workers the full suite passes **119/119** against the
   Caddy container under the production CSP, with zero CSP violations reported, and 119/119
   against the dev server. CI, on Linux, is the arbiter.
+
+### 2026-09-12 — Phase 20, metryczka przepisu
+
+381. **`prepMinutes` is optional and absent means unknown — never zero.** The distinction is the
+     whole feature: „nobody timed this" and „this takes no time" are different claims, and only
+     the first is true of every recipe written before today. So the field is omitted rather than
+     written as `0` (`draftToRecipe` and `duplicateRecipe` both spread it conditionally, as they
+     already did for `sourceUrl`), and the filter treats absence as „cannot answer" rather than
+     as a very small number. It costs no schema version and no migration for the reason Phase 16
+     and Phase 17 already proved: `readRecipesDocument` passes whole recipe objects through and
+     the backup reader does the same, so a build that predates the field carries it untouched.
+
+382. **A recipe with no time is hidden while the time filter is on, and the library says so.**
+     The alternative — showing untimed recipes under „do 30 min" — answers the question with a
+     maybe, and „do 30 min" is a claim a user acts on at six o'clock. Hiding them silently was
+     the other failure: a library of forty recipes that shows two looks broken. So both the chip
+     row („Ukryto N przepisów bez podanego czasu.") and the filtered-to-nothing state name the
+     count and say where the field is, which is PLAN.md's own acceptance criterion.
+
+383. **The ceiling is not remembered between visits, unlike the order and the grouping.** Sort
+     and „Grupuj po tagach" live in the meta table because they are how a list is drawn. A time
+     ceiling is about *this* evening; still in force next week it would look like a library that
+     had lost half its recipes, and the hidden count would be the only clue. It also keeps the
+     phase free of a new meta key.
+
+384. **A zero blocks the save instead of being silently dropped.** `canSaveDraft` gained a second
+     rule — the name is still the first — and the form says which one is unmet. Quietly writing
+     a recipe without the time its author typed is the one outcome they cannot see; refusing it
+     in a sentence is a worse three seconds and a better result. `readPrepMinutes` still drops
+     anything invalid on the way to storage, so the rule holds even if a draft reaches it by
+     another path.
+
+385. **An e2e spec again, where PLAN.md named no tests.** As in Phases 16–19: five of the eight
+     acceptance criteria are statements about a screen — that the field saves and reloads, that
+     a zero is refused, that an import fills a blank and never overwrites a typed time, and that
+     the empty state explains itself. `e2e/metryczka.spec.ts` carries five cases; the filter, the
+     reader, the Drive document and the backup file are pinned at the unit level. Two assertions
+     there use `toContainText` rather than `getByText(/…/)` deliberately: a sentence assembled
+     from interpolations reaches the DOM with newlines inside it, and only a whitespace-
+     normalizing matcher sees it whole.
+
+### Not verified, and honestly so — Phase 20
+
+- **No page has been imported with a live key since the prompt gained rule 9.** The schema
+  property, the prompt rule and the reader are unit-tested, and the browser path is driven
+  end to end against the fake Gemini — but whether `gemini-2.5-flash` actually answers `null`
+  for a page that states no time, instead of estimating one, is a claim about a model and needs
+  one real import to settle. The cost of being wrong is a guessed number in an optional field,
+  which the user can see and clear.
+- **„Byte-identical planner proposals" is argued, not diffed.** `planner.ts` is untouched by this
+  phase and reads no field that changed; its 58 unit tests and `e2e/planner.spec.ts` pass
+  unchanged. Nothing compared two runs byte for byte across the commit, because the planner
+  takes its seed and its recipes as arguments and nothing in this phase reaches either.
+- **The container run's flakiness (decision 348) is unchanged.** Against `http://localhost:8080`
+  the three specs that exercise this phase, the library and the import pass 22/22 in isolation;
+  in a wider parallel run two library cases timed out on the ingredient autocomplete and were
+  green on a re-run, which is the same first-run-import contention decision 348 describes. The
+  full local suite is **124/124** against the dev server at four workers, and 979 unit tests
+  pass; at maximum parallelism one `pwa.spec.ts` case flaked once and was green in isolation.
+  CI, on Linux, is the arbiter.
 
 ## Open questions
 

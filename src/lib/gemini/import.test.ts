@@ -145,6 +145,18 @@ afterEach(async () => {
 });
 
 describe('importing pasted text', () => {
+  it('carries a stated preparation time through undivided', async () => {
+    const { fetchImpl } = fakeGemini({
+      recipe: { ...PANCAKES_JSON, prepMinutes: 40 },
+      matches: PANCAKES_MATCHES
+    });
+
+    const result = await importRecipe(PANCAKES_TEXT, deps(fetchImpl));
+
+    // Two portions became one and the amounts halved; 40 minutes is still 40 minutes.
+    expect(result.prepMinutes).toBe(40);
+  });
+
   it('produces a draft with matched ingredients, amounts, units and a quantified fat', async () => {
     const { fetchImpl } = fakeGemini({ recipe: PANCAKES_JSON, matches: PANCAKES_MATCHES });
 
@@ -188,6 +200,8 @@ describe('importing pasted text', () => {
       }
     ]);
     expect(result.unmatched).toBe(1);
+    // The page stated no time, so the import claims none — the editor's field stays empty.
+    expect('prepMinutes' in result).toBe(false);
   });
 
   it('carries no nutrition value of its own — the ingredients come from the local database', async () => {

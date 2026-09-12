@@ -2,7 +2,14 @@
   import Screen from '../lib/components/Screen.svelte';
   import type { Macros, Tag } from '../lib/types';
   import type { RecipeListEntry, RecipeSort } from '../lib/recipes';
-  import { groupByTag, isRecipeSort, searchRecipes } from '../lib/recipes';
+  import {
+    PREP_LIMITS,
+    countWithoutPrepMinutes,
+    filterByTags,
+    groupByTag,
+    isRecipeSort,
+    searchRecipes
+  } from '../lib/recipes';
   import { pluralPl } from '../lib/text';
   import { todayDate } from '../lib/dates';
   import { ingredientIndex } from '../lib/ingredients';
@@ -45,9 +52,27 @@
   let selected = $state<string[]>([]);
   let sort = $state<RecipeSort>('activity');
   let grouped = $state(false);
+  /**
+   * The time filter's ceiling in minutes, or `null` for „off" (PLAN.md Phase 20 task 3). Not
+   * remembered between visits, unlike the order and the grouping: a ceiling silently still in
+   * force next week would look like a library that had lost half its recipes.
+   */
+  let maxPrep = $state<number | null>(null);
 
   const visible = $derived(
-    searchRecipes(entries, query, selected, { sort, portionMacros: macros, ingredientKeys })
+    searchRecipes(entries, query, selected, {
+      sort,
+      portionMacros: macros,
+      ingredientKeys,
+      ...(maxPrep === null ? {} : { maxPrepMinutes: maxPrep })
+    })
+  );
+  /**
+   * How many recipes the time filter alone is hiding — counted after the tags and before the
+   * time, so the number answers „what would come back if I turned this off".
+   */
+  const hiddenByPrep = $derived(
+    maxPrep === null ? 0 : countWithoutPrepMinutes(filterByTags(entries, selected))
   );
   /**
    * The sections. `tags` is already most-used first, which is the order decision 157 chose,
@@ -76,6 +101,11 @@
     // A tag can disappear while a chip for it is still selected.
     selected = selected.filter((key) => allTags.some((tag) => tag.key === key));
     loading = false;
+  }
+
+  /** Tapping the chip that is already on turns the filter off — one control, both ways. */
+  function chooseMaxPrep(limit: number): void {
+    maxPrep = maxPrep === limit ? null : limit;
   }
 
   function toggle(key: string): void {
@@ -145,6 +175,9 @@
           few: 'składniki',
           many: 'składników'
         })}
+        {#if entry.recipe.prepMinutes !== undefined}
+          · {entry.recipe.prepMinutes} min
+        {/if}
         {#if entry.usage.plannedCount > 0}
           <!-- „w ostatnim roku": the count is windowed, see STATE.md decision 147. -->
           · zaplanowany {entry.usage.plannedCount}
@@ -222,6 +255,38 @@
     {/if}
   </div>
 
+  <!-- Hidden on an empty library, like the tag chips: three ways to narrow nothing is noise,
+       and the empty state has two offers of its own to make. -->
+  {#if entries.length > 0}
+    <ul class="flex flex-wrap items-center gap-2 pt-3" aria-label="Filtruj po czasie przygotowania">
+      {#each PREP_LIMITS as limit (limit)}
+        {@const on = maxPrep === limit}
+        <li>
+          <button
+            type="button"
+            class="rounded-full border px-3 py-1 text-sm {on
+              ? 'border-(--color-accent) bg-(--color-accent) text-(--color-accent-ink)'
+              : 'border-(--color-border) text-(--color-ink-muted)'}"
+            aria-pressed={on}
+            onclick={() => chooseMaxPrep(limit)}
+          >
+            do {limit} min
+          </button>
+        </li>
+      {/each}
+      {#if maxPrep !== null && hiddenByPrep > 0}
+        <li class="text-xs text-(--color-ink-muted)">
+          Ukryto {hiddenByPrep}
+          {pluralPl(hiddenByPrep, {
+            one: 'przepis bez podanego czasu',
+            few: 'przepisy bez podanego czasu',
+            many: 'przepisów bez podanego czasu'
+          })}.
+        </li>
+      {/if}
+    </ul>
+  {/if}
+
   {#if chips.length > 0}
     <ul class="flex flex-wrap gap-2 pt-3" aria-label="Filtruj po tagach">
       {#each chips as tag (tag.key)}
@@ -278,7 +343,26 @@
       </p>
     </div>
   {:else if visible.length === 0}
-    <p class="pt-6 text-sm text-(--color-ink-muted)">Nic nie pasuje do tych kryteriów.</p>
+    <p class="pt-6 text-sm text-(--color-ink-muted)">
+      Nic nie pasuje do tych kryteriów.
+      {#if maxPrep !== null}
+        <!-- The library is not empty, it is filtered: a recipe nobody has timed makes no claim
+             about a time ceiling, so it is hidden rather than guessed at (decision 382). -->
+        Filtr „do {maxPrep} min" pokazuje tylko przepisy z podanym czasem przygotowania —
+        {#if hiddenByPrep > 0}
+          {hiddenByPrep}
+          {pluralPl(hiddenByPrep, {
+            one: 'przepis go nie ma',
+            few: 'przepisy go nie mają',
+            many: 'przepisów go nie ma'
+          })}
+          i {hiddenByPrep === 1 ? 'jest ukryty' : 'są ukryte'}.
+        {:else}
+          żaden przepis nie mieści się w tym czasie.
+        {/if}
+        Czas dopiszesz w przepisie, w polu „Czas przygotowania".
+      {/if}
+    </p>
   {:else if grouped}
     <!-- A recipe with several tags is listed under each of them, so the counts add up to more
          than the library holds. That is intended — PLAN.md Phase 9 task 1. -->

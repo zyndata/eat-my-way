@@ -8,9 +8,9 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–19 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–20 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then nine phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then ten phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
@@ -21,7 +21,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > asked for: a warning when a label's numbers cannot all be true, a library that finds a
 > recipe by what is in it, and the week's menu as text you can paste into a message (18), and
 > a goals calculator that remembers what you told it, lets you set your own macro split and
-> shows where its number came from (19).
+> shows where its number came from (19), and a preparation time on a recipe — typed, or read
+> from the page it was imported from — with a library filter that answers „what can I cook in
+> twenty minutes" (20).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -80,6 +82,12 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   finds the recipes that *contain* lentils, not only the one with lentils in its name — those
   still come first, so „sernik" never disappears under every recipe holding cheese. Ingredient
   synonyms count too: „kurczak" finds a recipe using „Pierś z kurczaka".
+- **„Co ugotuję w dwadzieścia minut?"** A recipe can carry a preparation time in minutes —
+  one optional field beside its name — and the library filters on it: „do 15 min", „do 30 min",
+  „do 60 min", stacked with the tag chips and the search. An import fills the field when the
+  page states a time and leaves it empty when it does not, because a guessed time looks exactly
+  like a measured one. A recipe nobody has timed is shown whenever the filter is off and hidden
+  while it is on, and the library says how many it is hiding rather than looking empty.
 - **The menu shares the same way the shopping list does.** A day or a week becomes plain text
   — the date, the meals, the portions and each day's totals against that day's goals — and
   leaves through the system share sheet or the clipboard. No ingredients in it: those are the

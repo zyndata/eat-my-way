@@ -118,6 +118,55 @@ export function filterByTags(
   return entries.filter((entry) => selected.every((key) => entry.recipe.tags.includes(key)));
 }
 
+// ---- preparation time -------------------------------------------------------------------
+
+/**
+ * The limits the library's time filter offers, in minutes (PLAN.md Phase 20 task 3). Three
+ * chips and no free number: „do 15 / 30 / 60 min" is how the question is actually asked on a
+ * Wednesday at six, and a spinner asking for an exact ceiling would be a worse way to ask it.
+ */
+export const PREP_LIMITS: readonly number[] = [15, 30, 60];
+
+/**
+ * A stored preparation time, or `undefined` for anything that must not be stored: only a
+ * positive whole number of minutes is a time. Zero is not „instant" and a negative is not a
+ * time at all, so both are refused here rather than written and rendered later.
+ */
+export function readPrepMinutes(value: number | null | undefined): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value <= 0) return undefined;
+  return value;
+}
+
+/** True while the editor's time field holds something savable — including nothing at all. */
+export function isPrepMinutesValid(value: number | null): boolean {
+  return value === null || readPrepMinutes(value) !== undefined;
+}
+
+/**
+ * Recipes that can be cooked within `limit` minutes. No limit keeps everything, exactly as no
+ * tag selection does.
+ *
+ * A recipe with no time is **hidden** while the filter is on. „do 30 min" is a claim about a
+ * recipe and an untimed one makes no claim, so including it would answer the question with a
+ * maybe; the library says out loud how many it is hiding instead (decision 382).
+ */
+export function filterByPrepMinutes(
+  entries: readonly RecipeListEntry[],
+  limit?: number
+): RecipeListEntry[] {
+  if (limit === undefined) return [...entries];
+  return entries.filter((entry) => {
+    const minutes = entry.recipe.prepMinutes;
+    return minutes !== undefined && minutes <= limit;
+  });
+}
+
+/** How many of these recipes carry no preparation time — what the time filter hides. */
+export function countWithoutPrepMinutes(entries: readonly RecipeListEntry[]): number {
+  return entries.filter((entry) => entry.recipe.prepMinutes === undefined).length;
+}
+
 /**
  * Every ingredient's search keys by id — its normalized name and its normalized aliases.
  *
@@ -133,6 +182,8 @@ export interface SearchOptions {
   portionMacros?: ReadonlyMap<string, Macros>;
   /** Omitted, the search is by recipe name alone — exactly what it did before Phase 18. */
   ingredientKeys?: IngredientKeys;
+  /** The time filter's ceiling in minutes; omitted, no recipe is hidden for its time. */
+  maxPrepMinutes?: number;
 }
 
 /** The keys of everything one recipe contains, deduplicated, in item order. */
@@ -159,6 +210,9 @@ function recipeIngredientKeys(recipe: Recipe, keys: IngredientKeys | undefined):
  * Phase 18 widens it from names to contents: given `ingredientKeys`, „soczewica" also finds
  * the recipes that merely contain lentils — underneath every recipe with lentils in its name,
  * never level with them.
+ *
+ * Phase 20 adds the time ceiling. It narrows like the tag chips do — before the query is
+ * ranked, never after — so „do 30 min" and „obiad" and „soczewica" all hold at once.
  */
 export function searchRecipes(
   entries: readonly RecipeListEntry[],
@@ -166,7 +220,10 @@ export function searchRecipes(
   selectedTags: readonly string[] = [],
   options: SearchOptions = {}
 ): RecipeListEntry[] {
-  const filtered = filterByTags(entries, selectedTags);
+  const filtered = filterByPrepMinutes(
+    filterByTags(entries, selectedTags),
+    options.maxPrepMinutes
+  );
   if (normalizeKey(query) === '') {
     return sortRecipes(filtered, options.sort ?? 'activity', options.portionMacros);
   }
@@ -325,6 +382,12 @@ export interface RecipeDraft {
   items: DraftItem[];
   /** The page this recipe came from, or `''`. Cleaned before it ever reaches the draft. */
   sourceUrl: string;
+  /**
+   * Preparation time in minutes, `null` while the field is empty — which is what an emptied
+   * number input reads back as, and it is kept as-is so the field does not fight the user
+   * mid-typing, exactly like `DraftItem.amount` (decision 54).
+   */
+  prepMinutes: number | null;
 }
 
 export function emptyDraftItem(id: string): DraftItem {
@@ -341,7 +404,14 @@ export function emptyDraftItem(id: string): DraftItem {
 }
 
 export function emptyDraft(): RecipeDraft {
-  return { name: '', instructions: '', tagLabels: [], items: [], sourceUrl: '' };
+  return {
+    name: '',
+    instructions: '',
+    tagLabels: [],
+    items: [],
+    sourceUrl: '',
+    prepMinutes: null
+  };
 }
 
 /** `null` and non-finite values count as zero once the draft leaves the editor. */
@@ -373,7 +443,8 @@ export function draftFromRecipe(
     instructions: recipe.instructions,
     tagLabels: [...labels],
     items: recipe.items.map((item) => draftFromRecipeItem(item, nextId())),
-    sourceUrl: recipe.sourceUrl ?? ''
+    sourceUrl: recipe.sourceUrl ?? '',
+    prepMinutes: recipe.prepMinutes ?? null
   };
 }
 
@@ -420,9 +491,13 @@ export function incompleteDrafts(drafts: readonly DraftItem[]): DraftItem[] {
   return drafts.filter((draft) => draft.ingredientId !== '' && !isDraftComplete(draft));
 }
 
-/** Only a blank name blocks saving. */
+/**
+ * A blank name blocks saving, and so does a preparation time that is not a time: zero,
+ * a negative and „12,5 min" are refused rather than quietly dropped, because silently not
+ * storing something the user typed is the one outcome they cannot see (PLAN.md Phase 20).
+ */
 export function canSaveDraft(draft: RecipeDraft): boolean {
-  return draft.name.trim() !== '';
+  return draft.name.trim() !== '' && isPrepMinutesValid(draft.prepMinutes);
 }
 
 /**
@@ -436,6 +511,7 @@ export function draftToRecipe(
   options: { id: string; createdAt?: string | undefined; now: string }
 ): Recipe {
   const source = draft.sourceUrl.trim();
+  const prepMinutes = readPrepMinutes(draft.prepMinutes);
   return {
     id: options.id,
     name: draft.name.trim(),
@@ -446,7 +522,10 @@ export function draftToRecipe(
     updatedAt: options.now,
     // Omitted rather than written as `''`, like every other optional field here: an absent
     // source and an empty one must not be two different things in the Drive JSON.
-    ...(source === '' ? {} : { sourceUrl: source })
+    ...(source === '' ? {} : { sourceUrl: source }),
+    // Same rule, and here it carries a meaning: a missing time is „nobody timed this", which
+    // is not the same claim as any number, least of all zero.
+    ...(prepMinutes === undefined ? {} : { prepMinutes })
   };
 }
 
@@ -524,6 +603,8 @@ export function duplicateRecipe(
     updatedAt: options.now,
     // A variant of a recipe still came from the page the original came from, and the row can
     // be cleared on the copy if the variant has drifted too far to claim it.
-    ...(recipe.sourceUrl === undefined ? {} : { sourceUrl: recipe.sourceUrl })
+    ...(recipe.sourceUrl === undefined ? {} : { sourceUrl: recipe.sourceUrl }),
+    // A copy cooks like its original until it is edited, so it inherits the time too.
+    ...(recipe.prepMinutes === undefined ? {} : { prepMinutes: recipe.prepMinutes })
   };
 }

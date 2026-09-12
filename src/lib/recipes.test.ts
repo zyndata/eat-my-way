@@ -11,13 +11,17 @@ import {
   duplicateRecipe,
   emptyDraft,
   emptyDraftItem,
+  countWithoutPrepMinutes,
+  filterByPrepMinutes,
   filterByTags,
   fitToBudget,
   groupByTag,
   incompleteDrafts,
   isDraftComplete,
+  isPrepMinutesValid,
   isRecipeSort,
   measureChoices,
+  readPrepMinutes,
   overrideSeed,
   searchRecipes,
   sortRecipes,
@@ -37,10 +41,17 @@ function entry(
   name: string,
   updatedAt: string,
   usage: { plannedCount: number; lastPlannedDate?: string } = { plannedCount: 0 },
-  tags: string[] = []
+  tags: string[] = [],
+  prepMinutes?: number
 ): RecipeListEntry {
   return {
-    recipe: makeRecipe({ id: `r-${name}`, name, updatedAt, tags }),
+    recipe: makeRecipe({
+      id: `r-${name}`,
+      name,
+      updatedAt,
+      tags,
+      ...(prepMinutes === undefined ? {} : { prepMinutes })
+    }),
     usage
   };
 }
@@ -107,6 +118,74 @@ describe('filterByTags', () => {
   it('requires every selected tag, not any of them', () => {
     expect(filterByTags(list, ['obiad', 'szybkie']).map((row) => row.recipe.name)).toEqual(['Obiad']);
     expect(filterByTags(list, ['obiad', 'kolacja'])).toEqual([]);
+  });
+});
+
+describe('preparation time', () => {
+  const quick = entry('Jajecznica', '2026-09-01T09:00:00.000Z', { plannedCount: 0 }, ['obiad'], 10);
+  const medium = entry('Gulasz', '2026-09-01T09:00:00.000Z', { plannedCount: 0 }, ['obiad'], 30);
+  const untimed = entry('Rosół', '2026-09-01T09:00:00.000Z', { plannedCount: 0 }, ['obiad']);
+  const list = [quick, medium, untimed];
+
+  it('reads only a whole number of minutes above zero', () => {
+    expect(readPrepMinutes(20)).toBe(20);
+    expect(readPrepMinutes(null)).toBeUndefined();
+    expect(readPrepMinutes(undefined)).toBeUndefined();
+    expect(readPrepMinutes(0)).toBeUndefined();
+    expect(readPrepMinutes(-5)).toBeUndefined();
+    expect(readPrepMinutes(12.5)).toBeUndefined();
+    expect(readPrepMinutes(Number.NaN)).toBeUndefined();
+    expect(readPrepMinutes(Number.POSITIVE_INFINITY)).toBeUndefined();
+  });
+
+  it('accepts an empty field but not a zero or a negative', () => {
+    expect(isPrepMinutesValid(null)).toBe(true);
+    expect(isPrepMinutesValid(20)).toBe(true);
+    expect(isPrepMinutesValid(0)).toBe(false);
+    expect(isPrepMinutesValid(-1)).toBe(false);
+  });
+
+  it('keeps everything when the filter is off', () => {
+    expect(filterByPrepMinutes(list)).toHaveLength(3);
+  });
+
+  it('keeps what fits the ceiling and hides what has no time at all', () => {
+    expect(filterByPrepMinutes(list, 15).map((row) => row.recipe.name)).toEqual(['Jajecznica']);
+    // 30 is „do 30 min", inclusively — and the untimed recipe is out either way.
+    expect(filterByPrepMinutes(list, 30).map((row) => row.recipe.name)).toEqual([
+      'Jajecznica',
+      'Gulasz'
+    ]);
+  });
+
+  it('counts what the filter hides, so the empty state can say so', () => {
+    expect(countWithoutPrepMinutes(list)).toBe(1);
+    expect(countWithoutPrepMinutes([quick, medium])).toBe(0);
+  });
+
+  it('combines with the tag chips and with the query', () => {
+    const tagged = [
+      quick,
+      medium,
+      entry('Sałatka', '2026-09-01T09:00:00.000Z', { plannedCount: 0 }, ['kolacja'], 5)
+    ];
+
+    expect(
+      searchRecipes(tagged, '', ['obiad'], { maxPrepMinutes: 15 }).map((row) => row.recipe.name)
+    ).toEqual(['Jajecznica']);
+    expect(searchRecipes(tagged, 'gulasz', [], { maxPrepMinutes: 15 })).toEqual([]);
+    expect(
+      searchRecipes(tagged, 'gulasz', [], { maxPrepMinutes: 60 }).map((row) => row.recipe.name)
+    ).toEqual(['Gulasz']);
+  });
+
+  it('hides nothing for its time when no ceiling is given', () => {
+    // Same activity date throughout, so the tie-break is the Polish alphabet.
+    expect(searchRecipes(list, '').map((row) => row.recipe.name)).toEqual([
+      'Gulasz',
+      'Jajecznica',
+      'Rosół'
+    ]);
   });
 });
 
@@ -263,7 +342,8 @@ describe('draftToRecipe', () => {
         instructions: '  Usmaż.  ',
         tagLabels: ['Śniadanie', 'sniadanie', ' '],
         items: [draft()],
-        sourceUrl: ''
+        sourceUrl: '',
+        prepMinutes: null
       },
       { id: 'r1', createdAt: '2026-01-01T00:00:00.000Z', now: '2026-09-01T00:00:00.000Z' }
     );
@@ -277,19 +357,34 @@ describe('draftToRecipe', () => {
 
   it('stamps createdAt for a new recipe', () => {
     const recipe = draftToRecipe(
-      { name: 'Nowy', instructions: '', tagLabels: [], items: [], sourceUrl: '' },
+      { name: 'Nowy', instructions: '', tagLabels: [], items: [], sourceUrl: '', prepMinutes: null },
       { id: 'r2', now: '2026-09-01T00:00:00.000Z' }
     );
     expect(recipe.createdAt).toBe('2026-09-01T00:00:00.000Z');
   });
 
-  it('only a blank name blocks saving', () => {
+  it('a blank name blocks saving, and so does a time that is not a time', () => {
+    const base = { instructions: '', tagLabels: [], items: [], sourceUrl: '', prepMinutes: null };
+    expect(canSaveDraft({ ...base, name: ' ' })).toBe(false);
+    expect(canSaveDraft({ ...base, name: 'X' })).toBe(true);
+
+    // Optional: an empty field saves. Zero, a negative and a fraction do not.
+    expect(canSaveDraft({ ...base, name: 'X', prepMinutes: 20 })).toBe(true);
+    expect(canSaveDraft({ ...base, name: 'X', prepMinutes: 0 })).toBe(false);
+    expect(canSaveDraft({ ...base, name: 'X', prepMinutes: -5 })).toBe(false);
+    expect(canSaveDraft({ ...base, name: 'X', prepMinutes: 12.5 })).toBe(false);
+  });
+
+  it('writes a preparation time, and omits the field entirely when there is none', () => {
+    const base = { instructions: '', tagLabels: [], items: [], sourceUrl: '', prepMinutes: null };
+    const options = { id: 'r3', now: '2026-09-01T00:00:00.000Z' };
+
+    expect(draftToRecipe({ ...base, name: 'Z czasem', prepMinutes: 20 }, options).prepMinutes).toBe(20);
+    // Absent, not zero: „nobody timed this" is not „it takes no time" (PLAN.md Phase 20).
+    expect('prepMinutes' in draftToRecipe({ ...base, name: 'Bez czasu' }, options)).toBe(false);
     expect(
-      canSaveDraft({ name: ' ', instructions: '', tagLabels: [], items: [], sourceUrl: '' })
+      'prepMinutes' in draftToRecipe({ ...base, name: 'Zero', prepMinutes: 0 }, options)
     ).toBe(false);
-    expect(
-      canSaveDraft({ name: 'X', instructions: '', tagLabels: [], items: [], sourceUrl: '' })
-    ).toBe(true);
   });
 });
 
@@ -509,6 +604,14 @@ describe('duplicateRecipe', () => {
     copy.tags.push('kolacja');
     expect(original.items[0]?.amount).toBe(200);
     expect(original.tags).toEqual(['obiad']);
+  });
+
+  it('carries the preparation time to the copy', () => {
+    const original = makeRecipe({ prepMinutes: 25 });
+    expect(duplicateRecipe(original, { id: 'r2', now: 'now' }).prepMinutes).toBe(25);
+    expect(
+      'prepMinutes' in duplicateRecipe(makeRecipe({}), { id: 'r3', now: 'now' })
+    ).toBe(false);
   });
 
   it('copies a per-item override by value', () => {

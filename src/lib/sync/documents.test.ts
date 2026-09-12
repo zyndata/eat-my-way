@@ -196,6 +196,36 @@ describe('household measures in the Drive documents (Phase 16)', () => {
   });
 });
 
+describe('the preparation time in the Drive documents (Phase 20)', () => {
+  const document = (prepMinutes?: number) => ({
+    recipes: [
+      {
+        id: 'recipe-1',
+        name: 'Jajecznica',
+        items: [],
+        tags: [],
+        instructions: '',
+        createdAt: '2026-09-12T10:00:00.000Z',
+        updatedAt: '2026-09-12T10:00:00.000Z',
+        ...(prepMinutes === undefined ? {} : { prepMinutes })
+      }
+    ],
+    tags: []
+  });
+
+  it('keeps a recipe’s prepMinutes, with no schema version and no migration', () => {
+    const read = readRecipesDocument(JSON.parse(JSON.stringify(document(15))));
+    expect(read.recipes[0]?.prepMinutes).toBe(15);
+  });
+
+  it('reads a document written before preparation times existed, unchanged', () => {
+    const read = readRecipesDocument(JSON.parse(JSON.stringify(document())));
+    expect(read.recipes[0]?.prepMinutes).toBeUndefined();
+    // Absent, not zero: an old recipe is untimed, not instant.
+    expect('prepMinutes' in (read.recipes[0] ?? {})).toBe(false);
+  });
+});
+
 describe('the shopping department in the Drive documents (Phase 17)', () => {
   it('keeps an ingredient’s department, with no schema version and no migration', () => {
     const document = {

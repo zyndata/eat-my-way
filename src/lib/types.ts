@@ -129,6 +129,17 @@ export interface Recipe {
    * format, because `readRecipesDocument` keeps the fields it does not know.
    */
   sourceUrl?: string;
+  /**
+   * How long the recipe takes to prepare, in whole minutes. A positive integer — „what can I
+   * cook in twenty minutes" is the question this answers (PLAN.md Phase 20).
+   *
+   * Absent means **unknown**, never zero: a recipe nobody has timed is not an instant one, so
+   * the library shows it whenever the time filter is off and hides it when it is on. Optional
+   * like `sourceUrl` and for the same reason — it costs no schema version, no migration and
+   * nothing in the Drive format, because `readRecipesDocument` keeps the fields it does not
+   * know (decision 381).
+   */
+  prepMinutes?: number;
 }
 
 /** `key` is lowercase with diacritics stripped; `label` is the spelling first typed. */

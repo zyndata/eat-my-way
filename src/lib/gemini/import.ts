@@ -86,6 +86,12 @@ export interface ImportedRecipe {
    * text, which has no source (PLAN.md Phase 11 task 5).
    */
   sourceUrl?: string;
+  /**
+   * Preparation time in minutes, when the page stated one. Absent otherwise — the model is
+   * told to answer `null` rather than estimate, and the editor leaves the field empty
+   * (PLAN.md Phase 20 task 2).
+   */
+  prepMinutes?: number;
 }
 
 /** Counts what the three calls actually spent, so a partial run still reports honestly. */
@@ -268,6 +274,9 @@ async function importWithTally(
   return {
     name: recipe.name,
     instructions: recipe.instructions,
+    // Untouched by `toSinglePortion`: a recipe halved down to one portion does not cook in
+    // half the time, and the page's minutes are the page's minutes.
+    ...(recipe.prepMinutes === undefined ? {} : { prepMinutes: recipe.prepMinutes }),
     items,
     ingredientsById,
     // An id that no longer resolves counts as unmatched: the row shows the autocomplete.
