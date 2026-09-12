@@ -6,6 +6,8 @@
   import type { BodyData, Macros } from '../lib/types';
   import { DEFAULT_GOALS } from '../lib/db';
   import { repository } from '../lib/repository';
+  import { whenIngredientsWritable } from '../lib/nutrition/gate';
+  import { nutritionStatus } from '../lib/nutrition/status.svelte';
   import { AI_STUDIO_KEY_URL, testGeminiKey, type KeyTestResult } from '../lib/gemini/key-test';
   import {
     STAGE_LABELS,
@@ -47,15 +49,32 @@
 
   let goals = $state<Macros>({ ...DEFAULT_GOALS });
 
+  /** Set while `leave` is writing the flag, so the button says what it is waiting for. */
+  let leaving = $state(false);
+
   /**
    * Leaving the wizard clears the in-memory flag and records, on this device, that the wizard
    * has been through. `meta` never travels to Drive, which is exactly right: what is recorded
    * is that *this browser* has been offered the wizard, not that the account has.
+   *
+   * The write is **awaited before navigating** (phase 21 task 1). It used to be dropped with
+   * `void`, which is a real bug on any engine: queue that write behind the first-run nutrition
+   * import, let the user move on and the page reload, and the flag is silently lost — the
+   * wizard comes back as though nobody had been through it, with nothing to notice (STATE.md
+   * open question 31). Chromium hid it by being fast; on WebKit it cost 23 e2e tests.
    */
-  function leave(target: string): void {
-    syncState.setupNeeded = false;
-    void repository.setMeta('setupDone', true);
-    void push(target);
+  async function leave(target: string): Promise<void> {
+    leaving = true;
+    try {
+      syncState.setupNeeded = false;
+      // `meta` is not a table the import writes, but on WebKit the import holds the whole
+      // connection, so wait at the gate rather than queueing behind 1 344 rows.
+      await whenIngredientsWritable();
+      await repository.setMeta('setupDone', true);
+      await push(target);
+    } finally {
+      leaving = false;
+    }
   }
 
   /**
@@ -72,7 +91,7 @@
       step = 'profile';
       return;
     }
-    leave('/');
+    void leave('/');
   }
 
   async function connect(): Promise<void> {
@@ -143,6 +162,14 @@
     { key: 'goals', label: 'Cele' }
   ];
   const currentIndex = $derived(steps.findIndex((entry) => entry.key === step));
+
+  /**
+   * What the wizard is waiting for while it leaves. The bundled import holds the database for
+   * seconds on a fresh install, and „Zapisywanie…" would be a lie about why.
+   */
+  const waitLabel = $derived(
+    nutritionStatus.phase === 'importing' ? 'Czekam na bazę składników…' : 'Zapisywanie…'
+  );
 </script>
 
 <Screen title="Pierwsze uruchomienie" lead="Kilka kroków i możesz planować.">
@@ -322,15 +349,30 @@
       <p class="pt-2 text-sm text-(--color-ink-muted)">
         Wszystko przygotowane. Możesz zacząć planować posiłki.
       </p>
-      <button type="button" class="{buttonClass} mt-4" onclick={() => leave('/')}>
-        Przejdź do dzisiaj
+      <button
+        type="button"
+        class="{buttonClass} mt-4 inline-flex items-center gap-2"
+        disabled={leaving}
+        onclick={() => void leave('/')}
+      >
+        {#if leaving}
+          <Spinner />
+          {waitLabel}
+        {:else}
+          Przejdź do dzisiaj
+        {/if}
       </button>
     {/if}
   </div>
 
   {#if step !== 'done'}
-    <button type="button" class="pt-3 text-sm text-(--color-accent) underline" onclick={() => leave('/')}>
-      Pomiń kreator
+    <button
+      type="button"
+      class="pt-3 text-sm text-(--color-accent) underline"
+      disabled={leaving}
+      onclick={() => void leave('/')}
+    >
+      {leaving ? waitLabel : 'Pomiń kreator'}
     </button>
   {/if}
 </Screen>

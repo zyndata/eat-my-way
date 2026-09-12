@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * The swipe-left on a meal card, driven as a real gesture (STATE.md open question 12).
@@ -20,11 +20,21 @@ import { expect, test } from './fixtures';
  * `suppressClick` to swallow. Checked by mutation — deleting the `event.preventDefault()` in
  * `MealCard` leaves this suite green — which is why there is no assertion about it: one that
  * cannot fail reads like coverage and is worse than none. See STATE.md open question 12.
+ *
+ * Chromium only, and it always was: `newCDPSession` exists on no other engine. Declared here
+ * from phase 21, when the WebKit project became something that is expected to pass — a gesture
+ * this file cannot synthesize on WebKit is a test that does not apply there, not a failure
+ * (STATE.md decision 393).
  */
+
+test.skip(
+  ({ browserName }) => browserName !== 'chromium',
+  'the touch drag is dispatched over CDP, which only Chromium has'
+);
 
 /** One recipe, planned onto today, on a phone-sized touch device. */
 async function seedPlannedMeal(page: Page): Promise<void> {
-  await page.goto('#/recipes/new/edit');
+  await openRecipeEditor(page);
   await page.getByLabel('Nazwa').fill('Owsianka z jajkiem');
   await page.getByRole('button', { name: 'Dodaj składnik' }).click();
   await page.getByLabel('Składnik 1').fill('jajko');

@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { cspViolations } from './fake-google';
 import { modelCalls } from './fake-gemini';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * „Zeskanuj opakowanie", driven through the real screens (PLAN.md Phase 12, stage A).
@@ -245,7 +245,9 @@ test('a locked vault is unlocked at the moment the scan needs the key', async ({
   await unlock.getByLabel('Hasło główne').fill('bardzo-tajne-haslo');
   await unlock.getByRole('button', { name: 'Odblokuj' }).click();
 
-  await expect(device.getByLabel('kcal')).toHaveValue('735');
+  // Unlocking derives the key before the scan can even start, and a KDF is deliberately
+  // expensive — on WebKit the two together take longer than the default five seconds.
+  await expect(device.getByLabel('kcal')).toHaveValue('735', { timeout: 30_000 });
 });
 
 test('offline, the scan says so rather than failing generically', async ({ device }) => {
@@ -263,7 +265,7 @@ test('the recipe editor’s inline form offers the same scan', async ({ device, 
   gemini.script.label = BUTTER;
 
   await setUpVault(device, true);
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill('masło extra od Zosi');
   await device.getByRole('button', { name: /Dodaj własny składnik/ }).click();

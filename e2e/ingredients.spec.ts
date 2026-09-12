@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * „Składniki" driven through the real screens (PLAN.md Phase 10).
@@ -68,7 +68,7 @@ test('deleting an ingredient a recipe uses names the recipe and asks for a repla
   device
 }) => {
   // A custom ingredient, created the way the recipe editor creates one.
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Serniczki');
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill('Twaróg babci');
@@ -90,7 +90,7 @@ test('deleting an ingredient a recipe uses names the recipe and asks for a repla
 });
 
 test('the replacement picker has room for its suggestions', async ({ device }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Serniczki');
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill('Twaróg babci');

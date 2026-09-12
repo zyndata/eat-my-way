@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * „Dział sklepu" (PLAN.md Phase 17), driven through the real screens.
@@ -19,7 +19,7 @@ const RECIPE = 'Obiad na próbę';
 test('the shopping list comes out under headings, in the order a shop is walked', async ({
   device
 }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill(RECIPE);
 
   // Added in the reverse of the walk order — rice, chicken, garlic — so that a list which
@@ -58,7 +58,7 @@ test('the shopping list comes out under headings, in the order a shop is walked'
 });
 
 test('an ingredient nobody filed is saved anyway, and shops under „Inne"', async ({ device }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Serniczki na próbę');
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill('Twaróg babci');

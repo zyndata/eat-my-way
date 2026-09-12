@@ -242,11 +242,24 @@ falls. „The two are indistinguishable, keep the one with 500 requests a day" i
 | `screens.spec.ts` | Every route in one session, asserting no CSP violation and no console error |
 | `safe-area.spec.ts` | The layout with an iPhone's home indicator and notch, moved from the test |
 
-A second Playwright project runs the same specs under **WebKit**, the engine Safari uses. It
-is behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — because the first run of
-it found a WebKit-only defect in the data layer that hangs a large part of the suite, and CI
-should not be red about a bug nobody is fixing yet. That command *is* the reproduction; STATE.md
-open question 31 says what is known about it.
+A second Playwright project runs the same specs under **WebKit**, the engine Safari uses, and
+since phase 21 it passes: 125 of the 127, with `swipe.spec.ts` skipped because its touch drag is
+dispatched over CDP, which only Chromium has. Its first run had found a WebKit-only defect in
+the data layer — writing the 1 344 bundled ingredients takes about twenty seconds there, against
+a fifth of a second on Chromium, and anything that touched the same table meanwhile never came
+back. The import now holds a gate and every other writer waits at it.
+
+It stays behind an environment variable — `E2E_WEBKIT=1 npm run test:e2e` — for what is now a
+cost rather than a bug: every test waits out that twenty-second import before it can act, so the
+run takes about four minutes against Chromium's thirty seconds, and installing a second engine
+in CI is its own cost on top. Two things follow for anyone writing a spec, and both are in
+`e2e/fixtures.ts`:
+
+- **The fixture waits for `<html data-nutrition="ready">`** before a test acts, so no test
+  races the import. `e2e/import-race.spec.ts` is the one that opts out, on purpose.
+- **Service workers are blocked** in every context except the two specs that are about them.
+  Playwright only intercepts a worker's requests on Chromium; on WebKit the app's Drive calls
+  went past the fakes to the real `googleapis.com`.
 
 The Drive flow is the deepest of them: connecting, the silent renewal on reload, a revoked
 grant, a foreign account, two devices merging, the same-day conflict prompt, and the debounced

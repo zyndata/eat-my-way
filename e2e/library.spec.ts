@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * Phase 9's library and shopping-list work, driven through the real screens.
@@ -16,7 +16,7 @@ async function writeRecipe(
   name: string,
   options: { ingredient?: string; amount?: string; tags?: string[] } = {}
 ): Promise<void> {
-  await page.goto('#/recipes/new/edit');
+  await openRecipeEditor(page);
   await page.getByLabel('Nazwa').fill(name);
 
   for (const tag of options.tags ?? []) {
@@ -71,6 +71,14 @@ test('the library can be reordered by name, and the choice is remembered', async
   await expect(device.getByRole('link', { name: /kcal/ }).first()).toContainText('Ananas');
 
   await device.getByLabel('Sortuj').selectOption('kcal');
+
+  // Leave and come back *inside* the app first. The choice is written to `meta` by a handler
+  // nothing awaits, and the screen re-reads it from IndexedDB on every mount — so this is what
+  // proves the write landed, rather than a reload that on a slow engine can outrun it.
+  await device.goto('#/settings');
+  await device.goto('#/recipes');
+  await expect(device.getByLabel('Sortuj')).toHaveValue('kcal');
+
   await device.reload();
   await expect(device.getByLabel('Sortuj')).toHaveValue('kcal');
 });
@@ -210,7 +218,7 @@ test('the picker states every remaining goal and offers half a portion where one
 test('ingredient rows can be reordered from the keyboard, and the order is saved', async ({
   device
 }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Sałatka');
 
   for (const [position, name] of [['1', 'jajko'], ['2', 'olej rzepakowy']] as const) {
@@ -243,7 +251,7 @@ test('ingredient rows can be reordered from the keyboard, and the order is saved
 test('a suggestion commits when the pointer is released, not when it lands', async ({
   device
 }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
 
   // The open listbox carries the same accessible name, so the input is taken by role.
@@ -266,7 +274,7 @@ test('a suggestion commits when the pointer is released, not when it lands', asy
 });
 
 test('pressing the suggestion list itself does not close it', async ({ device }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
 
   // The open listbox carries the same accessible name, so the input is taken by role.

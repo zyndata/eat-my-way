@@ -8,7 +8,7 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–20 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–21 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
 > and the installable offline PWA for 1.0, then ten phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
@@ -23,7 +23,8 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > a goals calculator that remembers what you told it, lets you set your own macro split and
 > shows where its number came from (19), and a preparation time on a recipe — typed, or read
 > from the page it was imported from — with a library filter that answers „what can I cook in
-> twenty minutes" (20).
+> twenty minutes" (20), and the first half-minute of a fresh install — the window in which the
+> app is writing its ingredient database and used to lose a Drive sync started inside it (21).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -182,9 +183,13 @@ the arithmetic, not the device: the safe-area insets are driven through CSS cust
 that an end-to-end test moves, so the layout is proved against an emulated home indicator and
 notch. The install metadata was read and is correct. The suite can also be run under WebKit, the
 engine Safari uses, and the first time it was, it found a storage bug that has nothing to do
-with layout — [STATE.md](STATE.md) open question 31. Nobody has yet confirmed on an actual iPhone that the camera, the share
-sheet, Drive sign-in and offline start all behave — [STATE.md](STATE.md) open question 30 lists
-exactly what is still unanswered.
+with layout: on that engine, writing the 1 344 bundled ingredients takes twenty seconds, and a
+Drive sync started inside that window never finished. Phase 21 fixed it — the import now holds
+a gate every other writer waits at, and says in Polish that it is waiting — and the whole suite
+now passes under WebKit as well as Chromium (`E2E_WEBKIT=1 npm run test:e2e`, opt-in because it
+takes minutes rather than seconds). Nobody has yet confirmed on an actual iPhone that the
+camera, the share sheet, Drive sign-in and offline start all behave — [STATE.md](STATE.md) open
+question 30 lists exactly what is still unanswered.
 
 ## Getting your data back
 

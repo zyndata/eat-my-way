@@ -25,6 +25,75 @@ export interface DeviceOptions {
    * The specs that are *about* the wizard set this and drive it themselves.
    */
   keepSetup?: boolean;
+  /**
+   * Do not wait for the first-run nutrition import. The default is to wait: a fresh browser
+   * spends about six seconds on Chromium and about twenty-four on WebKit writing the 1 344
+   * bundled ingredients, and a test that acts inside that window is racing the app rather than
+   * testing it (STATE.md open question 31). `e2e/import-race.spec.ts` sets this, because
+   * racing the import on purpose is the only way to cover the gate that phase 21 built.
+   */
+  raceNutritionImport?: boolean;
+  /**
+   * Let the app register its service worker. **Off by default, which is a phase 21 change.**
+   *
+   * A registered worker sits between the page and the network, and Playwright only intercepts
+   * what a worker does on Chromium — on WebKit the app's Drive calls went straight past
+   * `installFakeGoogle` to the real `googleapis.com`, which answered a fake bearer token with a
+   * real 401. The app then did exactly what it should with a rejected token and dropped the
+   * session, so `connect.spec.ts` watched a reload sign itself out. Blocking the worker makes
+   * every context hermetic on both engines; the two specs that are *about* the worker turn it
+   * back on (STATE.md decision 392).
+   */
+  serviceWorker?: boolean;
+}
+
+/**
+ * How long the bundled import may take before the fixture gives up. Generous on purpose: the
+ * measured worst case is WebKit at about 24 s, and a slow CI machine has every right to be
+ * slower than the machine this was measured on.
+ */
+const NUTRITION_TIMEOUT = 90_000;
+
+/**
+ * Wait until `<html data-nutrition>` says the import has settled. The attribute is written by
+ * `src/lib/nutrition/status.svelte.ts`; reading IndexedDB directly instead would be worse,
+ * because on WebKit that read is itself blocked by the import it is trying to observe.
+ */
+export async function nutritionReady(page: Page): Promise<void> {
+  await page
+    .locator('html[data-nutrition="ready"]')
+    .waitFor({ state: 'attached', timeout: NUTRITION_TIMEOUT });
+}
+
+/**
+ * Open the recipe editor and wait until it is the screen on display.
+ *
+ * A bare `page.goto('#/recipes/new/edit')` returns as soon as the fragment changes, not when
+ * the router has swapped the screen — and `getByLabel('Nazwa')` then resolves against the four
+ * `slot-name-*` inputs the settings screen is still showing, which is a strict-mode violation
+ * rather than a wait. Chromium swaps screens fast enough to hide it; WebKit does not, and that
+ * one race accounted for a third of the failures phase 21 inherited (STATE.md open question
+ * 31). Waiting for the heading is what a user does without thinking about it.
+ */
+export async function openRecipeEditor(page: Page): Promise<void> {
+  await page.goto('#/recipes/new/edit');
+  await page.getByRole('heading', { name: 'Nowy przepis' }).waitFor({ state: 'visible' });
+}
+
+/**
+ * WebKit's notice for a cross-origin load its network layer refused, which it reports on the
+ * window as though the page had thrown.
+ *
+ * It is not an app exception and not a policy violation: `listGeminiModels` already treats a
+ * failed fetch as „no models" and catches it. What produces it is a gap in Playwright's own
+ * interception — the settings screen's model listing carries `x-goog-api-key`, so the browser
+ * sends a CORS preflight first, and on WebKit that preflight is not handed to
+ * `installFakeGemini` at all but goes to the real endpoint, which refuses it. Chromium routes
+ * the same request into the fake. CSP violations are a different message and are asserted
+ * separately, through the page's own `__emwCsp` collector (STATE.md decision 396).
+ */
+function isBlockedCrossOriginLoad(message: string): boolean {
+  return message.endsWith('due to access control checks.');
 }
 
 interface Fixtures {
@@ -56,9 +125,10 @@ export const test = base.extend<Fixtures>({
     const contexts: BrowserContext[] = [];
 
     await use(async (options: DeviceOptions = {}) => {
-      const context = await browser.newContext(
-        options.touch === true ? { ...devices['Pixel 5'] } : {}
-      );
+      const context = await browser.newContext({
+        ...(options.touch === true ? devices['Pixel 5'] : {}),
+        serviceWorkers: options.serviceWorker === true ? 'allow' : 'block'
+      });
       contexts.push(context);
       await installFakeGoogle(context, drive, options);
       await installFakeGemini(context, gemini);
@@ -66,10 +136,17 @@ export const test = base.extend<Fixtures>({
       const page = await context.newPage();
       // The sync paths are full of `void promise` calls whose rejections surface nowhere
       // else; an uncaught one is a failure even when every assertion passes.
-      page.on('pageerror', (error) => pageErrors.push(error.message));
+      page.on('pageerror', (error) => {
+        if (isBlockedCrossOriginLoad(error.message)) return;
+        pageErrors.push(error.message);
+      });
 
       const route = options.route ?? '/settings';
       await page.goto(`${baseURL ?? ''}/#${route}`);
+
+      // Everything below this line, and everything the test does afterwards, happens on a
+      // database nobody else is writing to.
+      if (options.raceNutritionImport !== true) await nutritionReady(page);
 
       // A fresh browser meets the first-run wizard (Phase 11 task 2). Skipping it writes the
       // `setupDone` meta key, so it stays skipped for the rest of the test.
@@ -77,7 +154,15 @@ export const test = base.extend<Fixtures>({
         const skip = page.getByRole('button', { name: 'Pomiń kreator' });
         await skip.waitFor({ state: 'visible' });
         await skip.click();
+        // Let the wizard land before going anywhere else. From phase 21 it writes `setupDone`
+        // and *then* navigates, so a `goto` fired straight after the click would be overtaken
+        // by the app's own push a moment later.
+        await page.waitForURL(/#\/$/);
         await page.goto(`${baseURL ?? ''}/#${route}`);
+        // The reload re-runs the import, which this time reads the meta flag and skips — but
+        // it still warms the ingredient index off the table, and that is a read worth letting
+        // finish before a test starts writing.
+        if (options.raceNutritionImport !== true) await nutritionReady(page);
       }
 
       // The settings screen is the default landing spot; anywhere else, the caller asserts —

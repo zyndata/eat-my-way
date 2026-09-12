@@ -27,9 +27,25 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 18    | Trzy drobiazgi              | done    | 2026-09-12 |
 | 19    | Cel dopowiedziany do końca  | done    | 2026-09-12 |
 | 20    | Metryczka przepisu          | done    | 2026-09-12 |
-| 21    | Pierwsze 24 sekundy         | pending |            |
+| 21    | Pierwsze 24 sekundy         | done    | 2026-09-12 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 21 is **built** (2026-09-12, decisions 386–397). The first half-minute of a fresh
+install is no longer the window in which this app is fragile. The design call decision 346 left
+open — shorten the window or seal it — was settled by measuring: the batch size is **not** a
+lever (1 344 rows cost 20.9 s on WebKit at 100, 250, 500 and 1 344 rows per transaction, flat
+to within 60 ms, and 20.3 s for the same rows written straight to IndexedDB with no Dexie and no
+app), so the window was sealed. The import raises a gate in `src/lib/nutrition/gate.ts`;
+`applyMergedData` and every other writer that opens a transaction over `ingredients` waits at
+it, and a sync caught by that wait says „Czekam na bazę składników…" instead of going quiet.
+The wizard's `setupDone` is **awaited** before it navigates — a dropped write on any engine, and
+23 of the 82 WebKit failures. The suite stopped racing the import (the fixture waits for
+`<html data-nutrition="ready">`) and one new spec races it on purpose. **`E2E_WEBKIT=1 npm run
+test:e2e` is green**: 125 passed, 2 skipped, twice in a row — from 82 failures. Chromium is
+127/127 in 32 s against 124/124 in 33 s before the phase, and 127/127 under the production CSP
+in the container. No schema version, no migration, no dependency, no CSP or `Caddyfile` change.
+Task 6 — the real iPhone — **was not done**; it needs the device and is recorded as still open.
 
 Phase 20 is **built** (2026-09-12, decisions 381–385). „What can I cook in twenty minutes"
 was a question the library could not answer. `Recipe` gains one optional field, `prepMinutes` —
@@ -4675,6 +4691,194 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
   pass; at maximum parallelism one `pwa.spec.ts` case flaked once and was green in isolation.
   CI, on Linux, is the arbiter.
 
+## Phase 21 — Pierwsze dwadzieścia cztery sekundy
+
+386. **Seal the window, not shorten it — because it cannot be shortened.** Decision 346 left
+     three candidate fixes and chose none; PLAN.md task 3 asked for one measured number before
+     changing anything. Here it is: wall clock from navigation to the import settling, best of
+     two runs on a fresh profile each, one production build per batch size.
+
+     | rows per transaction | Chromium | WebKit |
+     |---|---|---|
+     | 100 | 186 ms | 20 876 ms |
+     | **250** (shipped) | 172 ms | 20 869 ms |
+     | 500 | 172 ms | 20 877 ms |
+     | 1 344 (one transaction) | 185 ms | 20 867 ms |
+
+     **The batch size is not the lever.** Across a thirteen-fold range WebKit varies by 60 ms —
+     three parts in a thousand. A control run says what it is instead: 1 344 `put`s into a fresh
+     store in **one** transaction, raw IndexedDB, no Dexie and no app, cost **20 259 ms** on
+     WebKit and **23 ms** on Chromium. The cost is per row and it is the engine's, not ours; a
+     second load on the same profile takes 170 ms, so the whole 20.9 s is the writing.
+     `BATCH_SIZE` stays at 250. This also retires „make it incremental, lazy or a worker" as a
+     *speed* answer — a worker would move the twenty seconds off the main thread, not shorten
+     them — and PLAN.md put those out of scope anyway.
+
+     Two corrections to what was recorded before. Open question 31 read „about six seconds on
+     Chromium" off a probe sampling every five seconds; the true figure is about **0.2 s**, and
+     that probe's t+0 s reading of 1 344 rows was the import already finished. And the WebKit
+     figure is 20.9 s rather than 24 s, measured the same way on the same machine.
+
+387. **The gate is one dependency-free module, and it counts rather than flags.**
+     `src/lib/nutrition/gate.ts` exports three functions and imports nothing: `holdIngredients`
+     returns the release, `whenIngredientsWritable` is what everyone else awaits, and
+     `ingredientsHeld` lets the UI say why before it waits. It has to sit below the UI, because
+     `repository.ts` reaches it and `import.ts` writes *through* the repository — a gate that
+     imported either would be a cycle. Open is a resolved promise, so the ordinary case costs
+     one microtask; holders are counted, so two overlapping imports cannot release each other's
+     gate; and releasing twice is a no-op.
+
+     **Who waits:** `applyMergedData` (the sync — the defect as recorded), `saveCustomIngredient`,
+     `deleteIngredient`, `replaceIngredient` and `restoreBackup` — every entry point that opens a
+     transaction *writing* `ingredients`. Each awaits at the head of the method, before the
+     transaction and never inside one: awaiting a non-Dexie promise inside an open Dexie
+     transaction is its own bug. **Who deliberately does not:** `putIngredients` and
+     `putIngredient`, which are the import itself and would wait on their own gate; and
+     `addRecipeToDay`, `adjustMeal` and `refreshFutureSnapshots`, which name `ingredients` in an
+     `rw` transaction but only read it. Those three are the one place a first-minute hang could
+     still hide — they need a recipe to exist first, which a browser in its first half-minute
+     does not have — and the gate is one line away if it ever shows up.
+
+388. **The gate is raised around the writes only, and a sync that waits says so in Polish.** Not
+     around the `fetch`: the bundle download touches no table, and a sync landing while it is in
+     flight has nothing to collide with. It is released in a `finally`, and a unit test asserts
+     that a write throwing half way through still lowers it — an import that kept the gate would
+     hang every later write, which is worse than the defect it seals.
+
+     `SyncStage` gains a third member, `waiting-ingredients`, labelled „Czekam na bazę
+     składników…". The engine emits it **only when the gate is actually held**, so an ordinary
+     sync reports the same two stages it always did and its existing tests are untouched.
+     `applyMergedData` waits by itself regardless — the stage only says so out loud.
+
+389. **`setupDone` is awaited before the wizard navigates, and the wizard says what it is waiting
+     for.** `leave()` was `void repository.setMeta('setupDone', true); void push(target)` — a
+     dropped write on *any* engine (PLAN.md task 1), and 23 of the 82 WebKit failures. It now
+     awaits the gate, then the write, then the navigation, with the buttons disabled meanwhile
+     and reading „Czekam na bazę składników…" while the import runs and „Zapisywanie…" otherwise.
+     The label derives from `nutritionStatus.phase`, which is a rune, rather than from
+     `ingredientsHeld()`, which is a plain function and would never re-render.
+
+     **The audit PLAN.md asked for.** There is no other `void repository.*` anywhere in `src/`.
+     Every remaining `void` on the setup and settings paths is one of three deliberate kinds: a
+     read (`void load()`, `void loadModels()`), a background sync (`void syncNow()`, whose
+     outcome `syncState` reports and whose failure is not the click's business), or an event
+     handler whose own body awaits its write (`void makeVault()`, `void saveGoals()`,
+     `void leave()`). `App.svelte`'s `void migrateRetiredDefaultModel().then(…)` awaits its write
+     inside the chain and nothing navigates on it. Only `setupDone` was dropped.
+
+390. **`<html data-nutrition>` is the import's only signal to the outside, and the fixture waits
+     on it.** `status.svelte.ts` mirrors the phase onto the document root the way
+     `theme.svelte.ts` mirrors the theme. Nothing in the app reads it. It exists so
+     `e2e/fixtures.ts` can wait for `ready` before a test acts, which is what makes the other
+     hundred-odd tests honest (PLAN.md task 4). The alternative — a test reaching into IndexedDB
+     past the app — is worse on exactly the engine that needs it: that read is itself blocked by
+     the import it is trying to observe. `ready` is painted after the ingredient index has been
+     warmed, so waiting for it means the database is quiet, not merely written.
+
+391. **One spec races the import on purpose.** Without it the gate would be covered by nothing.
+     `e2e/import-race.spec.ts` opens a device with `raceNutritionImport: true`, asserts the page
+     really is still importing — so it says so loudly if the import ever gets fast enough to stop
+     overlapping anything — and then does the three things that used to break: connects Drive
+     mid-import and requires the sync to finish, requires the wait to be *named* on the button
+     rather than silent, and leaves the wizard mid-import and reloads immediately, which is
+     `setupDone` end to end.
+
+392. **Service workers are blocked in every e2e context except the two specs that are about them
+     — and the reason is a hole in the harness, not a preference.** Playwright intercepts a
+     service worker's requests on Chromium only. With a worker registered, WebKit sent the app's
+     Drive calls *past* `installFakeGoogle` to the real `googleapis.com`, which answered the fake
+     bearer token with a real 401; the app then correctly dropped the session, and
+     `connect.spec.ts` watched a reload sign itself out. Two probe runs settled it: with the
+     worker blocked the same request reaches `FakeDrive` and the session survives. `pwa.spec.ts`
+     re-opens its `device` with `serviceWorker: true` and one `safe-area.spec.ts` case does the
+     same. Everything else is now hermetic on both engines, which it was not before.
+
+393. **`swipe.spec.ts` is Chromium-only and now says so.** Its gesture is dispatched through
+     `newCDPSession`, which exists on no other engine — it always was Chromium-only, but until
+     WebKit was expected to pass, nothing had to declare it. `test.skip` on `browserName`, with
+     the reason in the file: a gesture this file cannot synthesize is a test that does not apply,
+     not a failure.
+
+394. **The planner sheet was putting „Pierwszy dzień" back after the user moved it.** A real
+     defect, found by WebKit and fixed here. The effect that re-anchors the range when the sheet
+     opens re-runs on later updates too, and every re-run reset `start` to the caller's first
+     day. Traced live: `SETSTART 2026-09-22` → `REANCHOR to 2026-09-12 from 2026-09-22`. The
+     sheet then solved for a week its header no longer showed, said „nie zmieściło się w
+     zaplanowanym zakresie", dropped the proposal — and „Zastosuj", which returns on a null
+     proposal, did nothing at all and said nothing. A guard (`anchored`, a plain variable so it
+     cannot become a dependency of the effect that maintains it) re-anchors on the opening only.
+
+     `load()` gained a run token in the same pass: moving the first day starts a fresh load while
+     the previous one is still reading, and both wrote their results into the same state. The
+     stale one now returns instead. Nothing about either was WebKit-specific except the odds —
+     five IndexedDB reads on an engine that charges milliseconds a row is a wide enough window to
+     lose every time, where Chromium won every time.
+
+395. **„Zastosuj" is clicked and checked, not clicked and hoped.** Even with the sheet correct,
+     the click was lost on WebKit — instrumenting `apply()` showed the handler was never entered.
+     The sheet is still settling when the day cards appear: the proposal renders, the panel
+     grows, the footer moves, and a click dispatched into that lands on nothing. A user taps
+     again without noticing; the spec now does the same, through `expect(...).toPass()`.
+
+396. **WebKit's „due to access control checks" notice is not an app exception, and the fixture
+     stops counting it as one.** The settings screen's model listing carries `x-goog-api-key`, so
+     the browser sends a CORS preflight — and on WebKit that preflight is not handed to
+     `installFakeGemini` at all but goes to the real endpoint, which refuses it. WebKit reports
+     the refused load on the window, where `failOnPageError` read it as „the app threw".
+     `listGeminiModels` already treats a failed fetch as „no models", so nothing is hidden by
+     ignoring it; the filter matches that exact sentence ending and nothing else, and CSP
+     violations are asserted separately through the page's own `__emwCsp` collector. It is the
+     one known gap left in the fakes' coverage, and it sends a fake key to a real endpoint, which
+     is worth knowing even though it leaks nothing.
+
+397. **Four spec-level races fixed, a four-minute WebKit timeout, and WebKit stays out of CI.**
+     The races, all of them „the app is slow here, not wrong":
+
+     - `openRecipeEditor` in `e2e/fixtures.ts` replaces 28 bare `goto('#/recipes/new/edit')`
+       calls. A `goto` returns when the fragment changes, not when the router has swapped the
+       screen, so `getByLabel('Nazwa')` resolved against the four `slot-name-*` inputs the
+       settings screen was still showing — a strict-mode violation, and a third of the failures
+       this phase inherited.
+     - The fixture waits for the wizard's own navigation to land before redirecting the page.
+       Now that leaving is awaited, a `goto` fired straight after the click is overtaken by the
+       app's push a moment later.
+     - `metryczka.spec.ts` waits for the library between its two `goto`s: two hash writes in a
+       row can leave the router seeing only the second, and the test stayed in the very editor it
+       was trying to leave, draft and all.
+     - `library.spec.ts` proves the remembered sort order through an in-app round trip before the
+       reload. The choice is written by a handler nothing awaits; the screen re-reads it from
+       IndexedDB on every mount, and a read issued after the write on the same connection is
+       ordered after it — which is a barrier, where a reload is a race.
+
+     The `webkit` project gets `timeout: 240_000`, because the fixture's wait for the import is
+     twenty seconds of any test's budget and a two-device test pays it twice. It **stays behind
+     `E2E_WEBKIT=1` and out of CI** (PLAN.md task 5 left that open): the reason is no longer a
+     bug but arithmetic — four minutes against thirty seconds, plus a second engine to install.
+
+### Not verified, and honestly so — Phase 21
+
+- **Task 6 — the real iPhone — was not done, and nothing here claims otherwise.** It is the one
+  task in this phase that cannot be run from a desktop, and it needs the device in hand: install
+  from Safari, connect Drive inside the first half-minute, and write back what happened. Open
+  question 30 still lists (a)–(h) unanswered, and open question 31 still ends on „unobserved on
+  real hardware". What *can* be said from this machine is that the failure mode the procedure was
+  meant to catch is gone on the engine Safari uses, and that the wait a device would still feel
+  is now named on screen.
+- **„Chromium timings unchanged" is two measurements, not a benchmark.** 124 tests in 33.3 s on
+  the pre-phase code, 127 in 32.2 s after; same machine, same worker count. The import costs
+  Chromium 0.2 s per device, so the fixture's new wait is inside the noise. One `pwa.spec.ts`
+  case failed on that pre-phase baseline run and passed on every run afterwards — a pre-existing
+  flake, not a change.
+- **The container run needed a client id to be meaningful.** `npm run docker:up` builds without
+  `VITE_GOOGLE_CLIENT_ID` on a machine with no `.env.local`, and 41 specs then fail on „this
+  build has no client id" rather than on anything about the policy. Rebuilt with the same fixed
+  id the preview server uses, the suite is **127/127 against `http://localhost:8080`**, with the
+  specs' own CSP-violation assertions green — which is the check PLAN.md asked for.
+- **The WebKit green is two consecutive runs, not a soak.** The two specs that flaked earlier in
+  the phase (`scan.spec.ts`'s vault unlock, `metryczka.spec.ts`'s second import) were each
+  diagnosed and fixed rather than re-run until green, but four minutes a run is a real
+  disincentive to soak, and nobody has run it twenty times.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
@@ -5060,7 +5264,15 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     still needs the device is unchanged, and (h) now has a reason to be suspicious rather than
     merely unverified — see open question 31.
 
-31. **WebKit hangs on a write that overlaps the first-run nutrition import — measured
+    **Amended 2026-09-12, after phase 21.** (h)'s reason to be suspicious is gone: the defect
+    open question 31 recorded — a Drive sync started inside the first half-minute never
+    finishing — is fixed, and the whole suite now passes under WebKit. What is still owed is the
+    device itself: **phase 21 task 6 was not done.** (a)–(h) stand unanswered, with one addition
+    to (h): make the connection **inside the first half-minute** of a fresh install, which is
+    what used to break. The window to aim at is about 21 s on a desktop WebKit; nobody knows what
+    it is on a phone.
+
+31. **WebKit hangs on a write that overlaps the first-run nutrition import — answered and
     2026-09-12, and the window is four times wider than decision 346 recorded.** Found by phase
     15 task 6, the first time this app was ever run on Safari's engine. Decision 346 has the
     original bisection; the short form is that while a fresh browser writes the 1 344 bundled
@@ -5120,4 +5332,32 @@ Ground truth: 293 kcal, 2.5 g protein, 3.2 g carbohydrate, 30.0 g fat.
     Still unobserved on real hardware: whether Safari on iOS behaves like Playwright's WebKit at
     all, and how long the import takes on a phone rather than a desktop. **On a real iPhone,
     install the app and connect Drive within the first half-minute** — the window to aim at is
-    24 s, not 5. Carried into Phase 21.
+    24 s, not 5. Carried into open question 30.
+    **Answered 2026-09-12 by Phase 21 — fixed, and the suite is green on WebKit** (decisions
+    386–397). The design call went both ways it could: the window was **sealed**, and it was
+    measured to see whether it could also be **shortened**. It cannot. The batch size moves
+    nothing (decision 386), because the cost is per row and belongs to the engine — 1 344 raw
+    `put`s in one transaction, no Dexie and no app, cost 20 259 ms on WebKit against 23 ms on
+    Chromium. Two of this entry's own figures were corrected in the process: the Chromium import
+    takes about 0.2 s, not six seconds (the old probe's five-second sampling could not see it),
+    and WebKit takes 20.9 s, not 24.
+
+    What the fix is: `src/lib/nutrition/gate.ts`. The import raises a gate around its writes;
+    `applyMergedData` and every other writer that opens a transaction over `ingredients` waits at
+    it, and a sync caught by that wait says „Czekam na bazę składników…" rather than falling
+    silent. `Setup.svelte` awaits `setupDone` before navigating, which was a real defect on any
+    engine. The suite stopped racing the import — `e2e/fixtures.ts` waits for
+    `<html data-nutrition="ready">` — and `e2e/import-race.spec.ts` races it on purpose, so the
+    gate is covered.
+
+    **82 failures → 0.** `E2E_WEBKIT=1 npm run test:e2e` is 125 passed, 2 skipped (the CDP touch
+    drag, which is Chromium-only), run twice in a row. Three things found on the way there were
+    not this defect at all and are recorded separately: a service worker made the WebKit runs
+    non-hermetic (decision 392), the planner sheet was undoing the user's chosen first day
+    (decision 394 — a real bug on any engine), and four spec-level races were the tests', not the
+    app's (decision 397).
+
+    **Still unobserved on real hardware,** and carried into open question 30 rather than kept
+    here: whether Safari on iOS behaves like Playwright's WebKit at all, and how long the import
+    takes on a phone rather than a desktop.
+

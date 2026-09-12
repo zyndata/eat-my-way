@@ -26,6 +26,7 @@ import {
   type IngredientCorrection
 } from './documents';
 import { hashValue } from './hash';
+import { ingredientsHeld, whenIngredientsWritable } from '../nutrition/gate';
 import {
   applyResolutions,
   baselineOf,
@@ -88,8 +89,12 @@ export type SyncOutcome =
  * no honest percentage — but „waiting on the Google window" and „reading and writing your
  * files" feel different and fail differently, and naming which one is running is the only
  * progress this app can report truthfully.
+ *
+ * `waiting-ingredients` is the third and rarest: a sync that lands during the first-run
+ * nutrition import cannot write until the import lets go of the table, and the whole point of
+ * phase 21 is that this wait is named rather than silent (STATE.md decision 388).
  */
-export type SyncStage = 'authenticating' | 'transferring';
+export type SyncStage = 'authenticating' | 'transferring' | 'waiting-ingredients';
 
 export interface SyncOptions {
   /** May open the Google consent popup. Only ever true when the user clicked something. */
@@ -455,6 +460,14 @@ export function createSyncEngine(backend: StorageBackend, repository: Repository
       days: mergedDays,
       months: [...months]
     };
+    // `applyMergedData` waits for the first-run import by itself; this only says so out loud,
+    // and only when there is something to wait for — the ordinary sync reports the same two
+    // stages it always did.
+    if (ingredientsHeld()) {
+      options.onstage?.('waiting-ingredients');
+      await whenIngredientsWritable();
+      options.onstage?.('transferring');
+    }
     await repository.applyMergedData(merged);
     if (vaultAdopted && vaultText !== undefined) {
       // Keep what we are about to overwrite. The two vaults can have different master

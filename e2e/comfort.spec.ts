@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 import { cspViolations } from './fake-google';
 import { recipe, seedAccount } from './seed';
 
@@ -250,7 +250,7 @@ test('a recipe imported from a link keeps the page it came from, and can be cut 
   await device.getByRole('button', { name: 'Sprawdź i zapisz klucz' }).click();
   await expect(device.getByText('Klucz działa.')).toBeVisible();
 
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByRole('button', { name: 'Wklej przepis z internetu' }).click();
   await device
     .getByLabel('Link do przepisu albo jego treść')
@@ -280,7 +280,7 @@ test('a recipe imported from a link keeps the page it came from, and can be cut 
 });
 
 test('a hand-written recipe claims no source at all', async ({ device }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Kanapka bez źródła');
   await expect(device.getByRole('heading', { name: 'Źródło' })).toHaveCount(0);
 });

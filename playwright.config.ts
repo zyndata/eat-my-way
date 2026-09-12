@@ -34,17 +34,29 @@ export default defineConfig({
    * safe-area inset — no browser does, which is what `e2e/safe-area.spec.ts` exists for — but
    * it does run the iOS layout and storage behaviour Chromium silently forgives.
    *
-   * It is behind `E2E_WEBKIT=1` because the first run of it found a WebKit-only defect in the
-   * data layer, not in the layout: a write that overlaps the first-run bundled nutrition
-   * import never completes, so a large part of the suite hangs (STATE.md open question 31).
-   * Putting it in CI today would make CI red about a bug nobody is fixing this phase. Run it
-   * with `E2E_WEBKIT=1 npm run test:e2e` — that is the reproduction.
+   * The defect it found — a write overlapping the first-run bundled nutrition import never
+   * completes — was fixed in phase 21 (STATE.md open question 31, decisions 386–391). It stays
+   * behind `E2E_WEBKIT=1` all the same, for a reason that is now cost rather than a bug: this
+   * engine writes IndexedDB about nine hundred times slower than Chromium — 1 344 rows take
+   * 21 s against 23 ms — so every test waits out the first-run import before it can act, and the
+   * run takes minutes rather than seconds. A second engine in CI is its own cost on top of
+   * that. Run it by hand with `E2E_WEBKIT=1 npm run test:e2e`.
    */
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     ...(process.env.E2E_WEBKIT === undefined
       ? []
-      : [{ name: 'webkit', use: { ...devices['Desktop Safari'] } }])
+      : [
+          {
+            name: 'webkit',
+            // Four minutes, against Chromium's default thirty seconds. Not slack for shaky
+            // assertions: `e2e/fixtures.ts` waits for the bundled import before a test acts,
+            // and on this engine that wait alone is about twenty seconds of the budget — a
+            // two-device test pays it twice.
+            timeout: 240_000,
+            use: { ...devices['Desktop Safari'] }
+          }
+        ])
   ],
   ...(usesOwnServer
     ? {

@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, test, type DeviceOptions } from './fixtures';
+import { type DeviceOptions, expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * The geometry of a phone that reserves part of its screen (PLAN.md Phase 15).
@@ -167,7 +167,8 @@ test('an installed iPhone: the add-meal button is whole and clear of the bar', a
 test('an installed iPhone: the new-version bar clears the navigation bar too', async ({
   openDevice
 }) => {
-  const page = await openDevice({ touch: true });
+  // The one test here that needs a real worker, which the fixture otherwise blocks.
+  const page = await openDevice({ touch: true, serviceWorker: true });
   await page.setViewportSize(PORTRAIT);
 
   /*
@@ -215,7 +216,7 @@ test('an installed iPhone: the last meal of a full day scrolls clear of the bar'
 }) => {
   const page = await openPhone(openDevice);
 
-  await page.goto('#/recipes/new/edit');
+  await openRecipeEditor(page);
   await page.getByLabel('Nazwa').fill('Owsianka');
   await page.getByRole('button', { name: 'Zapisz przepis' }).click();
   await expect(page.getByRole('heading', { name: 'Przepisy' })).toBeVisible();
@@ -249,7 +250,7 @@ test('a landscape iPhone: nothing sits under the notch, the dialog included', as
   await page.setViewportSize(LANDSCAPE);
 
   // A recipe to delete, which is the shortest way to a real modal.
-  await page.goto('#/recipes/new/edit');
+  await openRecipeEditor(page);
   await page.getByLabel('Nazwa').fill('Owsianka');
   await page.getByRole('button', { name: 'Zapisz przepis' }).click();
   await expect(page.getByRole('heading', { name: 'Przepisy' })).toBeVisible();

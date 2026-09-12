@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * „Miary domowe" (PLAN.md Phase 16), driven through the real screens.
@@ -25,7 +25,7 @@ const chip = (page: Page, name: string) =>
 test('one tap fills the unit, the label and the weight, and the row reads the same everywhere', async ({
   device
 }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill(RECIPE);
 
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
@@ -72,7 +72,7 @@ test('one tap fills the unit, the label and the weight, and the row reads the sa
 test('an ingredient with no household measures behaves exactly as it did before', async ({
   device
 }) => {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Bez miar');
 
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();

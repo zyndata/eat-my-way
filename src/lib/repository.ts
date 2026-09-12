@@ -18,6 +18,7 @@ import type {
   SyncBaselineRow
 } from './db';
 import type { IngredientCorrection } from './sync/documents';
+import { whenIngredientsWritable } from './nutrition/gate';
 import { monthOf } from './sync/documents';
 import type { BackupDocument, BackupInput } from './backup';
 import {
@@ -415,6 +416,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
       now: string = new Date().toISOString()
     ): Promise<Ingredient> {
       if (ingredient.source !== 'custom') throw new NotCustomIngredientError(ingredient.id);
+      await whenIngredientsWritable();
       const row = plain({ ...ingredient, updatedAt: now });
       await database.ingredients.put(toIngredientRecord(row));
       return row;
@@ -460,6 +462,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
      * name to nothing at all (decision 181).
      */
     async deleteIngredient(id: string): Promise<void> {
+      await whenIngredientsWritable();
       await database.transaction(
         'rw',
         database.ingredients,
@@ -506,6 +509,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     ): Promise<string[]> {
       if (fromId === toId) throw new Error('An ingredient cannot replace itself');
 
+      await whenIngredientsWritable();
       return database.transaction(
         'rw',
         database.ingredients,
@@ -1085,6 +1089,12 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
      * left entirely alone.
      */
     async applyMergedData(merged: MergedData): Promise<void> {
+      // The first-run import holds `ingredients` for seconds at a time, and on WebKit a
+      // transaction opened over it meanwhile never returns — which is how a sync started
+      // inside the first half-minute used to stop for good (STATE.md open question 31).
+      // Waiting here costs one microtask when nothing is importing.
+      await whenIngredientsWritable();
+
       // Six tables: the array form, because the variadic overload stops at five.
       await database.transaction(
         'rw',
@@ -1237,6 +1247,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         days: backup.days.filter((day) => day.meals.length > 0)
       });
 
+      await whenIngredientsWritable();
       await database.transaction(
         'rw',
         [

@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 import { cspViolations } from './fake-google';
 
 /**
@@ -26,7 +26,7 @@ test('every screen renders under the production policy and reports no violation'
   });
 
   // A recipe and a planned meal, so the day view and the meal view are not empty screens.
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill('Owsianka');
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill('jajko');

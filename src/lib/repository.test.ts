@@ -5,6 +5,7 @@ import { DEFAULT_PROFILE } from './db';
 import { dayTotals } from './macros';
 import { addDays, addYears } from './dates';
 import type { Recipe } from './types';
+import { holdIngredients } from './nutrition/gate';
 import {
   chicken,
   egg,
@@ -986,5 +987,44 @@ describe('isNeverUsed', () => {
   it('is false once the wizard has been through, so a reload does not reopen it', async () => {
     await repo.setMeta('setupDone', true);
     expect(await repo.isNeverUsed()).toBe(false);
+  });
+});
+
+/**
+ * Phase 21: the first-run bundled import holds the `ingredients` table for seconds at a time,
+ * and on WebKit a transaction opened over it meanwhile never returns — which is how a Drive
+ * sync started inside the first half-minute used to stop for good (STATE.md open question 31).
+ * Every writer that opens a transaction over the table waits at the gate instead.
+ */
+describe('writes wait for the first-run nutrition import', () => {
+  /** Whether a promise has settled by the time the microtask queue drains. */
+  async function settled(promise: Promise<unknown>): Promise<boolean> {
+    let done = false;
+    void promise.then(() => (done = true));
+    for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+    return done;
+  }
+
+  it('holds applyMergedData until the import lets go', async () => {
+    const release = holdIngredients();
+
+    const write = repo.applyMergedData({ ingredients: new Map([[chicken.id, chicken]]) });
+    expect(await settled(write), 'the merge opened its transaction during the import').toBe(false);
+
+    release();
+    await write;
+    expect(await repo.getIngredient(chicken.id)).toMatchObject({ id: chicken.id });
+  });
+
+  it('holds a custom ingredient the user saves mid-import', async () => {
+    const release = holdIngredients();
+    const custom = { ...chicken, id: 'custom:mine', source: 'custom' as const };
+
+    const write = repo.saveCustomIngredient(custom);
+    expect(await settled(write)).toBe(false);
+
+    release();
+    await write;
+    expect(await repo.getIngredient('custom:mine')).toMatchObject({ name: custom.name });
   });
 });

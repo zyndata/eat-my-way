@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * „Trzy drobiazgi" (PLAN.md Phase 18), driven through the real screens.
@@ -21,7 +21,7 @@ const save = (page: Page) => page.getByRole('button', { name: 'Zapisz składnik'
 
 /** Open the inline „new ingredient" form the recipe editor offers when nothing matches. */
 async function newIngredient(device: Page, recipeName: string, name: string): Promise<void> {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill(recipeName);
   await device.getByRole('button', { name: 'Dodaj składnik' }).click();
   await device.getByLabel('Składnik 1').fill(name);
@@ -36,7 +36,7 @@ async function fillMacros(device: Page, values: readonly string[]): Promise<void
 
 /** A recipe with the named bundled ingredients in it, saved. */
 async function saveRecipe(device: Page, name: string, ingredients: readonly string[]): Promise<void> {
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Nazwa').fill(name);
   for (const [index, ingredient] of ingredients.entries()) {
     await device.getByRole('button', { name: 'Dodaj składnik' }).click();

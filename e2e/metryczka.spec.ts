@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { expect, openRecipeEditor, test } from './fixtures';
 
 /**
  * Phase 20 — „metryczka przepisu": the preparation time, from the editor to the filter.
@@ -15,7 +15,7 @@ async function writeRecipe(
   name: string,
   options: { minutes?: string; tags?: string[] } = {}
 ): Promise<void> {
-  await page.goto('#/recipes/new/edit');
+  await openRecipeEditor(page);
   await page.getByLabel('Nazwa').fill(name);
   if (options.minutes !== undefined) {
     await page.getByLabel('Czas przygotowania').fill(options.minutes);
@@ -94,7 +94,7 @@ test('an import fills the time when the page states one, and leaves it empty whe
   gemini.script.recipe = { ...PARSED, prepMinutes: 25 };
 
   await setUpKey(device);
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await runImport(device, PASTED);
   await expect(device.getByLabel('Czas przygotowania')).toHaveValue('25');
 
@@ -103,7 +103,11 @@ test('an import fills the time when the page states one, and leaves it empty whe
   // already on is not a navigation and would keep the draft that is on screen.
   gemini.script.recipe = { ...PARSED, prepMinutes: null };
   await device.goto('#/recipes');
-  await device.goto('#/recipes/new/edit');
+  // The away leg has to land before the back one: two `goto`s in a row are two hash writes,
+  // and on a slow engine the router can see only the second — leaving the very editor this
+  // test is trying to get away from, draft and all.
+  await expect(device.getByRole('heading', { name: 'Przepisy' })).toBeVisible();
+  await openRecipeEditor(device);
   await runImport(device, PASTED);
   await expect(device.getByLabel('Czas przygotowania')).toHaveValue('');
 });
@@ -112,7 +116,7 @@ test('an import never overwrites a time the user has already typed', async ({ de
   gemini.script.recipe = { ...PARSED, prepMinutes: 25 };
 
   await setUpKey(device);
-  await device.goto('#/recipes/new/edit');
+  await openRecipeEditor(device);
   await device.getByLabel('Czas przygotowania').fill('45');
   await runImport(device, PASTED);
 
