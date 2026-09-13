@@ -11,6 +11,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Documentation
 
 - Plan phase 23 — redukcja i masa
+- Record CI's WebKit result for phase 23
 
 ### Features
 
@@ -18,6 +19,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ### Miscellaneous
 
+- Update CHANGELOG
 - Update CHANGELOG
 
 ## [1.13.0] - 2026-09-13
