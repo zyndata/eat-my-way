@@ -21,7 +21,8 @@ import { cspViolations } from './fake-google';
 type Route = 'clipboard' | 'share' | 'fail';
 
 interface Shared {
-  title?: string;
+  /** Present only for the share route; `ShareData.title` is itself optional. */
+  title?: string | undefined;
   text: string;
 }
 

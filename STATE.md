@@ -5278,7 +5278,13 @@ its own.
       `adjustments` and `measures` specs 14/14 against the container on :8080, and the first
       spec asserts `cspViolations` is empty.
   14. Polish UI, English code and comments: **pass** — by review.
-- **Suites.** `npm run check` 0 errors, 0 warnings. `npm test` 999/999.
+- **Suites.** `npm run check` 0 errors, 0 warnings — **but only on the second attempt**. The
+  first local check ran in parallel with writing `e2e/udostepnij.spec.ts`, so it never saw the
+  spec, and the phase commit went to CI with a type error in it: the share recorder's
+  `title?: string` rejected `ShareData.title` under `exactOptionalPropertyTypes`. CI's
+  „Check, test & build" job went red on run 34751504460 while its e2e job was green; the
+  follow-up commit types the field `string | undefined`, and the check was re-run locally over
+  the finished tree before pushing it. `npm test` 999/999.
   `E2E_WEBKIT=1 npx playwright test` — Chromium and WebKit together — 142 passed, 3 skipped,
   0 failed, in 9.6 min.
 - **README.** Status blockquote now says phases 1–22 and describes phase 22; its count of
