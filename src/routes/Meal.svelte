@@ -14,6 +14,7 @@
     adjustmentSummary,
     changeRow,
     clearAdjustments,
+    effectiveItems,
     isAdjusted,
     keepOnlyRow,
     restoreRow,
@@ -38,6 +39,7 @@
   import IngredientAutocomplete from '../lib/components/IngredientAutocomplete.svelte';
   import NavIcon from '../lib/components/NavIcon.svelte';
   import ShoppingListSheet from '../lib/components/ShoppingListSheet.svelte';
+  import RecipeShareSheet from '../lib/components/RecipeShareSheet.svelte';
 
   /**
    * `/day/:date/:mealId` — one planned meal, in PLAN.md's order: name, the recipe, the
@@ -74,6 +76,7 @@
   let tomorrowMeals = $state<string[]>([]);
   let uncheckOpen = $state(false);
   let shoppingOpen = $state(false);
+  let recipeShareOpen = $state(false);
   /** The row „Zmień" is open for, `'add'` for „Dodaj składnik", or nothing. */
   let pickerFor = $state<string | undefined>(undefined);
   let restoreOpen = $state(false);
@@ -94,6 +97,11 @@
   /** This meal's own changes over the recipe. `undefined` reads as „no changes". */
   const layer = $derived<MealAdjustment[] | undefined>(meal?.adjustments);
   const changed = $derived(meal !== undefined && isAdjusted(meal));
+  /**
+   * What „Udostępnij przepis" sends: the meal as it is actually cooked, skipped rows gone and
+   * swapped rows swapped (STATE.md decision 410).
+   */
+  const cookedItems = $derived(recipe === undefined ? [] : effectiveItems(recipe, layer));
   /** The ingredient list as this meal is actually made, skipped rows included and marked. */
   const rows = $derived<AdjustedRow[]>(recipe === undefined ? [] : adjustedRows(recipe, layer));
   const summary = $derived(
@@ -511,7 +519,7 @@
         </span>
       </div>
 
-      <div class="pt-4">
+      <div class="flex flex-wrap gap-2 pt-4">
         <!-- The shopping list belongs next to „ile gotuję": it is the number it reflects
              (PLAN.md Phase 9 task 7). A day's or a week's list lives on the day screen. -->
         <button
@@ -521,6 +529,18 @@
         >
           Lista zakupów
         </button>
+        <!-- So does sending the recipe: both take this meal out of the app at the number this
+             section sets. A meal whose recipe was deleted has nothing left to send (PLAN.md
+             Phase 22). -->
+        {#if recipe !== undefined}
+          <button
+            type="button"
+            class="emw-press emw-btn emw-btn-secondary"
+            onclick={() => (recipeShareOpen = true)}
+          >
+            Udostępnij przepis
+          </button>
+        {/if}
       </div>
 
       <div class="pt-4">
@@ -647,6 +667,16 @@
   {mealId}
   onclose={() => (shoppingOpen = false)}
 />
+
+{#if recipe !== undefined}
+  <RecipeShareSheet
+    open={recipeShareOpen}
+    {recipe}
+    items={cookedItems}
+    initialPortions={scale}
+    onclose={() => (recipeShareOpen = false)}
+  />
+{/if}
 
 <BottomSheet
   open={pickerFor !== undefined}

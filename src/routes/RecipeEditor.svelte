@@ -4,6 +4,7 @@
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import RecipeImportSheet from '../lib/components/RecipeImportSheet.svelte';
   import RecipeItemList from '../lib/components/RecipeItemList.svelte';
+  import RecipeShareSheet from '../lib/components/RecipeShareSheet.svelte';
   import TagInput from '../lib/components/TagInput.svelte';
   import type { Ingredient, Recipe, Tag } from '../lib/types';
   import type { RecipeDraft } from '../lib/recipes';
@@ -75,6 +76,19 @@
   let deleteOpen = $state(false);
 
   /**
+   * The draft as it was loaded or last saved, serialized. „Udostępnij" shares the **stored**
+   * recipe, never the draft, so while the live draft differs from this the button refuses and
+   * says why — a half-typed row must not reach somebody's messages (STATE.md decision 409).
+   */
+  let savedDraft = $state('');
+  let shareOpen = $state(false);
+  const unsaved = $derived(serializeDraft() !== savedDraft);
+
+  function serializeDraft(): string {
+    return JSON.stringify($state.snapshot(draft));
+  }
+
+  /**
    * `#/recipes/new/edit?import` opens the import sheet straight away. The empty library
    * offers „Wklej przepis z internetu" as one of its two starting points (STATE.md decision
    * 61), and it would be a poor offer if it landed the user on a blank form with the sheet
@@ -126,6 +140,7 @@
     // Tags are stored as keys; the editor shows the label the user first typed.
     const labels = recipe.tags.map((key) => allTags.find((tag) => tag.key === key)?.label ?? key);
     draft = draftFromRecipe(recipe, labels, nextId);
+    savedDraft = serializeDraft();
 
     const used = await repository.ingredientsByIds(recipe.items.map((item) => item.ingredientId));
     ingredientsById = Object.fromEntries(used.map((ingredient) => [ingredient.id, ingredient]));
@@ -228,6 +243,9 @@
     try {
       await repository.saveRecipe(recipe, draft.tagLabels);
       if (updateFuture) await repository.refreshFutureSnapshots(recipe.id, todayDate());
+      // Both saves land here — the plain one and the „update future days?" answer. A copy is a
+      // different recipe, so it does not make this one's draft the saved one.
+      if (recipe.id === existing?.id) savedDraft = serializeDraft();
       // `useCount` in the ingredient autocomplete is derived from the recipes.
       ingredientIndex.invalidate();
       scheduleSync();
@@ -508,6 +526,15 @@
           >
             Zapisz jako kopię
           </button>
+          <button
+            type="button"
+            class="emw-press emw-btn emw-btn-secondary px-4 disabled:opacity-50"
+            disabled={unsaved}
+            aria-describedby={unsaved ? 'recipe-share-hint' : undefined}
+            onclick={() => (shareOpen = true)}
+          >
+            Udostępnij
+          </button>
         {/if}
         <a class="emw-press emw-btn emw-btn-secondary px-4" href="#/recipes">
           Anuluj
@@ -523,6 +550,12 @@
         {/if}
       </div>
 
+      {#if existing !== undefined && unsaved}
+        <p id="recipe-share-hint" class="text-xs text-(--color-ink-muted)">
+          Zapisz zmiany, żeby udostępnić przepis.
+        </p>
+      {/if}
+
       {#if draft.name.trim() === ''}
         <p class="text-xs text-(--color-ink-muted)">Przepis musi mieć nazwę.</p>
       {/if}
@@ -536,6 +569,16 @@
   onimport={applyImport}
   {nextId}
 />
+
+{#if existing !== undefined}
+  <RecipeShareSheet
+    open={shareOpen}
+    recipe={existing}
+    items={existing.items}
+    initialPortions={1}
+    onclose={() => (shareOpen = false)}
+  />
+{/if}
 
 <ConfirmDialog
   open={pendingFuture > 0}

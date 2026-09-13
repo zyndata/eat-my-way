@@ -8,9 +8,9 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–21 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–22 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then ten phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then fourteen phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
@@ -24,7 +24,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > shows where its number came from (19), and a preparation time on a recipe — typed, or read
 > from the page it was imported from — with a library filter that answers „what can I cook in
 > twenty minutes" (20), and the first half-minute of a fresh install — the window in which the
-> app is writing its ingredient database and used to lose a Drive sync started inside it (21).
+> app is writing its ingredient database and used to lose a Drive sync started inside it (21),
+> and a recipe you can send to whoever is cooking it, at the number of portions they are
+> cooking (22).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -93,6 +95,14 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   — the date, the meals, the portions and each day's totals against that day's goals — and
   leaves through the system share sheet or the clipboard. No ingredients in it: those are the
   shopping list, which is one button further down the same menu.
+- **A recipe can be sent to whoever is cooking it.** From a saved recipe or a planned meal,
+  choose how many portions and the recipe comes out as plain text for that many — the
+  ingredients scaled in the recipe's own order, „2 ząbki (10 g)", and the preparation underneath
+  — through the system share sheet or the clipboard, so it lands in WhatsApp as a message. From
+  a planned meal it is the meal as it is actually cooked: a skipped ingredient is left out and a
+  swapped one names its substitute. Numbers written inside the preparation are not recalculated,
+  and the sheet says so. No calories and no link go with it, and the person receiving it does
+  not need the app.
 - **A label's numbers are checked for being possible.** 100 g of anything cannot hold 40 g of
   protein, 40 g of carbohydrate and 40 g of fat, and calories that disagree with the macros by
   a wide margin are usually a decimal point in the wrong place — which is a real and silent
