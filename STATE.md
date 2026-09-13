@@ -28,8 +28,20 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 19    | Cel dopowiedziany do końca  | done    | 2026-09-12 |
 | 20    | Metryczka przepisu          | done    | 2026-09-12 |
 | 21    | Pierwsze 24 sekundy         | done    | 2026-09-12 |
+| 22    | Przepis dla kogoś           | done    | 2026-09-13 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 22 is **built** (2026-09-13, decisions 408–415), in the shape it was planned. A recipe
+goes out of the app as plain text for a chosen number of portions — name, portions and
+preparation time, ingredients scaled in the recipe's order with grams after `szt` rows only,
+instructions verbatim — so the person who plans the week can send dinner to the person who
+cooks it, over WhatsApp or anything else the share sheet reaches. `src/lib/recipe-share.ts` is
+pure and restates none of the amount or plural rules it reads; `RecipeShareSheet` is
+`MenuSheet`'s twin. It opens from the editor of a **saved** recipe — disabled, with a sentence
+saying why, while the draft differs from what was loaded — and from a planned meal, where it
+sends `effectiveItems` starting at the meal's „Ile gotuję" and never writes a count back. No
+data-model change, no dependency, no CSP or `Caddyfile` change.
 
 Phase 21 is **built** (2026-09-12, decisions 386–398). The first half-minute of a fresh
 install is no longer the window in which this app is fragile. The design call decision 346 left
@@ -5164,6 +5176,121 @@ its own.
      hover-gating test is Chromium-only — the phone context is `devices['Pixel 5']`, whose
      `isMobile` Playwright supports on Chromium alone, the same limit as `swipe.spec.ts`
      (decision 393).
+
+
+### 2026-09-13 — Phase 22 planned: przepis dla kogoś
+
+> Asked for directly: open a recipe, tap share, choose how many portions, and send the
+> ingredients for that many plus the preparation to someone who will cook it. Four questions
+> were put before the plan was written; the answers are decisions 408, 410, 414 and 415.
+
+408. **Two starting points — the recipe editor and a planned meal — and no new screen.**
+     Tapping a recipe in the library opens the editor; there is no read-only recipe view, so
+     „open the recipe and tap share" means the editor. A read-only view was offered and turned
+     down: it changes navigation, the screenshots and a pile of specs, which is a phase of its
+     own and larger than the feature it would carry. An icon on the library row was turned down
+     too — one place in the library is enough. Both starting points open one
+     `RecipeShareSheet`.
+
+409. **The editor shares the stored recipe, never the draft, and refuses while they differ.**
+     A draft can hold a half-typed row or an amount nobody saved; sending it makes the message
+     and the library disagree about what the recipe is. So the button is disabled while the
+     draft differs from what was loaded or last saved, and a sentence says to save first.
+     The check compares a serialized `$state.snapshot(draft)`; the editor had no dirty state
+     before and gains nothing else from this one.
+
+410. **From a planned meal the text carries the meal's own changes, and starts at its cooking
+     scale.** The rows are `effectiveItems(recipe, meal.adjustments)` — the seam Phase 14 made
+     the only way to read a planned meal's ingredients — because the recipient is cooking this
+     meal, not the library card. A skipped row is left out rather than struck through. The
+     count starts at `cookingScale` and changing it in the sheet never writes back: the sheet
+     is about a message, not the plan.
+
+411. **Ingredients print in the recipe's order, unmerged and ungrouped.** The shopping list
+     groups by department because it is read in a shop (decision 329); this is read at a stove,
+     next to instructions that follow the recipe's own order.
+
+412. **Grams in brackets after `szt` rows only.** „2 ząbki (10 g)" and „3 szt. (450 g)" say
+     something the count does not; „300 g (300 g)" does not, and neither, in a kitchen, does
+     „600 ml (600 g)". The shopping list's `showGrams` keeps printing them after `ml` — it is
+     read against labels — so this is a separate rule, not a change to that one.
+
+413. **Instructions are shared verbatim and not scaled.** They are free text; a number inside
+     them is not an amount the app knows about. Parsing it out by pattern would get „piecz 20
+     minut w 180 stopniach" wrong, and asking Gemini would spend a request and a key on a
+     share. The sheet — not the text — says the numbers in the instructions are not recalculated
+     whenever the count is not 1.
+
+414. **The text carries name, portions, preparation time, ingredients and instructions — and no
+     macros, no source link, no app footer.** Preparation time and grams were chosen; macros and
+     the link were not. The recipient is cooking, not counting, and a signature in someone
+     else's message is an advert.
+
+415. **Out through `shareText`, like the menu and the shopping list, and nothing is stored.**
+     The system share sheet on a phone reaches WhatsApp in one tap; a desktop gets the
+     clipboard; if both fail the text is already on screen to copy by hand. No new share path,
+     no dependency, no CSP change. The chosen count is not remembered between openings — no
+     field, no meta key, nothing for sync to carry.
+
+
+### 2026-09-13 — Phase 22 built: przepis dla kogoś
+
+> Built as planned; no deviation from PLAN.md and no new decision. Tasks 1–6 done.
+
+- **What was added.** `src/lib/recipe-share.ts` (`formatRecipeIngredient`,
+  `formatRecipeShare`) with `recipe-share.test.ts` (11 tests, one or more per rule under
+  „What is shared"); `src/lib/components/RecipeShareSheet.svelte`; „Udostępnij przepis" in the
+  meal screen's „Ile gotuję", hidden when the recipe is gone; „Udostępnij" in the editor's
+  action row of an existing recipe, compared against a serialized `$state.snapshot(draft)`
+  taken after `load` and inside `commit` — the one function both the plain save and the
+  „update future days?" answer go through — and not after „Zapisz jako kopię", which writes a
+  different recipe; `e2e/udostepnij.spec.ts` (6 scenarios).
+- **Small choices inside the plan, not deviations.** The − button is disabled at 1 rather than
+  merely clamping. A typed count that is not a positive number leaves the count where it was.
+  An outcome line („Skopiowano do schowka.") is cleared when the count changes, because it was
+  about a text that no longer exists. The count resets on each opening but not when the screen
+  behind the sheet reloads (a sync landing on the meal screen), so it cannot snap back while
+  being chosen. The failure line reads „zaznacz przepis powyżej" where the menu's reads
+  „zaznacz jadłospis powyżej"; the other two lines are word for word the menu's.
+- **Acceptance criteria, one by one** (all verified on Linux, 2026-09-13):
+  1. Editor, 3 portions → name, „3 porcje · 40 min", every row ×3 in order, instructions
+     verbatim: **pass** — the spec matches the exact recorded clipboard text.
+  2. „1 ząbek (5 g)" → „2 ząbki (10 g)" at 2 and „1,5 ząbka (8 g)" at 1,5; no brackets after
+     `g`/`ml`: **pass** — unit tests and the sheet in the e2e spec.
+  3. No time → no „min"; no instructions → no „Przygotowanie": **pass** — unit + e2e.
+  4. No kcal, macros or source link: **pass** — unit (a recipe with a `sourceUrl`) + e2e.
+  5. Unsaved change → button disabled with the sentence; after saving → enabled and shares the
+     saved version: **pass** — e2e, including that undoing the change by hand re-enables it.
+  6. A new recipe has no share button: **pass** — e2e.
+  7. Meal cooked at 2, one row skipped, one swapped → sheet at 2, skipped absent, swapped names
+     the substitute: **pass** — e2e.
+  8. Changing the count leaves „Ile gotuję" and the day's kcal unchanged after closing and after
+     a reload: **pass** — e2e; the next opening starts at 2 again, not at the 5 chosen.
+  9. A meal whose recipe was deleted has no share button: **pass** — e2e.
+  10. The unscaled-instructions note at a count ≠ 1, in the sheet and never in the text:
+      **pass** — e2e (absent at 1, present at 3, absent without instructions, absent from the
+      recorded text).
+  11. `navigator.share()`, else the clipboard, else the text left on screen, with the three
+      outcome lines: **pass** — three e2e scenarios, one per route, via an init script.
+  12. No data-model change: **pass** — `types.ts`, `db.ts` and `src/lib/sync` untouched.
+  13. No dependency, CSP or `Caddyfile` change, verified under `npm run docker:up`: **pass** —
+      `package.json`, `package-lock.json` and `Caddyfile` untouched; `udostepnij`, `screens`,
+      `adjustments` and `measures` specs 14/14 against the container on :8080, and the first
+      spec asserts `cspViolations` is empty.
+  14. Polish UI, English code and comments: **pass** — by review.
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npm test` 999/999.
+  `E2E_WEBKIT=1 npx playwright test` — Chromium and WebKit together — 142 passed, 3 skipped,
+  0 failed, in 9.6 min.
+- **README.** Status blockquote now says phases 1–22 and describes phase 22; its count of
+  post-1.0 phases said „ten", stale since phase 19, and now says „fourteen". A bullet on sending
+  a recipe joined the list of what the app does. `docs/screenshots/meal.png` re-taken: the new
+  button is in view beside „Lista zakupów". The editor screenshot is of a *new* recipe, which
+  correctly has no button, so it did not change; the other screenshots were not touched.
+- **Noted, not fixed.** The first `npm run screenshots` against a freshly recreated container
+  timed out waiting for the editor's „Nazwa" field; an immediate re-run went through end to end.
+  It looks like the first-run race `openRecipeEditor` documents, in a script that waits for the
+  heading but not for the nutrition import. Not caused by this phase (the new recipe screen has
+  no new element) and not fixed here.
 
 
 ## Open questions

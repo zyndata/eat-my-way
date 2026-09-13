@@ -2318,3 +2318,155 @@ the finding, not the trigger to start rewriting here.
 - [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
       `npm run docker:up`.
 - [ ] All UI text in Polish; code and comments in English.
+
+## Phase 22 — Przepis dla kogoś
+
+The person who plans the week is not always the one who cooks it. Today the only way to hand
+someone a recipe is to open the editor and retype it into a message — and the editor holds the
+amounts for **one** portion, so the arithmetic for four gets done in somebody's head, inside a
+messenger. This phase turns a recipe into plain text for a chosen number of portions —
+ingredients and preparation — and gets it out of the app through the same `shareText` the
+shopping list and the menu already use. The recipient does not have Eat My Way and does not
+need it: what arrives in WhatsApp is text.
+
+**Two starting points, one sheet** (decision 408): the recipe editor — which *is* the recipe
+screen in this app, there is no read-only one — and a planned meal's screen. Both open
+`RecipeShareSheet`; they differ only in which rows they hand it and which number it starts at.
+
+### What is shared
+
+```
+Leczo z kiełbasą
+3 porcje · 40 min
+
+Składniki:
+• Papryka czerwona — 3 szt. (450 g)
+• Kiełbasa podwawelska — 300 g
+• Czosnek — 3 ząbki (15 g)
+• Passata pomidorowa — 600 ml
+
+Przygotowanie:
+Paprykę pokrój w paski, kiełbasę w półplasterki…
+```
+
+- **Ingredients in the recipe's own order** — not grouped by department and not merged
+  (decision 411). A shopping list is read in a shop; this is read at a stove, beside
+  instructions that mention the ingredients in the order they were written.
+- **Amounts** are `displayedAmount(item, portions)` through `formatMeasureAmount`, so a measure
+  declines the way it does everywhere else: „4 ząbki", „1,5 łyżki".
+- **Grams in brackets after every `szt` row, and only there** (decision 412): „2 ząbki (10 g)",
+  „3 szt. (450 g)". Not after `g`, where they repeat the number, and not after `ml`. This
+  deliberately differs from `showGrams` on the shopping list, which prints grams after `ml`
+  too — a shop sells milk by weight on the label; a kitchen pours it.
+- **The second line** is `formatPortions(n)`, followed by `· N min` when the recipe has a
+  `prepMinutes`, and by nothing when it does not.
+- **Instructions verbatim** under „Przygotowanie:"; the section is left out when they are
+  empty. **They are not scaled** (decision 413): `instructions` is free text, and „dodaj 200 g
+  mąki" inside it stays 200 g at any portion count. The sheet says so whenever the count is not
+  1 and there are instructions; the shared text does not.
+- **Not in the text** (decision 414): macros, the source link, and any app name or footer.
+  The recipient is cooking, not counting, and a signature in someone's message is an advert.
+- A row with an empty `ingredientId` is skipped; a row whose ingredient is gone prints
+  „Nieznany składnik", as the meal screen does; a recipe with no ingredients prints
+  „Brak składników.".
+- **Plain text, no WhatsApp `*bold*`** — for `formatShoppingList`'s reason: the share sheet
+  reaches apps that print the asterisks literally.
+
+### From a planned meal
+
+- The rows are **`effectiveItems(recipe, meal.adjustments)`** — what is actually being cooked,
+  the same seam the snapshot and the shopping list read (Phase 14, decision 410). A skipped row
+  is **absent**, not struck through: the recipient has nothing to restore. A swapped row prints
+  the substitute; added rows come last.
+- The sheet **starts at `meal.cookingScale`** — „Ile gotuję" is exactly the number the
+  recipient is being asked to cook.
+- Changing the count in the sheet **never writes back to the meal**. The sheet asks a question
+  about a message, not about the plan.
+- A meal whose recipe was deleted has **no button**: the meal outlives the recipe, its
+  ingredients and instructions do not.
+
+### From the recipe editor
+
+- Only for a **saved** recipe; `#/recipes/new/edit` has no button.
+- It shares **the stored recipe, never the draft** (decision 409). While the draft differs from
+  what was loaded or last saved, the button is disabled and one sentence under it says
+  „Zapisz zmiany, żeby udostępnić przepis.". Sharing the draft would send a half-typed row or
+  an amount nobody saved, and the message and the library would then disagree about what the
+  recipe is.
+- The sheet **starts at 1 portion**.
+
+### Portions
+
+A stepper shaped like „Ile gotuję": − and + move by one and the buttons stop at 1; the field
+takes any positive number, so 1,5 is possible. **Not remembered** between openings (decision
+415): no field, no meta key, nothing for sync to carry.
+
+### Tasks
+
+1. **`src/lib/recipe-share.ts` — pure**, in the shape of `menu.ts` and `shopping.ts`: no I/O,
+   no clock. `formatRecipeIngredient(item, portions, lookup)` for one line and
+   `formatRecipeShare(recipe, items, portions, lookup)` for the whole text, where `recipe` is
+   `Pick<Recipe, 'name' | 'prepMinutes' | 'instructions'>` and `items` is passed separately so
+   the caller decides between `recipe.items` and `effectiveItems`. Reuses `displayedAmount`,
+   `displayedGrams`, `formatMeasureAmount` and `formatPortions`; restates none of them.
+   `recipe-share.test.ts` covers every rule in „What is shared".
+
+2. **`src/lib/components/RecipeShareSheet.svelte`** — `MenuSheet`'s twin. Props: `open`,
+   `recipe`, `items`, `initialPortions`, `onclose`. On open it resets the count to
+   `initialPortions` and loads the ingredient names itself through
+   `repository.ingredientsByIds`, so neither caller has to hold them. It shows the stepper, the
+   note about unscaled instructions, **the text itself** in a selectable `whitespace-pre-line`
+   block — the „failed" fallback tells the user to select it, so it has to be on screen — and
+   „Udostępnij przepis" with the three outcome lines worded exactly as the other two sheets.
+   The share title is the recipe name.
+
+3. **Meal screen** (`src/routes/Meal.svelte`): „Udostępnij przepis" beside „Lista zakupów" in
+   „Ile gotuję" — both take this meal out of the app at the number that section sets. Hidden
+   when the recipe is gone.
+
+4. **Recipe editor** (`src/routes/RecipeEditor.svelte`): „Udostępnij" in the action row of an
+   existing recipe. The dirty check is a serialized `$state.snapshot(draft)` taken after `load`
+   and after every successful save (both `save` and the „update future days?" answer); the
+   button compares the live draft against it.
+
+5. **`e2e/udostepnij.spec.ts`.** An init script removes `navigator.share` and replaces
+   `navigator.clipboard.writeText` with a recorder on `window`, so the spec reads the exact
+   text on both engines without clipboard permissions. One scenario per acceptance criterion
+   below that is visible from the UI; one more stubs both routes to fail and asserts the text
+   stays on screen.
+
+6. **README.** The status blockquote gains phase 22, and the description of what the app does
+   gains sending a recipe to someone. The editor and the meal screen each gain a button: if
+   either appears in the screenshots, re-take them with `npm run screenshots`.
+
+**Not in this phase:** a read-only recipe view (decision 408); scaling the numbers inside the
+instructions, whether by pattern or by Gemini (decision 413); a link or file the recipient could
+import into an Eat My Way of their own; an image or a PDF; a share button on the library list.
+
+### Acceptance criteria
+
+- [ ] From the editor of a saved recipe, choosing 3 portions shares its name, „3 porcje", its
+      preparation time, every ingredient at three times its amount in the recipe's order, and
+      the instructions verbatim.
+- [ ] A row of „1 ząbek (5 g)" reads „Czosnek — 2 ząbki (10 g)" at 2 portions and
+      „Czosnek — 1,5 ząbka (8 g)" at 1,5; a `g` row and an `ml` row carry no brackets.
+- [ ] A recipe without a time has no „min" in the text; a recipe without instructions has no
+      „Przygotowanie".
+- [ ] The text contains no kcal, no macronutrients and no source link.
+- [ ] With an unsaved change in the editor the button is disabled and a sentence says why;
+      after saving it is enabled and shares the saved version.
+- [ ] A new, unsaved recipe shows no share button.
+- [ ] From a planned meal cooked at 2 with one row skipped and one swapped, the sheet opens at
+      2, the skipped ingredient is absent and the swapped row names the substitute.
+- [ ] Changing the count in that sheet leaves the meal's „Ile gotuję" and the day's totals
+      unchanged, after closing the sheet and after a reload.
+- [ ] A planned meal whose recipe was deleted shows no share button.
+- [ ] At a count other than 1, a recipe with instructions shows the note that numbers in them
+      are not recalculated — in the sheet, never in the shared text.
+- [ ] `navigator.share()` where it exists, the clipboard elsewhere, and the text left on screen
+      to copy by hand if both fail — with the same three outcome lines as the menu.
+- [ ] No data-model change of any kind: no new field, no meta key, no schema version, no
+      migration.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.
