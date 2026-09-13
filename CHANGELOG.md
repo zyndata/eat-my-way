@@ -12,6 +12,14 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 - Plan phase 23 — redukcja i masa
 
+### Features
+
+- Phase 23 — redukcja i masa
+
+### Miscellaneous
+
+- Update CHANGELOG
+
 ## [1.13.0] - 2026-09-13
 
 ### Bug Fixes
