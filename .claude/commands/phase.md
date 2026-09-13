@@ -44,7 +44,9 @@ Implement **Phase $ARGUMENTS** of this project. Follow this procedure exactly:
 3. Regenerate the changelog (`npm run changelog`, once that script exists) and amend or add a
    `chore: update CHANGELOG` commit. Skip if git-cliff is not available yet — the release
    workflow regenerates it anyway.
-4. Push to `dev`.
+4. Push to `dev`, then wait for that commit's `ci.yml` run (find it by SHA,
+   `gh run watch <id> --exit-status`) and report its result. A red run is fixed and pushed again
+   before the summary — a phase is not done while its run is pending or red.
 5. Give the user a plain-language summary of what was built and how it was verified.
 6. End with an explicit **go / no-go** statement for the next phase.
 

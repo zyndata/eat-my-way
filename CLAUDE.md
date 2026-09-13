@@ -19,11 +19,17 @@ https://eatmyway.gorny.dev. No application backend.
   after every phase.
 - Any **deviation from PLAN.md must be recorded in STATE.md** before proceeding.
 - **Conventional commits**; push after each phase.
-- **A push is not finished until CI is green.** `ci.yml` runs on every push to `dev` and `main`
-  and is the only check that runs somewhere other than the machine the work was done on — a
-  green local run is evidence, not a substitute. After pushing, wait for the run
-  (`gh run watch <id> --exit-status`) and report what it said. Never call work done while a run
-  is pending or red.
+- **A push is not finished until CI is green.** `ci.yml` runs on every push to `dev` (and on pull
+  requests) — **never on `main`**, and it never has. It is the only check that runs somewhere
+  other than the machine the work was done on, and it runs the e2e suite in both engines on every
+  push — a green local run is evidence, not a substitute. After pushing, find the run by the
+  pushed commit's SHA, wait for it (`gh run watch <id> --exit-status`) and report what it said.
+  Never call work done while a run is pending or red.
+- **A release has one e2e gate, and it is on `dev`.** The `vX.Y.Z` tag starts `deploy.yml`, whose
+  `build` job repeats check, unit tests and build — but not Playwright. So only a `dev` commit
+  whose `ci.yml` run is green may be merged to `main` and tagged; `/release` checks this first.
+  Afterwards the release job's `chore(release)` CHANGELOG commit is pushed back to `dev`, which
+  starts one more CI run to wait for.
 - **End-of-phase ritual:** update STATE.md → **re-read README.md against what the phase
   changed** → regenerate CHANGELOG.md (`npm run changelog`) → commit → push → plain-language
   summary → go/no-go statement for the next phase.
