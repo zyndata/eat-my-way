@@ -5448,6 +5448,10 @@ its own.
   error", before the app renders. `e2e/udostepnij.spec.ts`, untouched by this phase and green
   under WebKit in phase 22's run earlier the same day, fails 6/6 the same way. So this is the
   WebKit build (Playwright 1.62.1) or the host, not the change. It was not investigated here.
+  **CI closes this gap.** Run 34771537549 (7bc26e4) went green on both jobs. Its end-to-end job
+  runs the whole suite with `E2E_WEBKIT: '1'`: 295 passed, 3 skipped, 0 failed — 149 per
+  engine, with the 3 skips on WebKit — so the seven new goals scenarios passed in WebKit too.
+  What stays unexplained is only this machine's local WebKit.
   The next WebKit run should start with `npx playwright install webkit` and, if that does not
   fix it, `npx playwright install-deps webkit`.
 - **The wizard** uses the same `GoalsForm` and so has the new selects. No scenario walks the
