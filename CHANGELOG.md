@@ -8,9 +8,17 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **e2e:** Type the share recorder's title as possibly undefined
+
 ### Features
 
 - Phase 22 — przepis dla kogoś
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [1.12.0] - 2026-09-12
 
