@@ -8,9 +8,9 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–22 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–23 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
-> and the installable offline PWA for 1.0, then fourteen phases that daily use asked for after it:
+> and the installable offline PWA for 1.0, then fifteen phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
 > (10), a round of fixes to what the app says (11), adding an ingredient by photographing
 > the package instead of typing it (12), a planner that proposes a day or a week that fits
@@ -26,7 +26,8 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > twenty minutes" (20), and the first half-minute of a fresh install — the window in which the
 > app is writing its ingredient database and used to lose a Drive sync started inside it (21),
 > and a recipe you can send to whoever is cooking it, at the number of portions they are
-> cooking (22).
+> cooking (22), and a goals calculator that works out a reduction or a gain, not only the
+> energy that keeps your weight where it is (23).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -120,10 +121,15 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   sex, age, height, weight and activity into a daily kcal goal (Mifflin-St Jeor) and a split of
   it into grams — and shows the whole derivation: the basal rate, the activity factor, the
   product and each macro's share. The split is yours to set, three percentages that have to add
-  up to 100, so a high-protein target is one number rather than a rewrite. It still only
+  up to 100, so a high-protein target is one number rather than a rewrite. Pick a goal — keep
+  your weight, lose it or put it on — and a pace in kilograms a week, and it takes a deficit or
+  adds a surplus to the maintenance figure at 7 700 kcal a kilogram. It never proposes a
+  reduction below 1 200 kcal for a woman or 1 500 for a man, warns when the pace is more than
+  1 % of body weight a week, and shows protein per kilogram so a smaller total does not quietly
+  mean too little of it. It still only
   *fills* the four fields: nothing is stored until you press *Zapisz cele*, and every value
-  stays editable afterwards. What you tell it — sex, age, height, weight, activity level and
-  the split — is saved with the goals, so reopening the panel on this device, on a second one
+  stays editable afterwards. What you tell it — sex, age, height, weight, activity level,
+  the split, and the goal with its pace — is saved with the goals, so reopening the panel on this device, on a second one
   through Drive, or after restoring a backup shows the same data instead of asking again. That
   also means it is in the Drive file and in the export file, which is what the two paragraphs
   under *Getting your data back* and [SECURITY.md](SECURITY.md) say.

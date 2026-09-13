@@ -22,8 +22,9 @@ browser and in their own Google Drive:
 - a **Google OAuth token** with the `drive.appdata` scope — access to this app's private Drive
   folder only, never to the rest of the user's Drive;
 - the user's meal history, recipes and nutrition goals;
-- the **body data the goals calculator was given** — sex, age, height, weight and activity
-  level — if it was ever used. It is stored on the profile rather than on the device, so it
+- the **body data the goals calculator was given** — sex, age, height, weight, activity
+  level, the macro split, and the weight goal (keep, lose or gain) with its weekly rate — if it
+  was ever used. It is stored on the profile rather than on the device, so it
   travels to the same private `appDataFolder` and into the export file described below. It is
   entered by the user, it is never sent anywhere else, and nothing in the app requires it.
 

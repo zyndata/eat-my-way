@@ -222,3 +222,200 @@ test('filling the fields confirms itself, in the numbers it filled in', async ({
   // And the trap the panel's preamble only hints at: the press has saved nothing.
   await expect(confirmation).toContainText('Nic jeszcze nie zostało zapisane');
 });
+
+/**
+ * Phase 23. A reduction and a gain, worked out from the maintenance figure the calculator has
+ * always produced — one scenario per acceptance criterion that is visible from the screen.
+ */
+
+const goalSelect = (page: Page) => page.getByRole('combobox', { name: 'Cel', exact: true });
+const rateSelect = (page: Page) => page.getByRole('combobox', { name: 'Tempo', exact: true });
+const fill = (page: Page) => page.getByRole('button', { name: 'Wypełnij pola' }).click();
+
+async function enterBody(
+  page: Page,
+  body: { sex: 'female' | 'male'; age: number; height: number; weight: number }
+): Promise<void> {
+  await page.getByLabel('Płeć').selectOption(body.sex);
+  await page.getByLabel(/Wiek/).fill(String(body.age));
+  await page.getByLabel(/Wzrost/).fill(String(body.height));
+  await page.getByLabel(/Waga/).fill(String(body.weight));
+  await page.getByLabel('Aktywność').selectOption('sedentary');
+}
+
+const MAN_OF_40 = { sex: 'male' as const, age: 40, height: 180, weight: 80 };
+
+test('maintain is unchanged, a reduction and a gain start from it', async ({ device }) => {
+  await openCalculator(device);
+  await enterBody(device, MAN_OF_40);
+
+  // The default goal is maintain, and it fills what the calculator always filled.
+  await expect(goalSelect(device)).toHaveValue('maintain');
+  await expect(rateSelect(device)).toHaveCount(0);
+  await fill(device);
+  await expect(kcalField(device)).toHaveValue('2076');
+
+  // 2076 − 550 = 1526, split 25/45/30.
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await expect(rateSelect(device)).toContainText('0,5 kg na tydzień — ok. 550 kcal dziennie');
+  await expect(derivation(device)).toContainText('zapotrzebowanie na utrzymanie wagi: 2076 kcal');
+  await expect(derivation(device)).toContainText('deficyt na redukcję (0,5 kg/tydz.): 550 kcal');
+  await expect(derivation(device)).toContainText('cel dzienny: 1526 kcal');
+  await fill(device);
+  await expect(kcalField(device)).toHaveValue('1526');
+  await expect(device.getByLabel(/Białko \(g\)/)).toHaveValue('95');
+  await expect(device.getByLabel(/Węglowodany \(g\)/)).toHaveValue('172');
+  await expect(device.getByLabel(/Tłuszcz \(g\)/)).toHaveValue('51');
+
+  // 2076 + 275 = 2351.
+  await goalSelect(device).selectOption({ label: 'Budowa masy' });
+  await expect(derivation(device)).toContainText('nadwyżka na budowę masy (0,25 kg/tydz.): 275 kcal');
+  await fill(device);
+  await expect(kcalField(device)).toHaveValue('2351');
+});
+
+test('a small reduction is raised to the minimum, warned about and hinted at', async ({ device }) => {
+  await openCalculator(device);
+  // Maintenance 1209; 1209 − 1100 = 109, raised to 1200. 75 g protein is 1,5 g/kg.
+  await enterBody(device, { sex: 'female', age: 60, height: 155, weight: 50 });
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await rateSelect(device).selectOption('1');
+
+  await expect(derivation(device)).toContainText('podniesiono do minimum 1200 kcal');
+  await expect(derivation(device)).toContainText('cel dzienny: 1200 kcal');
+  await expect(derivation(device)).toContainText('1,5 g/kg');
+  await expect(device.getByTestId('floor-note')).toContainText('lekarza lub dietetyka');
+  await expect(device.getByTestId('pace-warning')).toContainText('ponad 1% masy ciała');
+  await expect(device.getByTestId('protein-hint')).toContainText('1,6 g białka');
+
+  await fill(device);
+  await expect(kcalField(device)).toHaveValue('1200');
+  await expect(device.getByLabel(/Białko \(g\)/)).toHaveValue('75');
+});
+
+test('a man of 70 reducing at 1 kg is raised to 1500 kcal', async ({ device }) => {
+  await openCalculator(device);
+  // Maintenance 1544; 1544 − 1100 = 444, raised to 1500.
+  await enterBody(device, { sex: 'male', age: 70, height: 165, weight: 60 });
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await rateSelect(device).selectOption('1');
+  await fill(device);
+  await expect(kcalField(device)).toHaveValue('1500');
+  await expect(device.getByTestId('pace-warning')).toBeVisible();
+});
+
+test('switching the goal picks a rate on its list, and leaves the split alone', async ({
+  device
+}) => {
+  await openCalculator(device);
+  await device.getByLabel(/Białko \(%\)/).fill('40');
+  await device.getByLabel(/Węglowodany \(%\)/).fill('30');
+  await device.getByLabel(/Tłuszcz \(%\)/).fill('30');
+
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await expect(rateSelect(device).locator('option:checked')).toHaveText(/^0,5 kg/);
+  await rateSelect(device).selectOption('0.75');
+
+  await goalSelect(device).selectOption({ label: 'Budowa masy' });
+  await expect(rateSelect(device).locator('option:checked')).toHaveText(/^0,25 kg/);
+
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await expect(rateSelect(device).locator('option:checked')).toHaveText(/^0,5 kg/);
+
+  await expect(device.getByLabel(/Białko \(%\)/)).toHaveValue('40');
+  await expect(device.getByLabel(/Węglowodany \(%\)/)).toHaveValue('30');
+  await expect(device.getByLabel(/Tłuszcz \(%\)/)).toHaveValue('30');
+});
+
+test('the goal and the rate are saved only by „Zapisz cele", and then survive', async ({
+  device
+}) => {
+  await openCalculator(device);
+  await enterBody(device, MAN_OF_40);
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await rateSelect(device).selectOption('0.75');
+  await fill(device);
+
+  // Filling saved nothing: leaving Settings and coming back finds maintain.
+  await device.goto('#/recipes');
+  await device.goto('#/settings');
+  await openCalculator(device);
+  await expect(goalSelect(device)).toHaveValue('maintain');
+
+  await enterBody(device, MAN_OF_40);
+  await goalSelect(device).selectOption({ label: 'Redukcja' });
+  await rateSelect(device).selectOption('0.75');
+  await device.getByRole('button', { name: 'Zapisz cele' }).click();
+  await expect(device.getByText('Zapisano.', { exact: true })).toBeVisible();
+
+  await device.goto('#/recipes');
+  await device.goto('#/settings');
+  await openCalculator(device);
+  await expect(goalSelect(device)).toHaveValue('lose');
+  await expect(rateSelect(device).locator('option:checked')).toHaveText(/^0,75 kg/);
+
+  await device.reload();
+  await openCalculator(device);
+  await expect(goalSelect(device)).toHaveValue('lose');
+  await expect(rateSelect(device).locator('option:checked')).toHaveText(/^0,75 kg/);
+  // 2076 − 825 = 1251, under a man's 1500 kcal floor — raised to it.
+  await expect(derivation(device)).toContainText('cel dzienny: 1500 kcal');
+});
+
+test('the goal and the rate reach a second device through Drive', async ({
+  device,
+  drive,
+  openDevice
+}) => {
+  seedAccount(drive);
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+
+  await openCalculator(device);
+  await enterBody(device, MAN_OF_40);
+  await goalSelect(device).selectOption({ label: 'Budowa masy' });
+  await rateSelect(device).selectOption('0.5');
+  await device.getByRole('button', { name: 'Zapisz cele' }).click();
+  await expect(device.getByText('Zapisano.', { exact: true })).toBeVisible();
+
+  await expect
+    .poll(() => JSON.stringify(drive.snapshot()['profile.json']), { timeout: 20_000 })
+    .toMatch(/goal\W+gain\W+rate\W+0\.5/);
+
+  const second = await openDevice();
+  await second.getByRole('button', { name: CONNECT }).click();
+  await expect(status(second)).toContainText('Połączono');
+
+  // The calculator seeds itself once per mount, so it is opened on a fresh one.
+  await second.reload();
+  await openCalculator(second);
+  await expect(goalSelect(second)).toHaveValue('gain');
+  await expect(rateSelect(second).locator('option:checked')).toHaveText(/^0,5 kg/);
+});
+
+test('a profile written before phase 23 opens on maintain with its numbers unchanged', async ({
+  openDevice,
+  drive
+}) => {
+  drive.put(
+    'profile.json',
+    profileDocument({
+      googleSub: 'sub-1',
+      goals: { kcal: 2076, protein: 130, carbs: 234, fat: 69 },
+      body: { ...MAN_OF_40, activity: 'sedentary' }
+    })
+  );
+  drive.put('recipes.json', recipesDocument([]));
+
+  const device = await openDevice();
+  await device.getByRole('button', { name: CONNECT }).click();
+  await expect(status(device)).toContainText('Połączono');
+  await expect(kcalField(device)).toHaveValue('2076');
+
+  await device.reload();
+  await openCalculator(device);
+  await expect(goalSelect(device)).toHaveValue('maintain');
+  await expect(device.getByLabel(/Wiek/)).toHaveValue('40');
+  await expect(derivation(device)).toContainText('zapotrzebowanie na utrzymanie wagi: 2076 kcal');
+  await expect(derivation(device)).not.toContainText('cel dzienny');
+});

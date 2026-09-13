@@ -55,7 +55,59 @@ export interface MacroSplit {
  */
 export interface BodyData extends CalculatorInput {
   split?: MacroSplit;
+  /** Absent means `'maintain'` — what every profile written before Phase 23 says. */
+  goal?: WeightGoal;
+  /** Kilograms a week, one of the goal's presets. Absent unless `goal` is not `'maintain'`. */
+  rate?: number;
 }
+
+/**
+ * Keep, lose or gain weight (Phase 23, decisions 416–418).
+ *
+ * The maintenance figure stays what the formula says; a goal and a weekly rate turn it into a
+ * deficit or a surplus. Rates are presets rather than a free field — a free field invites two
+ * kilograms a week, and a free kcal field is the guess decision 337 turned down.
+ */
+export type WeightGoal = 'maintain' | 'lose' | 'gain';
+
+export interface WeightGoalOption {
+  key: WeightGoal;
+  label: string;
+  /** Kilograms a week the goal offers, slowest first. Empty for maintain. */
+  rates: readonly number[];
+  defaultRate: number | undefined;
+}
+
+const MAINTAIN_OPTION: WeightGoalOption = {
+  key: 'maintain',
+  label: 'Utrzymanie wagi',
+  rates: [],
+  defaultRate: undefined
+};
+
+export const WEIGHT_GOALS: readonly WeightGoalOption[] = [
+  MAINTAIN_OPTION,
+  { key: 'lose', label: 'Redukcja', rates: [0.25, 0.5, 0.75, 1], defaultRate: 0.5 },
+  // Stops at 0,5 kg: 7 700 kcal per kilogram is a rougher figure for gain (decision 418).
+  { key: 'gain', label: 'Budowa masy', rates: [0.25, 0.5], defaultRate: 0.25 }
+];
+
+/** A goal and, unless it is maintain, the rate it is pursued at. */
+export interface WeightTarget {
+  goal: WeightGoal;
+  rate?: number;
+}
+
+export const MAINTAIN: WeightTarget = { goal: 'maintain' };
+
+/** Energy in a kilogram of body weight, as reduction calculators conventionally count it. */
+export const KCAL_PER_KG = 7700;
+
+/** Below this much protein per kilogram, a reduction or a gain gets a hint (decision 420). */
+export const PROTEIN_HINT_G_PER_KG = 1.6;
+
+/** Share of body weight a week above which a reduction is called fast (decision 419). */
+const AGGRESSIVE_SHARE_PER_WEEK = 0.01;
 
 /** A conventional, editable split. Unchanged for anyone who never opens the three fields. */
 export const DEFAULT_SPLIT: MacroSplit = { protein: 25, carbs: 45, fat: 30 };
@@ -107,6 +159,65 @@ export function splitOf(body: BodyData | undefined): MacroSplit {
   return split !== undefined && isSplitUsable(split) ? split : DEFAULT_SPLIT;
 }
 
+/** The goal's presets, labels and default rate, falling back to maintain. */
+export function goalOption(goal: WeightGoal): WeightGoalOption {
+  return WEIGHT_GOALS.find((option) => option.key === goal) ?? MAINTAIN_OPTION;
+}
+
+/** True when the goal is known and — unless it is maintain — the rate is one of its presets. */
+export function isTargetUsable(target: { goal?: unknown; rate?: unknown }): boolean {
+  const option = WEIGHT_GOALS.find((candidate) => candidate.key === target.goal);
+  if (option === undefined) return false;
+  return option.key === 'maintain' || option.rates.includes(target.rate as number);
+}
+
+/** The goal a stored body carries, or maintain. The rate is dropped when maintaining. */
+export function targetOf(body: BodyData | undefined): WeightTarget {
+  if (body?.goal === undefined || !isTargetUsable(body)) return MAINTAIN;
+  return body.goal === 'maintain' ? MAINTAIN : { goal: body.goal, rate: body.rate as number };
+}
+
+/**
+ * The daily kcal the goal adds to the maintenance figure: negative for a reduction, positive for
+ * a gain, zero for maintain. `round(rate × 7700 / 7)`, so the presets give 275, 550, 825, 1100.
+ */
+export function energyOffset(goal: WeightGoal, rate: number | undefined): number {
+  if (goal === 'maintain' || rate === undefined) return 0;
+  const magnitude = Math.round((rate * KCAL_PER_KG) / 7);
+  return goal === 'lose' ? -magnitude : magnitude;
+}
+
+/** The least a reduction will propose (decision 419). */
+export function minimumKcal(sex: Sex): number {
+  return sex === 'male' ? 1500 : 1200;
+}
+
+/** True when a reduction asks for more than 1 % of body weight a week. Warns; never blocks. */
+export function isRateAggressive(body: BodyData): boolean {
+  const target = targetOf(body);
+  return (
+    target.goal === 'lose' &&
+    target.rate !== undefined &&
+    target.rate > body.weight * AGGRESSIVE_SHARE_PER_WEEK
+  );
+}
+
+/** Grams of protein per kilogram of body weight, unrounded. */
+export function proteinPerKg(goals: Macros, body: CalculatorInput): number {
+  return goals.protein / body.weight;
+}
+
+/**
+ * True when a reduction or a gain gets less protein than `PROTEIN_HINT_G_PER_KG`.
+ *
+ * Compared at the one decimal the form shows, so the screen never says „≈ 1,6 g/kg" next to a
+ * hint to reach 1,6 g/kg.
+ */
+export function isProteinLow(goals: Macros, body: BodyData): boolean {
+  if (targetOf(body).goal === 'maintain') return false;
+  return Math.round(proteinPerKg(goals, body) * 10) / 10 < PROTEIN_HINT_G_PER_KG;
+}
+
 /**
  * Every step of the calculation, so the form can show where the number came from (Phase 19
  * task 3). `goals` is exactly what `calculateGoals` returns for the same input — one code
@@ -116,18 +227,42 @@ export interface GoalDerivation {
   /** Basal metabolic rate, unrounded. */
   bmr: number;
   factor: number;
+  /** `round(bmr × factor)` — the energy that keeps the weight where it is. */
+  maintenance: number;
+  /** The goal actually used — maintain when the given one was unusable. */
+  target: WeightTarget;
+  /** Signed kcal a day the goal adds; see `energyOffset`. */
+  offset: number;
+  /** True when a reduction was raised to `minimumKcal` or to the maintenance figure. */
+  floorApplied: boolean;
   split: MacroSplit;
   goals: Macros;
 }
 
-export function deriveGoals(input: CalculatorInput, split: MacroSplit = DEFAULT_SPLIT): GoalDerivation {
+export function deriveGoals(
+  input: CalculatorInput,
+  split: MacroSplit = DEFAULT_SPLIT,
+  target: WeightTarget = MAINTAIN
+): GoalDerivation {
   const usable = isSplitUsable(split) ? split : DEFAULT_SPLIT;
+  const usableTarget = targetOf({ ...input, ...target });
   const bmr = basalRate(input);
   const factor = activityFactor(input.activity);
-  const kcal = Math.round(bmr * factor);
+  const maintenance = Math.round(bmr * factor);
+  const offset = energyOffset(usableTarget.goal, usableTarget.rate);
+
+  // The floor never exceeds maintenance, so it cannot turn a deficit into a surplus.
+  const floor =
+    usableTarget.goal === 'lose' ? Math.min(minimumKcal(input.sex), maintenance) : -Infinity;
+  const floorApplied = maintenance + offset < floor;
+  const kcal = floorApplied ? floor : maintenance + offset;
   return {
     bmr,
     factor,
+    maintenance,
+    target: usableTarget,
+    offset,
+    floorApplied,
     split: usable,
     goals: {
       kcal,
@@ -139,8 +274,12 @@ export function deriveGoals(input: CalculatorInput, split: MacroSplit = DEFAULT_
 }
 
 /** Daily energy, and a macro split of it. All four numbers are rounded to whole units. */
-export function calculateGoals(input: CalculatorInput, split?: MacroSplit): Macros {
-  return deriveGoals(input, split).goals;
+export function calculateGoals(
+  input: CalculatorInput,
+  split?: MacroSplit,
+  target?: WeightTarget
+): Macros {
+  return deriveGoals(input, split, target).goals;
 }
 
 function gramsFor(kcal: number, percent: number, kcalPerGram: number): number {
@@ -177,7 +316,15 @@ export function readBodyData(value: unknown): BodyData | undefined {
   if (!isBodyUsable(body)) return undefined;
 
   const split = doc.split;
-  return typeof split === 'object' && split !== null && isSplitUsable(split)
-    ? { ...body, split: { protein: split.protein, carbs: split.carbs, fat: split.fat } }
-    : body;
+  const withSplit: BodyData =
+    typeof split === 'object' && split !== null && isSplitUsable(split)
+      ? { ...body, split: { protein: split.protein, carbs: split.carbs, fat: split.fat } }
+      : body;
+
+  // Phase 23: an unknown goal or an off-list rate degrades to maintain — absent — and keeps the
+  // body around it, the split's rule (decision 421).
+  if (doc.goal === undefined || !isTargetUsable(doc)) return withSplit;
+  return doc.goal === 'maintain'
+    ? { ...withSplit, goal: 'maintain' }
+    : { ...withSplit, goal: doc.goal, rate: doc.rate as number };
 }
