@@ -29,6 +29,7 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 20    | Metryczka przepisu          | done    | 2026-09-12 |
 | 21    | Pierwsze 24 sekundy         | done    | 2026-09-12 |
 | 22    | Przepis dla kogoś           | done    | 2026-09-13 |
+| 23    | Redukcja i masa             | pending |            |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
@@ -5297,6 +5298,66 @@ its own.
   It looks like the first-run race `openRecipeEditor` documents, in a script that waits for the
   heading but not for the nutrition import. Not caused by this phase (the new recipe screen has
   no new element) and not fixed here.
+
+
+### 2026-09-13 — Phase 23 planned: redukcja i masa
+
+> Asked for directly: the goals calculator gives the energy needed to *keep* a weight, and
+> there should be options for someone who wants to lose it or put it on — worked out the way
+> reduction calculators work. Checked against how they do it before planning: maintenance from
+> BMR × activity, then a deficit or surplus from a weekly rate at roughly 7 700 kcal per
+> kilogram, a floor of 1 200 kcal for women and 1 500 for men, and a warning past about 1 % of
+> body weight a week. Written as a phase at the user's request; nothing is built yet.
+
+416. **Decision 337 is partly reversed: a rate of change comes in, a target weight does not.**
+     337 turned down a bare „deficit in kcal" field as guessing with a user interface, because
+     without a weight log nothing can tell whether the number is working. That is still true —
+     and it is equally true of the maintenance figure the calculator has always produced, which
+     is an estimate from a formula nobody's metabolism follows exactly. The calculator's contract
+     is a *starting point* the user overrides (decision 335); a reduction is the most common
+     reason anyone opens a calorie calculator, and leaving that half of the arithmetic to
+     another website makes the one this app has the less useful of the two. What 337 was right
+     about stays out: a target weight, a date, a weight log, a chart, and a goal that moves.
+
+417. **Three goals, and maintain is the default and the absence.** „Utrzymanie wagi",
+     „Redukcja", „Budowa masy". A profile without the field is maintain, so every profile
+     written before phase 23 — and every existing e2e scenario — keeps its numbers.
+
+418. **Presets in kilograms a week, turned into kcal at 7 700 kcal/kg.** Reduction 0,25 / 0,5 /
+     0,75 / 1 kg (default 0,5), gain 0,25 / 0,5 kg (default 0,25); offsets 275, 550, 825 and
+     1 100 kcal. **Rejected:** a percentage of maintenance (−15 / −20 / −25 %), which is common
+     but says nothing a person can check against a scale; a free kilograms field, which invites
+     two kilograms a week; a free kcal field, for decision 337's reason. The same 7 700 is used
+     for gain, where it is a rougher figure — which is why gain stops at 0,5 kg.
+
+419. **A floor that is applied, and a pace warning that is not.** A reduction never proposes
+     less than 1 200 kcal (women) or 1 500 kcal (men), nor more than the maintenance figure
+     when that is already below the floor; the derivation shows when it was raised and why.
+     Above 1 % of body weight a week the form warns and lets it through. The difference is
+     deliberate: the floor is about what the calculator is willing to *suggest*; the four fields
+     remain the user's to type anything into.
+
+420. **The split is not touched when the goal changes; protein in g/kg is shown instead.**
+     Nudging the split towards protein on a reduction would silently overwrite a split the user
+     set themselves (phase 19). The problem it would solve is real — 25 % of a smaller number is
+     less protein — so the derivation shows g/kg of body weight, and below 1,6 g/kg on a
+     reduction or a gain one sentence suggests raising protein's share.
+
+421. **`goal` and `rate` are two more optional fields on `BodyData`, with no schema bump.**
+     `readBodyData` validates the pair and degrades an unknown goal or an off-list rate to
+     maintain while keeping the body — the rule the split follows. **Accepted consequence:** a
+     device still on an older build rebuilds `body` field by field on its next profile write and
+     drops the two fields, exactly as phase 19's split would have been dropped by a phase 18
+     build; the update check (decision 225) is what closes that window.
+
+422. **The derivation grows rather than being replaced.** Maintenance is shown on its own line
+     and named as such, so the sentence that prompted this phase — „this is the number for
+     keeping my weight" — becomes something the screen says rather than something the user has
+     to infer.
+
+423. **Not in phase 23:** a target weight or date, a weight log or chart, automatic
+     recalculation as weight changes, an adaptive maintenance figure from what was eaten,
+     Katch-McArdle or body fat, training/rest-day goals, and protein per kilogram as an input.
 
 
 ## Open questions
