@@ -2470,3 +2470,136 @@ import into an Eat My Way of their own; an image or a PDF; a share button on the
 - [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
       `npm run docker:up`.
 - [ ] All UI text in Polish; code and comments in English.
+
+## Phase 23 — Redukcja i masa
+
+The calculator answers one question: how much does this body burn in a day. What „Policz za
+mnie" writes into the kcal field is therefore the goal of someone who wants to **stay** where
+they are — and the derivation block says as much, one line above the number. Anyone who wants to
+lose weight or put it on has to take that number away and do the second half of the arithmetic
+somewhere else, which is exactly the half every calorie calculator on the web does for them.
+
+This phase adds that half, the way those calculators do it (decision 418): the maintenance
+figure stays what it is, and a **goal** — keep, lose, gain — with a **rate** in kilograms a week
+turns it into a deficit or a surplus. It is a starting estimate, like the maintenance figure
+itself; the calculator still only fills the four fields (decision 335 stands).
+
+**This partly reverses decision 337** (decision 416): a rate of change comes in, a target weight,
+a weight log and a goal that moves over time still do not.
+
+### The arithmetic
+
+```
+PPM (Mifflin-St Jeor)                         1730 kcal
+× współczynnik aktywności                     1,200
+= zapotrzebowanie na utrzymanie wagi          2076 kcal
+− deficyt na redukcję (0,5 kg/tydz.)           550 kcal
+= cel dzienny                                 1526 kcal
+```
+
+- **Energy per kilogram: 7 700 kcal** (decision 418). The daily offset is
+  `round(rate × 7700 / 7)`, so the presets give **275, 550, 825 and 1 100 kcal**. The same
+  figure is used for gain; its presets stop at a rate where that is still an honest estimate.
+- **Goals and rates are presets, not free fields** (decision 418):
+
+  | Cel               | Tempo (kg na tydzień)                         | Domyślne |
+  |-------------------|-----------------------------------------------|----------|
+  | Utrzymanie wagi   | —                                             | —        |
+  | Redukcja          | 0,25 · **0,5** · 0,75 · 1                     | 0,5      |
+  | Budowa masy       | **0,25** · 0,5                                | 0,25     |
+
+  Switching the goal resets the rate to that goal's default when the current one is not on its
+  list.
+- **The floor** (decision 419). A reduction never proposes less than **1 200 kcal for a woman
+  and 1 500 kcal for a man** — or the maintenance figure, if that is already lower, so the
+  floor can never turn a deficit into a surplus. When it applies, the derivation gains the line
+  „podniesiono do minimum 1200 kcal" and one sentence says why: below that, only under a doctor
+  or a dietitian. Gain has no ceiling beyond its two presets.
+- **The 1 % warning** (decision 419). When the chosen reduction is more than 1 % of body weight
+  a week, one sentence says so — faster loss costs more muscle and is harder to keep off. It
+  warns and does not block; the four fields stay the user's.
+- **Protein per kilogram** (decision 420). The split stays three percentages, and changing the
+  goal **does not change it** — that would overwrite the user's own split. But 25 % of a
+  smaller number is less protein, so the derivation gains protein in g/kg of body weight
+  („≈ 1,5 g/kg masy ciała"), and on a reduction or a gain below 1,6 g/kg one sentence suggests
+  raising protein's share.
+
+### Data model
+
+`BodyData` gains two optional fields (decision 421):
+
+```ts
+type WeightGoal = 'maintain' | 'lose' | 'gain';
+
+interface BodyData extends CalculatorInput {
+  split?: MacroSplit;
+  goal?: WeightGoal;   // absent = 'maintain'
+  rate?: number;       // kg/week, one of the goal's presets; absent unless goal ≠ 'maintain'
+}
+```
+
+Absent means maintain, which is what every profile written before this phase says, so every
+existing number stays exactly where it is. `readBodyData` validates the pair: an unknown goal, or
+a rate not on that goal's list, degrades to maintain and **keeps the body around it** — the
+split's rule from phase 19. No schema version, no migration.
+
+### Tasks
+
+1. **`src/lib/goals.ts` — pure, as it is now.** `WEIGHT_GOALS` with each goal's Polish label,
+   rate presets and default rate; `KCAL_PER_KG = 7700`; `energyOffset(goal, rate)`;
+   `minimumKcal(sex)`; `isRateAggressive(body)`; `proteinPerKg(goals, body)`. `deriveGoals`
+   grows `maintenance`, `offset` and `floorApplied` next to `bmr` and `factor`, and `goals.kcal`
+   becomes the adjusted figure — still one code path, so the shown derivation cannot drift from
+   the filled fields. `readBodyData` reads and validates `goal` and `rate`. `goals.test.ts`
+   gains the reference cases from the acceptance criteria below, computed by hand in comments
+   the way the existing ones are.
+
+2. **`src/lib/components/GoalsForm.svelte`.** Under „Aktywność": a „Cel" select and, when the
+   goal is not maintain, a „Tempo" select whose options name both the rate and the offset
+   („0,5 kg na tydzień — ok. 550 kcal dziennie"). The derivation gains the maintenance line,
+   the ± line, the floor line when it applied, the final figure and protein in g/kg. The floor
+   sentence, the 1 % warning and the protein hint sit under the derivation. `currentBody`
+   carries `goal` and `rate`, so they are saved by „Zapisz cele" and by nothing else. The
+   wizard uses the same component and gets all of it without a change of its own.
+
+3. **Sync and backup.** `documents.ts` already hands `doc.body` to `readBodyData`; its round-trip
+   test and the backup's gain a body with a goal and a rate, so a field this phase adds cannot
+   be the field the next sync drops.
+
+4. **`e2e/goals.spec.ts`** — one scenario per acceptance criterion below that is visible from the
+   screen. The existing calculator scenarios run unchanged: the default goal is maintain.
+
+5. **README and SECURITY.md.** The calculator bullet says it knows a reduction and a gain; the
+   status blockquote gains phase 23; the sentence listing what the calculator remembers — and
+   SECURITY.md's list of what the profile holds — gains the goal and the rate. No screenshot
+   shows the calculator, so none is re-taken unless that has changed by then.
+
+**Not in this phase** (decision 423): a target weight or a target date; a weight log, a chart, or
+a goal that recalculates itself as the weight changes; adapting the maintenance figure from what
+was actually eaten; Katch-McArdle or any formula that needs body fat; different goals for
+training and rest days; per-kilogram protein as an input rather than a readout.
+
+### Acceptance criteria
+
+- [ ] A man of 40, 180 cm, 80 kg, sedentary: „Utrzymanie wagi" fills **2076 kcal**, exactly as
+      before this phase; „Redukcja" at 0,5 kg fills **1526 kcal** and 95 g protein, 172 g
+      carbohydrates, 51 g fat at the default split; „Budowa masy" at 0,25 kg fills **2351 kcal**.
+- [ ] That reduction's derivation shows 2076 kcal as the maintenance figure, − 550 kcal, and
+      1526 kcal as the daily goal.
+- [ ] A woman of 60, 155 cm, 50 kg, sedentary, reducing at 1 kg a week: the goal is **1200
+      kcal**, not 109; the derivation says it was raised to the minimum and why; the 1 % warning
+      is shown; and the protein hint is shown (75 g is 1,5 g/kg).
+- [ ] A man of 70, 165 cm, 60 kg, sedentary, reducing at 1 kg a week is raised to **1500 kcal**.
+- [ ] No floor ever raises a reduction above the maintenance figure.
+- [ ] Switching from „Redukcja" at 0,75 kg to „Budowa masy" leaves a rate on the gain list
+      (0,25 kg), and back to „Redukcja" offers its own default (0,5 kg).
+- [ ] Changing the goal leaves the macro split exactly as the user set it.
+- [ ] The goal and the rate survive closing Settings, a reload, a Drive round trip and an
+      export/import round trip; a profile written before this phase opens on „Utrzymanie wagi"
+      with every number unchanged; a stored `{ goal: 'lose', rate: 3 }` reads back as maintain
+      with the body data intact.
+- [ ] The calculator still only *fills* the four fields; nothing saves without „Zapisz cele".
+- [ ] No schema version bump and no migration.
+- [ ] No new dependency, no CSP change, no `Caddyfile` change — verified under
+      `npm run docker:up`.
+- [ ] All UI text in Polish; code and comments in English.

@@ -29,8 +29,20 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 20    | Metryczka przepisu          | done    | 2026-09-12 |
 | 21    | Pierwsze 24 sekundy         | done    | 2026-09-12 |
 | 22    | Przepis dla kogoś           | done    | 2026-09-13 |
+| 23    | Redukcja i masa             | done    | 2026-09-13 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 23 is **built** (2026-09-13, decisions 416–424). The goals calculator no longer stops at
+the energy that keeps a weight where it is. A „Cel" select — „Utrzymanie wagi", „Redukcja",
+„Budowa masy" — and, off maintain, a „Tempo" select of preset kilograms a week turn the
+maintenance figure into a deficit or a surplus at 7 700 kcal/kg. A reduction is never proposed
+below 1 200 kcal (women) or 1 500 kcal (men), nor above maintenance; past 1 % of body weight a
+week the form warns and lets it through; protein in g/kg is shown, with a hint below 1,6 g/kg.
+The derivation names maintenance on its own line. `BodyData` gains optional `goal` and `rate`,
+validated in `readBodyData` and degraded to maintain without losing the body. One deviation,
+decision 424: a goal change always selects the new goal's default rate. No schema version, no
+migration, no dependency, no CSP or `Caddyfile` change.
 
 Phase 22 is **built** (2026-09-13, decisions 408–415), in the shape it was planned. A recipe
 goes out of the app as plain text for a chosen number of portions — name, portions and
@@ -5297,6 +5309,154 @@ its own.
   It looks like the first-run race `openRecipeEditor` documents, in a script that waits for the
   heading but not for the nutrition import. Not caused by this phase (the new recipe screen has
   no new element) and not fixed here.
+
+
+### 2026-09-13 — Phase 23 planned: redukcja i masa
+
+> Asked for directly: the goals calculator gives the energy needed to *keep* a weight, and
+> there should be options for someone who wants to lose it or put it on — worked out the way
+> reduction calculators work. Checked against how they do it before planning: maintenance from
+> BMR × activity, then a deficit or surplus from a weekly rate at roughly 7 700 kcal per
+> kilogram, a floor of 1 200 kcal for women and 1 500 for men, and a warning past about 1 % of
+> body weight a week. Written as a phase at the user's request; nothing is built yet.
+
+416. **Decision 337 is partly reversed: a rate of change comes in, a target weight does not.**
+     337 turned down a bare „deficit in kcal" field as guessing with a user interface, because
+     without a weight log nothing can tell whether the number is working. That is still true —
+     and it is equally true of the maintenance figure the calculator has always produced, which
+     is an estimate from a formula nobody's metabolism follows exactly. The calculator's contract
+     is a *starting point* the user overrides (decision 335); a reduction is the most common
+     reason anyone opens a calorie calculator, and leaving that half of the arithmetic to
+     another website makes the one this app has the less useful of the two. What 337 was right
+     about stays out: a target weight, a date, a weight log, a chart, and a goal that moves.
+
+417. **Three goals, and maintain is the default and the absence.** „Utrzymanie wagi",
+     „Redukcja", „Budowa masy". A profile without the field is maintain, so every profile
+     written before phase 23 — and every existing e2e scenario — keeps its numbers.
+
+418. **Presets in kilograms a week, turned into kcal at 7 700 kcal/kg.** Reduction 0,25 / 0,5 /
+     0,75 / 1 kg (default 0,5), gain 0,25 / 0,5 kg (default 0,25); offsets 275, 550, 825 and
+     1 100 kcal. **Rejected:** a percentage of maintenance (−15 / −20 / −25 %), which is common
+     but says nothing a person can check against a scale; a free kilograms field, which invites
+     two kilograms a week; a free kcal field, for decision 337's reason. The same 7 700 is used
+     for gain, where it is a rougher figure — which is why gain stops at 0,5 kg.
+
+419. **A floor that is applied, and a pace warning that is not.** A reduction never proposes
+     less than 1 200 kcal (women) or 1 500 kcal (men), nor more than the maintenance figure
+     when that is already below the floor; the derivation shows when it was raised and why.
+     Above 1 % of body weight a week the form warns and lets it through. The difference is
+     deliberate: the floor is about what the calculator is willing to *suggest*; the four fields
+     remain the user's to type anything into.
+
+420. **The split is not touched when the goal changes; protein in g/kg is shown instead.**
+     Nudging the split towards protein on a reduction would silently overwrite a split the user
+     set themselves (phase 19). The problem it would solve is real — 25 % of a smaller number is
+     less protein — so the derivation shows g/kg of body weight, and below 1,6 g/kg on a
+     reduction or a gain one sentence suggests raising protein's share.
+
+421. **`goal` and `rate` are two more optional fields on `BodyData`, with no schema bump.**
+     `readBodyData` validates the pair and degrades an unknown goal or an off-list rate to
+     maintain while keeping the body — the rule the split follows. **Accepted consequence:** a
+     device still on an older build rebuilds `body` field by field on its next profile write and
+     drops the two fields, exactly as phase 19's split would have been dropped by a phase 18
+     build; the update check (decision 225) is what closes that window.
+
+422. **The derivation grows rather than being replaced.** Maintenance is shown on its own line
+     and named as such, so the sentence that prompted this phase — „this is the number for
+     keeping my weight" — becomes something the screen says rather than something the user has
+     to infer.
+
+423. **Not in phase 23:** a target weight or date, a weight log or chart, automatic
+     recalculation as weight changes, an adaptive maintenance figure from what was eaten,
+     Katch-McArdle or body fat, training/rest-day goals, and protein per kilogram as an input.
+
+424. **Changing the goal always sets that goal's default rate** (deviation from PLAN.md phase 23
+     task 2, recorded before building). The task said to reset the rate only when it is not on
+     the new goal's list, but the acceptance criterion — reduction at 0,75 → gain gives 0,25,
+     and back to reduction offers 0,5 — contradicts that: 0,25 *is* on the reduction list, so
+     the literal rule would come back on 0,25. The criterion describes the better behaviour (a
+     goal opens on its own sensible pace, not on a pace carried over from the opposite goal),
+     so the rule is the simpler one: a goal change selects the new goal's default. A stored
+     rate is still what the form opens on.
+
+
+### 2026-09-13 — Phase 23 built: redukcja i masa
+
+> Built as planned, with one deviation recorded before it was built: decision 424 (a goal change
+> always selects the new goal's default rate). Tasks 1–5 done.
+
+- **What was added.** `src/lib/goals.ts`: `WeightGoal`, `WEIGHT_GOALS` (label, rate presets,
+  default rate), `WeightTarget`/`MAINTAIN`, `KCAL_PER_KG`, `PROTEIN_HINT_G_PER_KG`,
+  `goalOption`, `isTargetUsable`, `targetOf`, `energyOffset` (signed: negative for a
+  reduction), `minimumKcal`, `isRateAggressive`, `proteinPerKg`, `isProteinLow`. `deriveGoals`
+  and `calculateGoals` take an optional third `target` argument defaulting to maintain, so every
+  existing call site and test is unchanged; the derivation grows `maintenance`, `target`,
+  `offset` and `floorApplied`, and `goals.kcal` is the adjusted figure. `readBodyData` keeps a
+  valid `goal`/`rate` pair and drops an invalid one while keeping the body. `GoalsForm.svelte`:
+  „Cel" and „Tempo" under „Aktywność", the extra derivation lines, and three sentences under it
+  (`floor-note`, `pace-warning`, `protein-hint`). `currentBody` carries the goal, so only
+  „Zapisz cele" saves it. `goals.test.ts` +14 tests; the body in the `documents`, `engine` and
+  `backup` round-trip tests now carries `goal: 'lose', rate: 0.5`; `e2e/goals.spec.ts` +7
+  scenarios.
+- **Small choices inside the plan, not deviations.** When maintenance is already below the
+  minimum, the floor is the maintenance figure, and the derivation says „podniesiono do
+  zapotrzebowania na utrzymanie wagi" rather than claiming a minimum it did not reach, with its
+  own sentence under it. The protein hint compares at the one decimal the screen shows, so the
+  form never prints „≈ 1,6 g/kg" beside a hint to reach 1,6 g/kg. The pace warning is judged on
+  the chosen rate even when the floor then softened it, as the criterion asks. A saved maintain
+  is written as `goal: 'maintain'` without a rate; absent still reads as maintain. The goal and
+  rate are seeded once per mount like the rest of the calculator (decision 227), so a Drive pull
+  under an open panel does not change them.
+- **Acceptance criteria, one by one** (verified on Linux, 2026-09-13):
+  1. Man 40/180/80 sedentary: maintain 2076, reduction 0,5 kg 1526 with 95/172/51, gain
+     0,25 kg 2351: **pass**. Unit tests and e2e (fills the fields).
+  2. That reduction's derivation shows 2076 as maintenance, − 550, and 1526 as the daily goal:
+     **pass**. e2e.
+  3. Woman 60/155/50 losing 1 kg: 1200 not 109, raised-to-minimum line and reason, 1 % warning,
+     protein hint at 1,5 g/kg: **pass**. Unit and e2e.
+  4. Man 70/165/60 losing 1 kg: 1500: **pass**. Unit and e2e.
+  5. No floor raises a reduction above maintenance: **pass**. Unit test, a named case (932 kcal)
+     plus a sweep of sex × weight × every reduction preset.
+  6. Reduction 0,75 → gain gives 0,25 → reduction gives 0,5: **pass**. e2e (decision 424).
+  7. Changing the goal leaves the split as set: **pass**. e2e with 40/30/30, and unit.
+  8. Goal and rate survive leaving Settings, a reload, Drive and export/import; a pre-phase
+     profile opens on maintain unchanged; `{ goal: 'lose', rate: 3 }` reads as maintain with the
+     body kept: **pass**. Leaving Settings and reloading: e2e. Drive: e2e (the file on Drive,
+     then a second device) and `engine.test.ts`. Export/import: `backup.test.ts`. Pre-phase
+     profile: e2e, seeded through Drive. Invalid pair: `goals.test.ts`.
+  9. The calculator only fills; nothing saves without „Zapisz cele": **pass**. e2e (fill, leave
+     Settings, come back: still maintain).
+  10. No schema bump, no migration: **pass**. `db.ts` untouched, `SCHEMA_VERSION` still 3.
+  11. No dependency, CSP or `Caddyfile` change, verified under `npm run docker:up`: **pass**.
+      `package.json`, `package-lock.json`, `Caddyfile` and `Dockerfile` untouched; the full
+      suite **149/149 against the container on :8080**, served with the production CSP header.
+  12. Polish UI, English code and comments: **pass**. By review.
+- **Suites.** `npm run check` 0 errors, 0 warnings, run over the finished tree (the lesson of
+  phase 22). `npm test` 1013/1013. `npx playwright test` (Chromium) 149/149 in 6.3 min.
+- **README and SECURITY.md.** Status blockquote now phases 1–23, „fifteen" post-1.0 phases,
+  with a phrase for 23. The calculator bullet now covers goal, pace, floor, warning and protein
+  per kilogram, and its list of what is remembered includes the goal and its pace. SECURITY.md
+  lists the split, goal and weekly rate under the body data the profile holds. No screenshot
+  shows the calculator (`docs/screenshots`: day, library-empty, meal, planner, recipe-editor),
+  so none was re-taken.
+
+### Not verified, and honestly so — Phase 23
+
+- **WebKit is broken on this machine today, for every spec, not just this phase's.**
+  `E2E_WEBKIT=1 npx playwright test e2e/goals.spec.ts`: Chromium 16/16, WebKit 0/16. Every
+  WebKit test fails in the fixture's first `page.goto` with „WebKit encountered an internal
+  error", before the app renders. `e2e/udostepnij.spec.ts`, untouched by this phase and green
+  under WebKit in phase 22's run earlier the same day, fails 6/6 the same way. So this is the
+  WebKit build (Playwright 1.62.1) or the host, not the change. It was not investigated here.
+  **CI closes this gap.** Run 34771537549 (7bc26e4) went green on both jobs. Its end-to-end job
+  runs the whole suite with `E2E_WEBKIT: '1'`: 295 passed, 3 skipped, 0 failed — 149 per
+  engine, with the 3 skips on WebKit — so the seven new goals scenarios passed in WebKit too.
+  What stays unexplained is only this machine's local WebKit.
+  The next WebKit run should start with `npx playwright install webkit` and, if that does not
+  fix it, `npx playwright install-deps webkit`.
+- **The wizard** uses the same `GoalsForm` and so has the new selects. No scenario walks the
+  wizard's calculator; its save path (`Setup.svelte` → `setGoals(next, body)`) is the same one
+  Settings uses, and that one is covered.
 
 
 ## Open questions

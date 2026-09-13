@@ -6,6 +6,22 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+
+- Plan phase 23 — redukcja i masa
+- Record CI's WebKit result for phase 23
+
+### Features
+
+- Phase 23 — redukcja i masa
+
+### Miscellaneous
+
+- Update CHANGELOG
+- Update CHANGELOG
+
 ## [1.13.0] - 2026-09-13
 
 ### Bug Fixes

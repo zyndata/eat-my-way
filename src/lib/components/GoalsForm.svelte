@@ -3,15 +3,26 @@
   import {
     ACTIVITY_LEVELS,
     DEFAULT_BODY,
+    PROTEIN_HINT_G_PER_KG,
+    WEIGHT_GOALS,
     areGoalsUsable,
     deriveGoals,
+    energyOffset,
+    goalOption,
     isBodyUsable,
+    isProteinLow,
+    isRateAggressive,
     isSplitUsable,
+    minimumKcal,
+    proteinPerKg,
     splitOf,
+    targetOf,
     type ActivityKey,
     type BodyData,
     type MacroSplit,
-    type Sex
+    type Sex,
+    type WeightGoal,
+    type WeightTarget
   } from '../goals';
 
   /**
@@ -53,17 +64,35 @@
   let activity = $state<ActivityKey>(initial.activity);
   let split = $state<MacroSplit>({ ...splitOf(initial) });
 
+  // Phase 23. `rate` always holds a number so the select has something to show; it only counts
+  // when the goal is not maintain.
+  const initialTarget = targetOf(initial);
+  let goal = $state<WeightGoal>(initialTarget.goal);
+  let rate = $state<number>(initialTarget.rate ?? goalOption('lose').defaultRate ?? 0.5);
+
+  /**
+   * A goal change always selects the new goal's default rate (decision 424) — a reduction
+   * opens on its own pace, not on one carried over from a gain.
+   */
+  function changeGoal(next: WeightGoal): void {
+    goal = next;
+    rate = goalOption(next).defaultRate ?? rate;
+  }
+
   const input = $derived({ sex, age, height, weight, activity });
+  const target = $derived<WeightTarget>(goal === 'maintain' ? { goal } : { goal, rate });
   const splitValid = $derived(isSplitUsable(split));
   const splitSum = $derived(split.protein + split.carbs + split.fat);
   const bodyValid = $derived(isBodyUsable(input));
   const valid = $derived(areGoalsUsable(goals) && splitValid);
 
   /** Live, so the derivation under the result follows the fields rather than the last press. */
-  const derivation = $derived(bodyValid && splitValid ? deriveGoals(input, split) : null);
+  const derivation = $derived(bodyValid && splitValid ? deriveGoals(input, split, target) : null);
 
-  /** What travels with the save press. The split rides along; see `BodyData`. */
-  const currentBody = $derived<BodyData>({ ...input, split: { ...split } });
+  /** What travels with the save press. The split and the goal ride along; see `BodyData`. */
+  const currentBody = $derived<BodyData>({ ...input, split: { ...split }, ...target });
+
+  const minimum = $derived(minimumKcal(sex));
 
   /**
    * What the last press filled in, for the confirmation under the button — `null` once it has
@@ -99,6 +128,11 @@
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals
     });
+  }
+
+  /** „0,25", „0,5", „1" — a rate as a kilogram figure, without trailing zeroes. */
+  function kg(value: number): string {
+    return value.toLocaleString('pl-PL', { maximumFractionDigits: 2 });
   }
 
   const fields = [
@@ -182,6 +216,28 @@
         {/each}
       </select>
     </label>
+    <div class="grid gap-3 pt-3 sm:grid-cols-2">
+      <label class="text-sm font-medium">
+        Cel
+        <select class={inputClass} bind:value={() => goal, changeGoal}>
+          {#each WEIGHT_GOALS as option (option.key)}
+            <option value={option.key}>{option.label}</option>
+          {/each}
+        </select>
+      </label>
+      {#if goal !== 'maintain'}
+        <label class="text-sm font-medium">
+          Tempo
+          <select class={inputClass} bind:value={rate}>
+            {#each goalOption(goal).rates as option (option)}
+              <option value={option}>
+                {kg(option)} kg na tydzień — ok. {number(Math.abs(energyOffset(goal, option)))} kcal dziennie
+              </option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+    </div>
 
     <!-- ---- the split ---------------------------------------------------------------- -->
     <h4 class="pt-4 text-sm font-semibold">Podział energii</h4>
@@ -221,15 +277,68 @@
         <ul class="pt-1 text-(--color-ink-muted)">
           <li>Podstawowa przemiana materii (PPM): <b>{number(Math.round(derivation.bmr))} kcal</b></li>
           <li>× współczynnik aktywności: <b>{number(derivation.factor, 3)}</b></li>
-          <li>= zapotrzebowanie dzienne: <b>{number(derivation.goals.kcal)} kcal</b></li>
+          <li>
+            = zapotrzebowanie na utrzymanie wagi: <b>{number(derivation.maintenance)} kcal</b>
+          </li>
+          {#if derivation.target.goal === 'lose'}
+            <li>
+              − deficyt na redukcję ({kg(derivation.target.rate ?? 0)} kg/tydz.):
+              <b>{number(-derivation.offset)} kcal</b>
+            </li>
+          {:else if derivation.target.goal === 'gain'}
+            <li>
+              + nadwyżka na budowę masy ({kg(derivation.target.rate ?? 0)} kg/tydz.):
+              <b>{number(derivation.offset)} kcal</b>
+            </li>
+          {/if}
+          {#if derivation.floorApplied}
+            <li>
+              {derivation.goals.kcal === minimum
+                ? `podniesiono do minimum ${number(minimum)} kcal`
+                : 'podniesiono do zapotrzebowania na utrzymanie wagi'}
+            </li>
+          {/if}
+          {#if derivation.target.goal !== 'maintain'}
+            <li>= cel dzienny: <b>{number(derivation.goals.kcal)} kcal</b></li>
+          {/if}
           <li>
             Podział: białko {number(derivation.split.protein)}% =
             <b>{number(derivation.goals.protein)} g</b>, węglowodany
             {number(derivation.split.carbs)}% = <b>{number(derivation.goals.carbs)} g</b>, tłuszcz
             {number(derivation.split.fat)}% = <b>{number(derivation.goals.fat)} g</b>
           </li>
+          <li>
+            Białko na kilogram masy ciała:
+            <b>≈ {number(proteinPerKg(derivation.goals, input), 1)} g/kg</b>
+          </li>
         </ul>
       </div>
+
+      {#if derivation.floorApplied}
+        <p class="pt-2 text-sm text-(--color-warn)" data-testid="floor-note">
+          {#if derivation.goals.kcal === minimum}
+            Przy redukcji kalkulator nie proponuje mniej niż {number(minimum)} kcal dziennie. Niżej
+            warto schodzić tylko pod opieką lekarza lub dietetyka.
+          {:else}
+            Zapotrzebowanie na utrzymanie wagi jest już niższe niż {number(minimum)} kcal, więc
+            kalkulator nie proponuje deficytu. Redukcję warto w takiej sytuacji prowadzić pod
+            opieką lekarza lub dietetyka.
+          {/if}
+        </p>
+      {/if}
+      {#if isRateAggressive(currentBody)}
+        <p class="pt-2 text-sm text-(--color-warn)" data-testid="pace-warning">
+          {kg(rate)} kg na tydzień to ponad 1% masy ciała tygodniowo. Przy szybszej redukcji traci
+          się więcej mięśni, a wynik trudniej utrzymać — rozważ wolniejsze tempo.
+        </p>
+      {/if}
+      {#if isProteinLow(derivation.goals, currentBody)}
+        <p class="pt-2 text-sm text-(--color-ink-muted)" data-testid="protein-hint">
+          Przy {goal === 'lose' ? 'redukcji' : 'budowie masy'} zwykle zaleca się co najmniej
+          {number(PROTEIN_HINT_G_PER_KG, 1)} g białka na kilogram masy ciała. Rozważ większy udział
+          białka w podziale energii.
+        </p>
+      {/if}
     {:else if !bodyValid}
       <p class="pt-2 text-sm text-(--color-danger)" role="alert">
         Wiek, wzrost i waga muszą być liczbami większymi od zera.

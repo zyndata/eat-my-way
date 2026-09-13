@@ -160,7 +160,10 @@ describe('first sync', () => {
       height: 180,
       weight: 80,
       activity: 'sedentary' as const,
-      split: { protein: 40, carbs: 30, fat: 30 }
+      split: { protein: 40, carbs: 30, fat: 30 },
+      // Phase 23: a field this phase adds must not be the field the next sync drops.
+      goal: 'lose' as const,
+      rate: 0.5
     };
     await a.repository.setGoals(macros(2076, 208, 156, 69), body);
     await a.engine.sync();
