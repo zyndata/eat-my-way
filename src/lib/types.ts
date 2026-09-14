@@ -240,17 +240,15 @@ export interface MealSlot {
 }
 
 /**
- * The day template the planner follows, plus the weekdays that say something different from
- * „normalnie".
+ * The day template the planner follows.
  *
- * `cookDays` is the per-weekday half of decision 272: Sunday is not Wednesday, so the length
- * of a cook is as much a property of the day it is started on as of the meal it is. A weekday
- * set to `1` is the same feature read backwards — do not start a long cook that day.
+ * It once carried `cookDays`, a per-weekday run length overriding every slot. It is gone
+ * (STATE.md decision 430): it lengthened whichever slot came first rather than the one meant,
+ * and a week that cooks differently now says so on the planner sheet. A `cookDays` still on
+ * Drive from an older build is ignored by `readMealPlan` and dropped on the next write.
  */
 export interface MealPlanTemplate {
   slots: MealSlot[];
-  /** Weekday (0 = Monday, as `weekdayIndex` numbers them) → run length; overrides the slot. */
-  cookDays?: Record<number, number>;
 }
 
 export interface Profile {

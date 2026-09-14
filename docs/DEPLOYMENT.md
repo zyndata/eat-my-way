@@ -222,14 +222,19 @@ Scope: `drive.appdata` only.
 
 ## Cutting a release
 
-Use the `/release` skill — it drives both paths and checks the result. By hand:
+Use the `/release` skill — it drives both paths and checks the result. Release only a `dev`
+commit whose `ci.yml` run is green: `ci.yml` never runs on `main`, and the workflow's `build` job
+repeats check, unit tests and build but **not** the e2e suite, so that `dev` run is the only
+browser-test evidence a release has. By hand:
 
 ```bash
 git checkout main && git pull --ff-only origin main
 git merge --no-ff dev && git push origin main   # this alone does NOT deploy
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0                          # this triggers the workflow
-git checkout dev && git merge main              # pick up the CHANGELOG commit
+# once the workflow has finished — it commits the regenerated CHANGELOG to main:
+git checkout dev && git fetch origin && git merge --ff-only origin/main
+git push origin dev                             # so the other machine gets it; starts a CI run
 ```
 
 Watch it: `gh run list --workflow=deploy.yml --limit 3`, then `gh run watch <id> --exit-status`.

@@ -726,8 +726,7 @@ describe('the meal plan and applying it (Phase 13)', () => {
     slots: [
       { id: 'sniadanie', label: 'Śniadanie', tagKeys: [], share: 0.3, batchDays: 1 },
       { id: 'obiad', label: 'Obiad', tagKeys: ['wege'], share: 0.7, batchDays: 2 }
-    ],
-    cookDays: { 6: 3 }
+    ]
   };
 
   it('stores the template on the profile, leaving the rest of it alone', async () => {

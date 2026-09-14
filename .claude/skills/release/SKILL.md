@@ -74,7 +74,8 @@ is a deliberate, named, rollback-able act.
 
 1. **Run the checks locally first** (`npm ci; npm run check; npm test; npm run build`) to fail
    fast — the same steps run in CI as the `build` job that gates the release, so a red tag would
-   block everything downstream anyway. STOP and fix on failure.
+   block everything downstream anyway. STOP and fix on failure. That `build` job runs **no e2e
+   tests**; step 3 is where the release gets its browser-test evidence.
 2. **Review & commit** on the current branch (usually `dev`), same commit-message rule as above.
    Use **Conventional Commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `perf:`, `ci:`, …) — the
    changelog is generated from them, so the message *is* the release note.
@@ -84,6 +85,14 @@ is a deliberate, named, rollback-able act.
    git fetch origin
    git status -sb          # confirm dev is not behind origin/dev
    ```
+   Then **confirm the `ci.yml` run for the commit being released is green** — `ci.yml` never runs
+   on `main`, so this run is the only e2e result (Chromium and WebKit) the release will ever have:
+   ```
+   git rev-parse origin/dev
+   gh run list --workflow ci.yml --branch dev --limit 5 --json databaseId,headSha,status,conclusion
+   ```
+   The run whose `headSha` matches must be `completed` / `success`. If it is still running,
+   `gh run watch <id> --exit-status`. If it is red, or there is no run for that commit, STOP.
 4. **Merge into `main`:**
    ```
    git checkout main
@@ -114,9 +123,15 @@ is a deliberate, named, rollback-able act.
    step already asserts HTTP 200; confirm the app loads with no CSP violations).
 
 **Note on CHANGELOG.md:** the `release` job regenerates it via git-cliff and commits it back to
-`main` as `chore(release): update CHANGELOG …`. After the run, `git checkout dev; git merge main`
-(or `git pull` on dev) to bring that commit into `dev` so history stays linear — and so the
-*other* machine picks it up on its next `git pull`.
+`main` as `chore(release): update CHANGELOG …`. After the run, bring that commit into `dev` and
+**push it** — without the push the *other* machine never sees it:
+```
+git checkout dev
+git fetch origin
+git merge --ff-only origin/main   # fails only if dev moved since the merge; then a plain merge
+git push origin dev
+```
+That push starts a `ci.yml` run on `dev`; wait for it and report it like any other push.
 
 ## When a release goes wrong
 

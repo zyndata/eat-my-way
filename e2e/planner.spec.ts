@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import type { Recipe } from '../src/lib/types';
 import { expect, test } from './fixtures';
 import { DEFAULT_GOALS, profileDocument, recipesDocument } from './seed';
@@ -353,8 +353,8 @@ test('a run’s length is changed in the proposal without touching the template'
   await stretch.click();
   await expect(sheet.getByText(/Gotujesz na 3 dni/).first()).toBeVisible();
 
-  // A one-off: „w tę niedzielę mam też wolny poniedziałek" is not a rule about Sundays, so
-  // the template in Settings is exactly as it was (STATE.md decision 274).
+  // A one-off: „w tym tygodniu mam czas" is not a new habit, so the template in Settings is
+  // exactly as it was (STATE.md decision 274).
   await sheet.getByRole('button', { name: 'Zamknij' }).click();
   await device.goto('#/settings');
   const planner = device.locator('section').filter({ hasText: 'Planer posiłków' }).first();
@@ -362,9 +362,78 @@ test('a run’s length is changed in the proposal without touching the template'
     'aria-pressed',
     'true'
   );
-  await expect(
-    planner.getByRole('button', { name: 'Niedziela: gotuję na 3 dni' })
-  ).toHaveAttribute('aria-pressed', 'false');
+});
+
+/** One day's card in the week sheet — the list item that holds that day's tick. */
+const dayCard = (sheet: Locator, index: number) =>
+  sheet
+    .getByRole('listitem')
+    .filter({ has: sheet.page().locator('input[type="checkbox"]') })
+    .nth(index);
+
+/** The slot labels a card lists, in the order it lists them. */
+const SLOT_LABEL = /^(Śniadanie|Obiad|Podwieczorek|Kolacja)$/;
+
+test('an unticked day folds away, and nothing is cooked on it or carried over from it', async ({
+  device,
+  drive
+}) => {
+  await connectWith(device, drive);
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
+
+  const sheet = device.getByRole('dialog');
+  // The default template cooks lunch for two days, so the second day eats the first one's pot.
+  await expect(dayCard(sheet, 1).getByText(/z garnka z/)).toHaveCount(1);
+
+  await dayCard(sheet, 0).locator('input[type="checkbox"]').uncheck();
+
+  // The card is only its header now, and the day after is planned as if it came first.
+  await expect(dayCard(sheet, 0).getByText('nie planuję')).toBeVisible();
+  await expect(dayCard(sheet, 0).getByText(SLOT_LABEL)).toHaveCount(0);
+  await expect(dayCard(sheet, 1).getByText(/z garnka z/)).toHaveCount(0);
+  await expect(dayCard(sheet, 1).getByText(/Gotujesz na 2 dni/)).toBeVisible();
+
+  // Ticked again, it is planned again.
+  await dayCard(sheet, 0).locator('input[type="checkbox"]').check();
+  await expect(dayCard(sheet, 0).getByText(SLOT_LABEL)).toHaveCount(4);
+});
+
+test('a new cook length changes that cook and the days it touches, nothing else', async ({
+  device,
+  drive
+}) => {
+  await connectWith(device, drive);
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
+
+  const sheet = device.getByRole('dialog');
+  await expect(sheet.getByText(/Gotujesz na 2 dni/).first()).toBeVisible();
+
+  // A pot carried over from yesterday keeps its slot's place in the day, not the top of it.
+  await expect
+    .poll(() => dayCard(sheet, 1).getByText(SLOT_LABEL).allTextContents())
+    .toEqual(['Śniadanie', 'Obiad', 'Podwieczorek', 'Kolacja']);
+
+  // The recipe name is the one truncated line of a row; the macro figures are not.
+  const names = (index: number) => dayCard(sheet, index).locator('p.truncate').allTextContents();
+  const laterDays = async () => Promise.all([2, 3, 4, 5, 6].map((index) => dayCard(sheet, index).innerText()));
+
+  const firstDay = await names(0);
+  const secondDay = await names(1);
+  const later = await laterDays();
+
+  // First day's lunch, cooked for two days, shortened to one.
+  const lunch = dayCard(sheet, 0).getByRole('listitem').filter({ hasText: 'Obiad' });
+  await lunch.getByRole('button', { name: 'Gotuj na 1 dni' }).click();
+  await expect(lunch.getByRole('button', { name: 'Gotuj na 1 dni' })).toHaveAttribute('aria-pressed', 'true');
+
+  // The same lunch on the first day, every other meal of the first two days where it was, and
+  // the rest of the week untouched down to the last kilocalorie.
+  expect(await names(0)).toEqual(firstDay);
+  const after = await names(1);
+  expect([after[0], after[2], after[3]]).toEqual([secondDay[0], secondDay[2], secondDay[3]]);
+  expect(await laterDays()).toEqual(later);
 });
 
 test('the sheet says which case „za mało przepisów" is', async ({ device, drive }) => {
@@ -395,23 +464,29 @@ test('a template from Drive is obeyed, tags and all', async ({ device, drive }) 
   await expect(sheet.getByText(/nie-ma-takiego/)).toBeVisible();
 });
 
-test('the template editor saves a weekday that cooks differently', async ({ device, drive }) => {
+test('the template editor saves how long a meal is usually cooked for', async ({
+  device,
+  drive
+}) => {
   await connectWith(device, drive);
 
   const planner = device.locator('section').filter({ hasText: 'Planer posiłków' }).first();
-  await planner.getByRole('button', { name: 'Niedziela: gotuję na 3 dni' }).click();
+  // The per-weekday table is gone (decision 430); the slot's own number is the whole setting.
+  await expect(planner.getByText('Dni, w których gotuję inaczej')).toHaveCount(0);
+  await planner.getByRole('button', { name: 'Obiad: gotuję na 3 dni' }).click();
   await planner.getByRole('button', { name: 'Zapisz planer' }).click();
   await expect(planner.getByText('Zapisano.')).toBeVisible();
 
   // It survives a reload, and it reaches Drive on the existing profile path.
   await device.reload();
-  await expect(
-    device.getByRole('button', { name: 'Niedziela: gotuję na 3 dni' })
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(device.getByRole('button', { name: 'Obiad: gotuję na 3 dni' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
 
   await expect
     .poll(() => JSON.stringify(drive.snapshot()['profile.json']), { timeout: 20_000 })
-    .toContain('cookDays');
+    .toMatch(/batchDays\\?":3/);
 });
 
 test('the week is planned from the day the user picks, not from a fixed Monday', async ({
