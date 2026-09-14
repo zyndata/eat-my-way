@@ -13,7 +13,7 @@ import {
   sumMacros
 } from './macros';
 import { dayGoals, rangeFrom, weekDates, weekStart } from './calendar';
-import { daysBetween, weekdayIndex } from './dates';
+import { addDays, daysBetween, weekdayIndex } from './dates';
 import { formatPortions, pluralPl } from './text';
 
 /**
@@ -385,6 +385,12 @@ export interface PlanRequest {
   candidates: readonly PlanCandidate[];
   /** Runs the user locked. Kept verbatim, and the search fills around them. */
   locked?: readonly PlanRun[];
+  /**
+   * Runs whose recipe and days are fixed but whose portion count the search may still move —
+   * the cook the 1/2/3 control has just resized. Everything else is locked by the caller, so
+   * a new length changes that cook and the days it gave up or took over, and nothing more.
+   */
+  pinned?: readonly PlanRun[];
   /** The sheet's 1/2/3 control, keyed by run id. One-off; never written to the template. */
   runLengths?: Readonly<Record<string, number>>;
   /**
@@ -418,6 +424,8 @@ export interface PlanBlock {
   dates: string[];
   /** A lock the search must not touch. */
   locked?: PlanRun;
+  /** A cook with its recipe and days fixed; only its portion count is still searched. */
+  pinned?: PlanRun;
 }
 
 /** `slotId@firstDate` — the identity a lock and the 1/2/3 control hold on to. */
@@ -429,68 +437,90 @@ export function runId(slotId: string, firstDate: string): string {
  * Lay the range out as blocks.
  *
  * Walked per slot, left to right: a day whose slot is already taken by an existing meal is
- * skipped, otherwise a run starts there and covers `resolveRunLength` days — shortened by the
- * end of the range, by the next taken day, and by the stagger rule.
+ * skipped, a locked or pinned cook is placed exactly where it already is, and otherwise a run
+ * starts there and covers `resolveRunLength` days — shortened by the end of the range, by a
+ * gap in it, by the next day already spoken for, and by the stagger rule.
+ *
+ * **A gap ends a run.** The range is the days the user left ticked, which need not be
+ * consecutive: a pot cooked on Monday is not eaten on Wednesday because Tuesday was unticked,
+ * and the meal screen could not describe it if it were — its „Dodaj też jutro" means tomorrow.
+ *
+ * **A fixed cook is never swallowed.** Before the 1/2/3 control and the unticking of days
+ * became local edits, every block landed where the previous solve had put it; now a free run
+ * can meet a locked one mid-stride, and it stops short rather than silently dropping it.
  *
  * **Stagger** (STATE.md decision 275): two runs longer than a day may not start on the same
  * date while any arrangement exists in which they do not. It is settled here, in the
  * structure, rather than in the cost function: the structure is chosen before the recipes
  * are, so a cost term over it would mean searching structures too. The later slot's block
  * drops to a single day and its next run is resolved from the following date — which is the
- * shortening the rule asks for, not a refusal to cook.
+ * shortening the rule asks for, not a refusal to cook. A length the user chose on the sheet
+ * is a decision rather than a default, and the stagger does not overrule it.
  */
 export function planBlocks(
-  request: Pick<PlanRequest, 'days' | 'template' | 'locked' | 'runLengths'>
+  request: Pick<PlanRequest, 'days' | 'template' | 'locked' | 'pinned' | 'runLengths'>
 ): PlanBlock[] {
   const { days, template } = request;
-  const slots = template.slots;
   const dates = days.map((day) => day.date);
   const byDate = new Map(days.map((day) => [day.date, day]));
-  const lockedById = new Map((request.locked ?? []).map((run) => [run.id, run]));
+  const taken = (date: string, slotId: string): boolean =>
+    byDate.get(date)?.takenSlotIds.includes(slotId) === true;
+  const locked = request.locked ?? [];
+  const pinned = request.pinned ?? [];
 
   /** Dates on which a run longer than one day already starts, in any slot. */
   const longStarts = new Set<string>();
+  for (const run of [...locked, ...pinned]) {
+    if (run.dates.length > 1) longStarts.add(run.dates[0] as string);
+  }
   const blocks: PlanBlock[] = [];
 
-  for (const [slotIndex, slot] of slots.entries()) {
+  for (const [slotIndex, slot] of template.slots.entries()) {
+    /** Every date of this slot a fixed cook already holds, and the block that cook becomes. */
+    const held = new Map<string, Pick<PlanBlock, 'locked' | 'pinned'> & { run: PlanRun }>();
+    for (const run of locked) {
+      if (run.slotId !== slot.id) continue;
+      for (const date of run.dates) held.set(date, { run, locked: run });
+    }
+    for (const run of pinned) {
+      if (run.slotId !== slot.id) continue;
+      for (const date of run.dates) held.set(date, { run, pinned: run });
+    }
+
     let index = 0;
     while (index < dates.length) {
       const date = dates[index] as string;
-      if (byDate.get(date)?.takenSlotIds.includes(slot.id) === true) {
+      if (taken(date, slot.id)) {
+        index += 1;
+        continue;
+      }
+
+      const holder = held.get(date);
+      if (holder !== undefined) {
+        // Placed on its cooking day; its later days are walked past one at a time.
+        if (holder.run.dates[0] === date) {
+          const { run, ...fixed } = holder;
+          blocks.push({ id: run.id, slotIndex, slotId: slot.id, dates: [...run.dates], ...fixed });
+        }
         index += 1;
         continue;
       }
 
       const id = runId(slot.id, date);
-      const locked = lockedById.get(id);
-      const wanted =
-        locked !== undefined
-          ? locked.dates.length
-          : (request.runLengths?.[id] ?? resolveRunLength(slot, date, template));
+      const chosen = request.runLengths?.[id];
+      const wanted = clampBatchDays(chosen ?? resolveRunLength(slot, date, template));
 
-      // A run never overruns the end of the range, and never swallows a day whose slot is
-      // already spoken for.
-      let length = Math.max(1, Math.min(clampBatchDays(wanted), dates.length - index));
-      for (let step = 1; step < length; step += 1) {
-        const next = dates[index + step] as string;
-        if (byDate.get(next)?.takenSlotIds.includes(slot.id) === true) {
-          length = step;
-          break;
-        }
+      let length = 1;
+      while (length < wanted && index + length < dates.length) {
+        const next = dates[index + length] as string;
+        if (next !== addDays(date, length) || taken(next, slot.id) || held.has(next)) break;
+        length += 1;
       }
 
-      // A locked run keeps its days whatever the stagger would prefer.
-      if (locked === undefined && length > 1 && longStarts.has(date)) length = 1;
+      if (chosen === undefined && length > 1 && longStarts.has(date)) length = 1;
       if (length > 1) longStarts.add(date);
 
-      const block: PlanBlock = {
-        id,
-        slotIndex,
-        slotId: slot.id,
-        dates: dates.slice(index, index + length),
-        ...(locked === undefined ? {} : { locked })
-      };
-      blocks.push(block);
+      blocks.push({ id, slotIndex, slotId: slot.id, dates: dates.slice(index, index + length) });
       index += length;
     }
   }
@@ -669,18 +699,18 @@ class Solver {
     const fills: Fill[] = [];
 
     for (const block of blocks) {
-      if (block.locked !== undefined) {
-        const locked = block.locked;
-        for (const date of block.dates) usedPerDate.get(date)?.add(locked.recipeId);
+      const fixed = block.locked ?? block.pinned;
+      if (fixed !== undefined) {
+        for (const date of block.dates) usedPerDate.get(date)?.add(fixed.recipeId);
         fills.push({
           block,
           candidate: {
-            recipeId: locked.recipeId,
-            name: locked.recipeName,
+            recipeId: fixed.recipeId,
+            name: fixed.recipeName,
             tags: [],
-            macros: locked.macroSnapshot
+            macros: fixed.macroSnapshot
           },
-          portions: locked.portionsEaten,
+          portions: fixed.portionsEaten,
           ...this.frame(block)
         });
         continue;
@@ -872,7 +902,17 @@ function assemble(
   fills: readonly Fill[],
   blocks: readonly PlanBlock[]
 ): PlanProposal {
-  const runs = fills.map(toRun);
+  // The template's slot order, then the cooking day. The fills come in the greedy's reading
+  // order, which put a pot carried over from yesterday at the top of today — and a day card
+  // lists its runs, and `planWrites` writes its meals, in the order they are listed here.
+  const slotOrder = new Map(request.template.slots.map((slot, index) => [slot.id, index]));
+  const runs = fills
+    .map(toRun)
+    .sort(
+      (a, b) =>
+        (slotOrder.get(a.slotId) ?? 0) - (slotOrder.get(b.slotId) ?? 0) ||
+        (a.dates[0] as string).localeCompare(b.dates[0] as string)
+    );
   const filled = new Set(fills.map((fill) => fill.block.id));
   const shortened = new Set<string>();
 
@@ -997,29 +1037,92 @@ export function planRange(request: PlanRequest): PlanResult {
 // ---- writing the plan --------------------------------------------------------------------
 
 /**
- * The days a week apply actually touches, after the user unticked some.
+ * What is left of some runs once only `dates` are being planned.
  *
- * Unticking a day a run covers **shortens the run** rather than dropping it: the cooking day
- * falls back to what the remaining days will really eat, because a pot cooked for three days
- * with two of them eaten is a shopping list that over-buys. Unticking the cooking day itself
- * moves the cook to the earliest day that survived.
+ * A run is a pot cooked on its first day and eaten on the days straight after it, so it
+ * survives only from that first day, and only up to the first day that is no longer planned.
+ * **Unticking the cooking day drops the run**: nothing was cooked, and its later days are
+ * free to be planned as if the unticked day did not exist — which is what the user expects,
+ * and what moving the cook to the next day was not. Unticking a later day shortens it, so the
+ * cooking day's `cookingScale` never buys for a plate nobody eats. The id is the cooking day's
+ * and so never changes, which is what lets a lock survive.
  */
 export function runsForDates(runs: readonly PlanRun[], dates: readonly string[]): PlanRun[] {
   const kept = new Set(dates);
   const result: PlanRun[] = [];
 
   for (const run of runs) {
-    const days = run.dates.filter((date) => kept.has(date));
-    if (days.length === 0) continue;
-    result.push({
-      ...run,
-      id: runId(run.slotId, days[0] as string),
-      dates: days,
-      cookingScale: days.length * run.portionsEaten
-    });
+    const first = run.dates[0];
+    if (first === undefined || !kept.has(first)) continue;
+    const days = [first];
+    for (const date of run.dates.slice(1)) {
+      if (!kept.has(date) || date !== addDays(first, days.length)) break;
+      days.push(date);
+    }
+    result.push({ ...run, dates: days, cookingScale: days.length * run.portionsEaten });
   }
 
   return result;
+}
+
+/**
+ * The 1/2/3 control, as a local edit rather than a reroll of the range.
+ *
+ * The cook keeps its recipe and its cooking day, and comes back as a **pinned** run over its
+ * new days — stopping, as any run does, at the end of the range, at a gap, at a slot an
+ * existing meal holds, and at a cook of the same slot the user locked. Every other run comes
+ * back to be **locked** for the solve: a same-slot run the longer cook now reaches into gives
+ * up those days and keeps the rest of its own, starting later. Days a shorter cook gave up are
+ * held by nobody, so the solve fills those and nothing else.
+ */
+export function resizeRun(
+  runs: readonly PlanRun[],
+  id: string,
+  length: number,
+  days: readonly PlanDayInput[],
+  userLocks: readonly string[] = []
+): { pinned: PlanRun; locked: PlanRun[] } | undefined {
+  const run = runs.find((candidate) => candidate.id === id);
+  const first = run?.dates[0];
+  if (run === undefined || first === undefined) return undefined;
+
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const barred = new Set(
+    runs
+      .filter((other) => other.id !== id && other.slotId === run.slotId && userLocks.includes(other.id))
+      .flatMap((other) => other.dates)
+  );
+
+  const dates = [first];
+  while (dates.length < clampBatchDays(length)) {
+    const next = addDays(first, dates.length);
+    const day = byDate.get(next);
+    if (day === undefined || day.takenSlotIds.includes(run.slotId) || barred.has(next)) break;
+    dates.push(next);
+  }
+
+  const covered = new Set(dates);
+  const locked: PlanRun[] = [];
+  for (const other of runs) {
+    if (other.id === id) continue;
+    if (other.slotId !== run.slotId || !other.dates.some((date) => covered.has(date))) {
+      locked.push(other);
+      continue;
+    }
+    const rest = other.dates.filter((date) => !covered.has(date));
+    if (rest.length === 0) continue;
+    locked.push({
+      ...other,
+      id: runId(other.slotId, rest[0] as string),
+      dates: rest,
+      cookingScale: rest.length * other.portionsEaten
+    });
+  }
+
+  return {
+    pinned: { ...run, dates, cookingScale: dates.length * run.portionsEaten },
+    locked
+  };
 }
 
 /** One day's worth of meals to write, in the order the slots are listed. */

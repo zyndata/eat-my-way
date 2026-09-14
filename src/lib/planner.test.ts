@@ -28,6 +28,7 @@ import {
   plannerWeek,
   plannerWeekStart,
   repeatCost,
+  resizeRun,
   resolveRunLength,
   runId,
   runsForDates,
@@ -436,6 +437,34 @@ describe('planBlocks', () => {
     // The Monday run stops before the taken Wednesday instead of covering it.
     expect(blocks[0]?.dates).toEqual([WEEK[0], WEEK[1]]);
     expect(blocks.every((block) => !block.dates.includes(WEEK[2]!))).toBe(true);
+  });
+
+  it('never runs a cook across a day that is not being planned', () => {
+    // Monday, Wednesday, Thursday: Tuesday was unticked, so Monday's pot ends on Monday.
+    const template: MealPlanTemplate = { slots: [slot('obiad', 1, 2)] };
+    const blocks = planBlocks({ days: inputs([WEEK[0]!, WEEK[2]!, WEEK[3]!]), template });
+    expect(blocks.map((block) => block.dates)).toEqual([[WEEK[0]], [WEEK[2], WEEK[3]]]);
+  });
+
+  it('places a locked cook where it is and stops a free one short of it', () => {
+    const template: MealPlanTemplate = { slots: [slot('obiad', 1, 2)] };
+    const locked: PlanRun = {
+      id: runId('obiad', WEEK[1]!),
+      slotId: 'obiad',
+      dates: [WEEK[1]!, WEEK[2]!],
+      recipeId: 'r1',
+      recipeName: 'r1',
+      portionsEaten: 1,
+      macroSnapshot: macros(600, 40, 60, 20),
+      cookingScale: 2
+    };
+    const blocks = planBlocks({ days: inputs(WEEK.slice(0, 5)), template, locked: [locked] });
+    expect(blocks.map((block) => block.dates)).toEqual([
+      [WEEK[0]],
+      [WEEK[1], WEEK[2]],
+      [WEEK[3], WEEK[4]]
+    ]);
+    expect(blocks[1]?.locked).toEqual(locked);
   });
 });
 
@@ -955,6 +984,79 @@ describe('locks', () => {
   });
 });
 
+// ---- editing a proposal in place ---------------------------------------------------------
+
+describe('editing a proposal in place', () => {
+  const template: MealPlanTemplate = {
+    slots: [slot('sniadanie', 0.3), slot('obiad', 0.45, 2), slot('kolacja', 0.25)]
+  };
+  const days = inputs(WEEK);
+  const base = planRange({ days, template, candidates: library(), random: seededRandom(4) });
+  const runs = base.ok ? base.proposal.runs : [];
+  const obiad = (date: string) => runs.find((run) => run.id === runId('obiad', date)) as PlanRun;
+
+  it('lists a day’s runs in the template’s slot order, not with yesterday’s pot on top', () => {
+    expect(base.ok).toBe(true);
+    // Tuesday eats Monday's lunch pot; it still comes between breakfast and supper.
+    const tuesday = runs.filter((run) => run.dates.includes(WEEK[1]!)).map((run) => run.slotId);
+    expect(tuesday).toEqual(['sniadanie', 'obiad', 'kolacja']);
+    const writes = planWrites(runs, WEEK, idFactory());
+    const tuesdayMeals = writes.find((write) => write.date === WEEK[1])?.meals ?? [];
+    expect(tuesdayMeals.map((meal) => meal.recipeId)).toEqual(
+      runs.filter((run) => run.dates.includes(WEEK[1]!)).map((run) => run.recipeId)
+    );
+  });
+
+  it('stretches one cook into the next one’s first day and keeps the rest of it', () => {
+    const resized = resizeRun(runs, obiad(WEEK[0]!).id, 3, days);
+    expect(resized?.pinned.dates).toEqual([WEEK[0], WEEK[1], WEEK[2]]);
+    expect(resized?.pinned.recipeId).toBe(obiad(WEEK[0]!).recipeId);
+    expect(resized?.pinned.cookingScale).toBeCloseTo(3 * obiad(WEEK[0]!).portionsEaten);
+
+    // Wednesday–Thursday gives up Wednesday and becomes a Thursday cook of the same recipe.
+    const moved = resized?.locked.find((run) => run.id === runId('obiad', WEEK[3]!));
+    expect(moved?.dates).toEqual([WEEK[3]]);
+    expect(moved?.recipeId).toBe(obiad(WEEK[2]!).recipeId);
+    expect(resized?.locked.some((run) => run.id === runId('obiad', WEEK[2]!))).toBe(false);
+  });
+
+  it('never stretches into a cook the user locked', () => {
+    const resized = resizeRun(runs, obiad(WEEK[0]!).id, 3, days, [runId('obiad', WEEK[2]!)]);
+    expect(resized?.pinned.dates).toEqual([WEEK[0], WEEK[1]]);
+    expect(resized?.locked).toContainEqual(obiad(WEEK[2]!));
+  });
+
+  it('shortens one cook and re-solves only the day it gave up', () => {
+    expect(base.ok).toBe(true);
+    const resized = resizeRun(runs, obiad(WEEK[0]!).id, 1, days);
+    expect(resized).toBeDefined();
+    if (resized === undefined) return;
+
+    const result = planRange({
+      days,
+      template,
+      candidates: library(),
+      locked: resized.locked,
+      pinned: [resized.pinned],
+      runLengths: { [obiad(WEEK[0]!).id]: 1 },
+      random: seededRandom(11)
+    });
+    const proposal = result.ok ? result.proposal : result.failure.kind === 'tolerance' ? result.failure.proposal : undefined;
+    expect(proposal).toBeDefined();
+    if (proposal === undefined) return;
+
+    // Every run that did not touch Tuesday's lunch is exactly what it was.
+    for (const run of runs.filter((run) => run.slotId !== 'obiad' || run.dates[0] !== WEEK[0])) {
+      expect(proposal.runs).toContainEqual(run);
+    }
+    const monday = proposal.runs.find((run) => run.id === obiad(WEEK[0]!).id);
+    expect(monday?.dates).toEqual([WEEK[0]]);
+    expect(monday?.recipeId).toBe(obiad(WEEK[0]!).recipeId);
+    // Tuesday's lunch is a cook of its own now, and it cannot swallow Wednesday's.
+    expect(proposal.runs.find((run) => run.id === runId('obiad', WEEK[1]!))?.dates).toEqual([WEEK[1]]);
+  });
+});
+
 // ---- failures ----------------------------------------------------------------------------
 
 describe('when nothing fits, the message names which case it is', () => {
@@ -1073,14 +1175,19 @@ describe('writing the plan', () => {
     const kept = runsForDates([run], [MONDAY, '2026-09-08']);
     expect(kept[0]?.dates).toEqual([MONDAY, '2026-09-08']);
     expect(kept[0]?.cookingScale).toBe(2);
+    expect(kept[0]?.id).toBe(run.id);
 
-    // Unticking the cooking day moves the cook to the earliest day that survived.
-    const later = runsForDates([run], ['2026-09-08', '2026-09-09']);
-    expect(later[0]?.dates).toEqual(['2026-09-08', '2026-09-09']);
-    expect(later[0]?.id).toBe(runId('obiad', '2026-09-08'));
-    expect(later[0]?.cookingScale).toBe(2);
+    // A gap ends the pot: Wednesday is not eaten out of Monday's cook with Tuesday unticked.
+    const gap = runsForDates([run], [MONDAY, '2026-09-09']);
+    expect(gap[0]?.dates).toEqual([MONDAY]);
+    expect(gap[0]?.cookingScale).toBe(1);
 
     expect(runsForDates([run], ['2026-09-20'])).toEqual([]);
+  });
+
+  it('drops a run whose cooking day is unticked instead of moving the cook', () => {
+    // Nothing was cooked, so nothing is carried into the next day (reported from use).
+    expect(runsForDates([run], ['2026-09-08', '2026-09-09'])).toEqual([]);
   });
 
   it('writes nothing for a day the plan does not touch', () => {

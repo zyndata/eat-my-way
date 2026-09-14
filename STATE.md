@@ -5459,6 +5459,72 @@ its own.
   Settings uses, and that one is covered.
 
 
+### 2026-09-14 — the week planner, four things found by using it
+
+Outside the phase sequence, reported from use with two screenshots of „Zaplanuj tydzień".
+
+425. **An unticked day is out of the plan, not merely out of the write.** Reported: „gdy
+     odznaczam dzień […] jadłospis z tego dnia powinien być ukryty […] upewnij się, że posiłki w
+     odznaczonym dniu nie są brane pod uwagę w losowaniu" — the use case being three days in the
+     middle of a week. The tick only filtered what „Zastosuj" wrote: the solver still planned all
+     seven days, so the unticked day's meals sat on screen, took part in the weekly mean, and
+     barred their recipes from the neighbouring days. Now the sheet solves over the **ticked days
+     only** (`solveDates`), the weekly balance is measured from the first of them, and an
+     unticked card folds to its header with „nie planuję" so it can be ticked back. Toggling a
+     day re-solves every run that is not locked, because the question asked is „what would this
+     plan be without that day" — which is also what decision 426 needs.
+
+426. **A pot is never cooked on, or carried over from, a day that is not planned** (deviation
+     from PLAN.md phase 13 task 7 and from the behaviour `runsForDates` documented). Reported:
+     with Monday's lunch cooked for two days and Monday unticked, Tuesday still showed „z garnka
+     z 14 września". Two rules replace the old one. **A gap ends a run**: `planBlocks` never lets
+     a run cover a date that is not the calendar day after the previous one, so Monday's pot is
+     not eaten on Wednesday because Tuesday was unticked — the meal screen's „Dodaj też jutro"
+     could not have described it either. **Unticking the cooking day drops the run** instead of
+     moving the cook to the next surviving day: nothing was cooked. PLAN.md's half — unticking a
+     *later* day shortens the run so the cooking day's `cookingScale` does not over-buy — still
+     holds. A run's id is its cooking day and so never changes, which is what lets a lock survive
+     a toggle.
+
+427. **A day card lists its runs in the template's slot order.** Reported: a pot carried over
+     from yesterday moved to the top of the next day. `proposal.runs` came back in the greedy's
+     reading order — cooking day first — so a Tuesday listed Monday's lunch before its own
+     breakfast. `assemble` now sorts by slot, then cooking day. `planWrites` writes in that order
+     too, which matters beyond looks: „Uzupełnij dzień" maps existing meals to slots **by
+     position** (decision 261), so a day written with its lunch first was being read back with
+     lunch as breakfast.
+
+428. **The 1/2/3 control changes one cook and the days it touches, nothing else.** Reported:
+     every click rerolled the whole week. PLAN.md task 3 asked for exactly the local behaviour;
+     the implementation re-solved the range with only the user's locks held. `resizeRun` now
+     keeps the cook's recipe and cooking day and returns it as a **pinned** run — a new
+     `PlanRequest.pinned`: days and recipe fixed, portion count still searched — over its new
+     days, stopping at the end of the range, a gap, a taken slot and a same-slot cook the user
+     locked. Every other run is locked for that solve; a same-slot cook the longer one reaches
+     into gives up those days and keeps the rest of its own, starting later. Days a shorter cook
+     gave up belong to nobody and are the only thing re-solved. Clicking the length a run already
+     has does nothing. A length chosen on the sheet is no longer overruled by the stagger rule
+     (decision 279): it is a decision, not a default.
+
+429. **A free run no longer swallows a locked one.** Found while building 428, and a real defect
+     before it: `planBlocks` looked a lock up only by the date a free run *started* on, so a lock
+     sitting inside the days a free run covered — Wednesday's locked lunch after clicking 3 on
+     Monday's — was silently dropped from the proposal. Every date a locked or pinned cook holds
+     is now reserved for it; a free run stops short, and „Skrócone gotowanie na zapas" says so.
+
+- **Tests.** `planner.test.ts` +8: a gap ends a block, a lock is placed where it is and a free
+  run stops short of it, the unticked cooking day drops the run, slot order per day and in the
+  write, stretching into the next cook, not stretching into a locked one, and shortening one
+  cook re-solving only the day it gave up (every other run `toContainEqual` what it was).
+  `e2e/planner.spec.ts` +2: an unticked first day folds away and its successor becomes a cooking
+  day, then comes back when re-ticked; shortening the first lunch leaves the other meals of the
+  first two days and the whole of days 3–7 unchanged, and the carried-over lunch sits second.
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1020/1020.
+  `npx playwright test` (Chromium, whole suite) 151/151. WebKit not run locally; CI runs it.
+- **Not re-taken:** the planner screenshot in the README. It shows a fully ticked week, and the
+  only visible change there is a carried-over lunch moving below its day's breakfast.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

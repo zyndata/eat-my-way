@@ -13,6 +13,7 @@
     planRange,
     planWrites,
     portionLabel,
+    resizeRun,
     runsForDates,
     skippedLabel,
     templateOf,
@@ -106,8 +107,10 @@
   let locks = $state<string[]>([]);
   /** The sheet's own 1/2/3 control. A one-off — never written back into the template. */
   let runLengths = $state<Record<string, number>>({});
-  /** Days that will actually be written. Unticking one shortens the cook that covered it. */
+  /** Ticked days. An unticked one is not planned at all — as if it were not in the range. */
   let picked = $state<string[]>([]);
+  /** The ticked days in calendar order: what is solved, shown in full, and written. */
+  const solveDates = $derived(range.filter((date) => picked.includes(date)));
   /** „Zastąp" — the day is cleared first, so the plan is solved as if it were empty. */
   let replace = $state(false);
   /** Existing meals moved to another slot before generating (day mode only). */
@@ -116,7 +119,7 @@
   const candidatesRef: { list: ReturnType<typeof planCandidates>['candidates'] } = { list: [] };
 
   const busyDates = $derived(
-    dayRows.filter((row) => row.meals.length > 0 && range.includes(row.date)).map((row) => row.date)
+    dayRows.filter((row) => row.meals.length > 0 && solveDates.includes(row.date)).map((row) => row.date)
   );
 
   const title = $derived(
@@ -217,24 +220,53 @@
    * sheet says so, rather than dropping the whole proposal for a click that asked for very
    * little (decision 288).
    */
-  function solve(only?: string): void {
+  function solve(only?: string, resize?: { run: PlanRun; length: number }): void {
     error = '';
     note = '';
-    const rows = replace ? dayRows.filter((row) => !range.includes(row.date)) : dayRows;
-    balance = weekBalance(range, dayRows, goals);
+    const dates = solveDates;
+    const previous = proposal;
+    if (dates.length === 0) {
+      // Every day unticked: nothing to solve, and the cards stay so a day can be ticked again.
+      proposal = null;
+      missMessage = null;
+      missed = false;
+      balance = NO_BALANCE;
+      return;
+    }
 
-    const kept =
-      only === undefined
-        ? (proposal?.runs ?? []).filter((run) => locks.includes(run.id))
-        : (proposal?.runs ?? []).filter((run) => run.id !== only);
+    const rows = replace ? dayRows.filter((row) => !dates.includes(row.date)) : dayRows;
+    balance = weekBalance(dates, dayRows, goals);
+    const days = planDayInputs(dates, rows, goals, template, balance, slotOverrides);
+    const runs = previous?.runs ?? [];
 
-    const rerolled = only === undefined ? undefined : proposal?.runs.find((run) => run.id === only);
+    // A whole reroll keeps the locks, trimmed to the days still ticked — a lock whose cooking
+    // day was unticked has nothing left to hold. A reroll of one cook, or a new length for one,
+    // is local: every other run is kept as it is.
+    let locked: PlanRun[];
+    let pinned: PlanRun[] = [];
+    if (resize !== undefined) {
+      const resized = resizeRun(runs, resize.run.id, resize.length, days, locks);
+      if (resized === undefined) return;
+      locked = resized.locked;
+      pinned = [resized.pinned];
+    } else if (only !== undefined) {
+      locked = runs.filter((run) => run.id !== only);
+    } else {
+      locked = runsForDates(
+        runs.filter((run) => locks.includes(run.id)),
+        dates
+      );
+      locks = locked.map((run) => run.id);
+    }
+
+    const rerolled = only === undefined ? undefined : runs.find((run) => run.id === only);
 
     const request = {
-      days: planDayInputs(range, rows, goals, template, balance, slotOverrides),
+      days,
       template,
       candidates: candidatesRef.list,
-      locked: kept,
+      locked,
+      pinned,
       runLengths,
       random: Math.random
     };
@@ -249,6 +281,12 @@
       // say why it did not change — an unexplained no-op is what this whole branch is for.
       result = planRange(request);
       note = `Nie ma innego przepisu na „${slotLabel(rerolled.slotId)}" — zostaje ten sam.`;
+    }
+
+    if (!result.ok && resize !== undefined && result.failure.kind !== 'tolerance') {
+      // A click on one cook's length must not throw the whole proposal away.
+      note = `Nie da się tak zmienić gotowania na „${slotLabel(resize.run.slotId)}" — plan zostaje bez zmian.`;
+      return;
     }
 
     if (result.ok) {
@@ -273,14 +311,24 @@
     locks = locks.includes(id) ? locks.filter((other) => other !== id) : [...locks, id];
   }
 
+  /**
+   * A new length changes this cook, the days it gives up or reaches into, and nothing else:
+   * re-solving the range for it rerolled every other meal of the week for one click.
+   */
   function setRunLength(run: PlanRun, length: number): void {
+    if (run.dates.length === length) return;
     runLengths = { ...runLengths, [run.id]: length };
-    // Re-solving the days a run touches means re-solving the range; every lock is honoured.
-    solve();
+    solve(undefined, { run, length });
   }
 
+  /**
+   * Unticking a day takes it out of the plan entirely — its card folds away, and the rest is
+   * re-solved as if it were not in the range, so no pot is cooked on it or carried over from
+   * it. Locks are honoured; ticking it back plans it afresh.
+   */
   function togglePicked(date: string): void {
     picked = picked.includes(date) ? picked.filter((other) => other !== date) : [...picked, date];
+    solve();
   }
 
   function setReplace(value: boolean): void {
@@ -301,11 +349,12 @@
   }
 
   async function apply(): Promise<void> {
-    if (proposal === null || picked.length === 0) return;
+    if (proposal === null || solveDates.length === 0) return;
     applying = true;
     try {
-      const runs = runsForDates(proposal.runs, picked);
-      await repository.applyPlan(planWrites(runs, picked), replace ? 'replace' : 'append');
+      // The proposal is already solved over exactly these days; the trim is a guard, not a rule.
+      const runs = runsForDates(proposal.runs, solveDates);
+      await repository.applyPlan(planWrites(runs, solveDates), replace ? 'replace' : 'append');
       onapplied();
     } catch (cause) {
       error = cause instanceof Error ? cause.message : 'Nie udało się zapisać planu.';
@@ -406,8 +455,7 @@
       </div>
     {/if}
 
-    {#if proposal !== null}
-      {#if busyDates.length > 0}
+    {#if proposal !== null && busyDates.length > 0}
         <div class="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span class="text-(--color-ink-muted)">
             {busyDates.length === 1 ? 'Ten dzień ma już posiłki:' : 'Część dni ma już posiłki:'}
@@ -431,35 +479,55 @@
             Zastąp
           </button>
         </div>
-      {/if}
+    {/if}
 
+    {#if proposal !== null || weekMode}
+      <!-- Every day of the range keeps its card, so an unticked one can be ticked again; only a
+           ticked day unfolds into a plan. -->
       <ul class="pt-3">
-        {#each proposal.days as day (day.date)}
-          {@const runs = runsByDate.get(day.date) ?? []}
-          <li class="mt-3 rounded-xl border border-(--color-border) p-3 first:mt-0">
+        {#each range as date (date)}
+          {@const day = proposal?.days.find((row) => row.date === date)}
+          {@const runs = runsByDate.get(date) ?? []}
+          <li
+            class="mt-3 rounded-xl border border-(--color-border) first:mt-0 {day === undefined
+              ? 'px-3 py-2'
+              : 'p-3'}"
+          >
             <div class="flex items-baseline justify-between gap-2">
               <div class="flex min-w-0 items-center gap-2">
                 {#if weekMode}
                   <input
-                    id="plan-day-{day.date}"
+                    id="plan-day-{date}"
                     type="checkbox"
                     class="size-4 accent-(--color-accent)"
-                    checked={picked.includes(day.date)}
-                    onchange={() => togglePicked(day.date)}
+                    checked={picked.includes(date)}
+                    onchange={() => togglePicked(date)}
                   />
                 {/if}
-                <label class="truncate text-sm font-medium first-letter:uppercase" for="plan-day-{day.date}">
-                  {weekMode ? formatDayLong(day.date) : relativeDayLabel(day.date, today)}
+                <label
+                  class="truncate text-sm font-medium first-letter:uppercase {picked.includes(date)
+                    ? ''
+                    : 'text-(--color-ink-muted)'}"
+                  for="plan-day-{date}"
+                >
+                  {weekMode ? formatDayLong(date) : relativeDayLabel(date, today)}
                 </label>
               </div>
-              <p class="shrink-0 text-right text-sm tabular-nums">
-                <span class={isOverGoal(day.totals.kcal, day.goals.kcal) ? 'text-(--color-warn)' : ''}>
-                  {Math.round(day.totals.kcal)}
-                </span>
-                <span class="text-xs text-(--color-ink-muted)">/ {Math.round(day.goals.kcal)} kcal</span>
-              </p>
+              {#if day === undefined}
+                {#if !picked.includes(date)}
+                  <p class="shrink-0 text-xs text-(--color-ink-muted)">nie planuję</p>
+                {/if}
+              {:else}
+                <p class="shrink-0 text-right text-sm tabular-nums">
+                  <span class={isOverGoal(day.totals.kcal, day.goals.kcal) ? 'text-(--color-warn)' : ''}>
+                    {Math.round(day.totals.kcal)}
+                  </span>
+                  <span class="text-xs text-(--color-ink-muted)">/ {Math.round(day.goals.kcal)} kcal</span>
+                </p>
+              {/if}
             </div>
 
+            {#if day !== undefined}
             <svg
               class="mt-2 h-1.5 w-full rounded-full bg-(--color-border) {day.outOfBand
                 ? 'text-(--color-warn)'
@@ -577,13 +645,14 @@
                 </li>
               {/each}
             </ul>
+            {/if}
           </li>
         {/each}
       </ul>
 
       <!-- Only worth saying over a range where a longer cook could have fitted: on one day
            every batched slot is „shortened", which is noise rather than news. -->
-      {#if weekMode && proposal.shortenedSlotIds.length > 0}
+      {#if weekMode && proposal !== null && proposal.shortenedSlotIds.length > 0}
         <p class="pt-3 text-xs text-(--color-ink-muted)">
           Skrócone gotowanie na zapas: {proposal.shortenedSlotIds.map(slotLabel).join(', ')} —
           nie zmieściło się w zaplanowanym zakresie.
@@ -615,7 +684,7 @@
       <button
         type="button"
         class="emw-press emw-btn emw-btn-primary px-4 disabled:opacity-40"
-        disabled={proposal === null || applying || picked.length === 0}
+        disabled={proposal === null || applying || solveDates.length === 0}
         onclick={() => void apply()}
       >
         {applying ? 'Zapisywanie…' : missed ? 'Zastosuj mimo różnicy' : 'Zastosuj'}
