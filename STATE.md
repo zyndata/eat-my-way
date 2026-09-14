@@ -5524,6 +5524,21 @@ Outside the phase sequence, reported from use with two screenshots of „Zaplanu
 - **Not re-taken:** the planner screenshot in the README. It shows a fully ticked week, and the
   only visible change there is a carried-over lunch moving below its day's breakfast.
 
+430. **The per-weekday cook table is removed from Settings** (deviation from PLAN.md phase 13
+     tasks 3 and 9, and a reversal of decision 272's weekday half). Asked for by the user once
+     the sheet's 1/2/3 control became local (decision 428): „ustawienie w planerze tygodnia
+     duplikuje tę funkcjonalność". The per-slot „Gotuję na" stays — it is the habit every week
+     starts from, and without it every lunch of every week would need a click. The table is what
+     duplicated the sheet, and it was also wrong in a way nobody would have predicted:
+     `cookDays[weekday]` overrode **every** slot starting that day, and the stagger (decision 279)
+     keeps only the first long start per date in template order — so „Niedziela: 3 dni" on the
+     default template cooked Sunday's *breakfast* for three days and cut lunch to one.
+     `MealPlanTemplate.cookDays` is deleted, `resolveRunLength` takes only the slot, and
+     `readMealPlan` ignores a `cookDays` already on Drive, so the next profile write drops it.
+     No schema version and no migration: an older build reading a template without the field
+     treats every weekday as „normalnie", which is what it always did for an absent entry.
+     Settings gains one sentence pointing at the sheet for a week that cooks differently.
+
 
 ## Open questions
 

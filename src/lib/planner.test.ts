@@ -190,21 +190,9 @@ describe('the template', () => {
 describe('resolveRunLength', () => {
   const obiad = slot('obiad', 0.4, 2);
 
-  it('uses the slot when the weekday says nothing', () => {
-    expect(resolveRunLength(obiad, MONDAY, { slots: [obiad] })).toBe(2);
-  });
-
-  it('lets the weekday override the slot — „w niedzielę gotuję na 3 dni"', () => {
-    // 6 = Sunday, as `weekdayIndex` numbers the week from Monday.
-    const template: MealPlanTemplate = { slots: [obiad], cookDays: { 6: 3 } };
-    expect(resolveRunLength(obiad, '2026-09-13', template)).toBe(3);
-    // …and every other weekday keeps the slot's own number.
-    expect(resolveRunLength(obiad, MONDAY, template)).toBe(2);
-  });
-
-  it('reads a weekday set to 1 as „do not start a long cook that day"', () => {
-    const template: MealPlanTemplate = { slots: [obiad], cookDays: { 2: 1 } };
-    expect(resolveRunLength(obiad, '2026-09-09', template)).toBe(1);
+  it('is the slot’s own number, clamped to what a cook may last', () => {
+    expect(resolveRunLength(obiad)).toBe(2);
+    expect(resolveRunLength(slot('obiad', 0.4, 7))).toBe(MAX_BATCH_DAYS);
   });
 });
 
@@ -394,15 +382,6 @@ describe('planBlocks', () => {
       // A run never overruns the end of the range, so Sunday stands alone.
       [WEEK[6]]
     ]);
-  });
-
-  it('lets `cookDays` start a three-day cook on Sunday and nowhere else', () => {
-    const template: MealPlanTemplate = { slots: [slot('obiad', 1, 1)], cookDays: { 6: 3 } };
-    // Sunday to Tuesday of the following week.
-    const range = [WEEK[6]!, '2026-09-14', '2026-09-15', '2026-09-16'];
-    const blocks = planBlocks({ days: inputs(range), template });
-    expect(blocks[0]?.dates).toEqual([WEEK[6], '2026-09-14', '2026-09-15']);
-    expect(blocks[1]?.dates).toEqual(['2026-09-16']);
   });
 
   it('staggers two long runs rather than starting both on the same day', () => {

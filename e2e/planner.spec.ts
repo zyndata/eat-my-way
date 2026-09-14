@@ -353,8 +353,8 @@ test('a run’s length is changed in the proposal without touching the template'
   await stretch.click();
   await expect(sheet.getByText(/Gotujesz na 3 dni/).first()).toBeVisible();
 
-  // A one-off: „w tę niedzielę mam też wolny poniedziałek" is not a rule about Sundays, so
-  // the template in Settings is exactly as it was (STATE.md decision 274).
+  // A one-off: „w tym tygodniu mam czas" is not a new habit, so the template in Settings is
+  // exactly as it was (STATE.md decision 274).
   await sheet.getByRole('button', { name: 'Zamknij' }).click();
   await device.goto('#/settings');
   const planner = device.locator('section').filter({ hasText: 'Planer posiłków' }).first();
@@ -362,9 +362,6 @@ test('a run’s length is changed in the proposal without touching the template'
     'aria-pressed',
     'true'
   );
-  await expect(
-    planner.getByRole('button', { name: 'Niedziela: gotuję na 3 dni' })
-  ).toHaveAttribute('aria-pressed', 'false');
 });
 
 /** One day's card in the week sheet — the list item that holds that day's tick. */
@@ -467,23 +464,29 @@ test('a template from Drive is obeyed, tags and all', async ({ device, drive }) 
   await expect(sheet.getByText(/nie-ma-takiego/)).toBeVisible();
 });
 
-test('the template editor saves a weekday that cooks differently', async ({ device, drive }) => {
+test('the template editor saves how long a meal is usually cooked for', async ({
+  device,
+  drive
+}) => {
   await connectWith(device, drive);
 
   const planner = device.locator('section').filter({ hasText: 'Planer posiłków' }).first();
-  await planner.getByRole('button', { name: 'Niedziela: gotuję na 3 dni' }).click();
+  // The per-weekday table is gone (decision 430); the slot's own number is the whole setting.
+  await expect(planner.getByText('Dni, w których gotuję inaczej')).toHaveCount(0);
+  await planner.getByRole('button', { name: 'Obiad: gotuję na 3 dni' }).click();
   await planner.getByRole('button', { name: 'Zapisz planer' }).click();
   await expect(planner.getByText('Zapisano.')).toBeVisible();
 
   // It survives a reload, and it reaches Drive on the existing profile path.
   await device.reload();
-  await expect(
-    device.getByRole('button', { name: 'Niedziela: gotuję na 3 dni' })
-  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(device.getByRole('button', { name: 'Obiad: gotuję na 3 dni' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
 
   await expect
     .poll(() => JSON.stringify(drive.snapshot()['profile.json']), { timeout: 20_000 })
-    .toContain('cookDays');
+    .toMatch(/batchDays\\?":3/);
 });
 
 test('the week is planned from the day the user picks, not from a fixed Monday', async ({

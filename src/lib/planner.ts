@@ -13,7 +13,7 @@ import {
   sumMacros
 } from './macros';
 import { dayGoals, rangeFrom, weekDates, weekStart } from './calendar';
-import { addDays, daysBetween, weekdayIndex } from './dates';
+import { addDays, daysBetween } from './dates';
 import { formatPortions, pluralPl } from './text';
 
 /**
@@ -97,17 +97,11 @@ export function clampBatchDays(value: number): number {
 }
 
 /**
- * How long a cook started on `date` in `slot` lasts. The weekday says something or it does
- * not; when it does, it wins over the slot's own number (PLAN.md, decision 272). This is the
- * rule the user will predict the plan by, so it is one function with its own test.
+ * How long a cook in `slot` lasts unless the sheet says otherwise: the slot's own number.
+ * The per-weekday override that used to win over it is gone (STATE.md decision 430).
  */
-export function resolveRunLength(
-  slot: MealSlot,
-  date: string,
-  template: MealPlanTemplate
-): number {
-  const override = template.cookDays?.[weekdayIndex(date)];
-  return clampBatchDays(override ?? slot.batchDays);
+export function resolveRunLength(slot: MealSlot): number {
+  return clampBatchDays(slot.batchDays);
 }
 
 /**
@@ -508,7 +502,7 @@ export function planBlocks(
 
       const id = runId(slot.id, date);
       const chosen = request.runLengths?.[id];
-      const wanted = clampBatchDays(chosen ?? resolveRunLength(slot, date, template));
+      const wanted = clampBatchDays(chosen ?? resolveRunLength(slot));
 
       let length = 1;
       while (length < wanted && index + length < dates.length) {
@@ -926,7 +920,7 @@ function assemble(
     const slot = request.template.slots.find((row) => row.id === block.slotId);
     if (slot === undefined || block.locked !== undefined) continue;
     const wanted =
-      request.runLengths?.[block.id] ?? resolveRunLength(slot, block.dates[0] as string, request.template);
+      request.runLengths?.[block.id] ?? resolveRunLength(slot);
     if (block.dates.length < wanted) shortened.add(block.slotId);
   }
 

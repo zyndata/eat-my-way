@@ -22,10 +22,9 @@
    *
    * Three things a row says: which recipes may fill it (tags, read as alternatives — an empty
    * field means „any recipe"), how much of the day it is worth (a share, normalized rather
-   * than validated), and how many days one cook in it usually covers.
-   *
-   * Beneath the rows, the seven weekdays: each either „normalnie" or its own run length. That
-   * table is `cookDays`, and it is where „w niedzielę gotuję na 3 dni" is said (decision 272).
+   * than validated), and how many days one cook in it usually covers. „Usually" is the word:
+   * a week that differs says so on the planner sheet's own 1/2/3 control. The per-weekday
+   * table that used to sit under the rows is gone (STATE.md decision 430).
    *
    * It all lives on `profile.mealPlan`, so it rides the `profile.json` path to Drive and costs
    * no file, no table and no schema version.
@@ -34,17 +33,6 @@
   const GRIP = 'M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01';
   const FLIP_MS = 180;
   const TOUCH_DELAY_MS = 200;
-
-  /** Monday first, as `weekdayIndex` numbers the week (decision 74). */
-  const WEEKDAYS = [
-    'Poniedziałek',
-    'Wtorek',
-    'Środa',
-    'Czwartek',
-    'Piątek',
-    'Sobota',
-    'Niedziela'
-  ];
 
   /** One row while it is being edited: the stored slot plus the tag labels as typed. */
   interface SlotDraft extends MealSlot {
@@ -58,7 +46,6 @@
   let resetOpen = $state(false);
 
   let rows = $state<SlotDraft[]>([]);
-  let cookDays = $state<Record<number, number>>({});
   let tags = $state<Tag[]>([]);
 
   /** What `load` last put on screen, so a background sync cannot tread on an edit. */
@@ -76,9 +63,9 @@
     }));
   }
 
-  /** The rows and the weekday table, as one value the sync guard can compare. */
+  /** The rows, as one value the sync guard can compare. */
   function snapshot(): string {
-    return JSON.stringify({ rows, cookDays });
+    return JSON.stringify({ rows });
   }
 
   async function load(): Promise<void> {
@@ -90,7 +77,6 @@
     // the background just fetched — the same rule the goals field follows (decision 227).
     if (shown === null || snapshot() === shown) {
       rows = toDrafts(template, known);
-      cookDays = { ...(template.cookDays ?? {}) };
     }
     shown = snapshot();
     loading = false;
@@ -116,15 +102,6 @@
 
   function setBatchDays(id: string, value: number): void {
     rows = rows.map((row) => (row.id === id ? { ...row, batchDays: clampBatchDays(value) } : row));
-    saved = false;
-  }
-
-  /** „normalnie" is the absence of an entry, not a zero — the slot's own number then wins. */
-  function setCookDay(weekday: number, value: number | null): void {
-    const next = { ...cookDays };
-    if (value === null) delete next[weekday];
-    else next[weekday] = clampBatchDays(value);
-    cookDays = next;
     saved = false;
   }
 
@@ -156,8 +133,7 @@
         tagKeys: toTagKeys(row.tagLabels),
         share: row.share,
         batchDays: clampBatchDays(row.batchDays)
-      })),
-      ...(Object.keys(cookDays).length === 0 ? {} : { cookDays })
+      }))
     };
 
     await repository.setMealPlan(template);
@@ -171,7 +147,6 @@
     resetOpen = false;
     const template = defaultMealPlan();
     rows = toDrafts(template, tags);
-    cookDays = {};
     await save();
   }
 </script>
@@ -298,44 +273,10 @@
       Dodaj posiłek
     </button>
 
-    <h3 class="pt-6 text-sm font-semibold">Dni, w których gotuję inaczej</h3>
-    <p class="pt-1 text-sm text-(--color-ink-muted)">
-      Niedziela to nie środa: w wolne popołudnie gotuje się garnek na pół tygodnia, a w roboczą
-      środę nie gotuje się wcale. Dzień ustawiony tutaj przebija ustawienie posiłku.
+    <p class="pt-3 text-sm text-(--color-ink-muted)">
+      „Gotuję na" to Twój zwykły zwyczaj. Tydzień, w którym gotujesz inaczej, zmienisz przy samym
+      posiłku w planie tygodnia.
     </p>
-
-    <ul class="pt-3">
-      {#each WEEKDAYS as name, weekday (name)}
-        <li class="flex items-center justify-between gap-3 border-b border-(--color-border) py-2 last:border-b-0">
-          <span class="text-sm">{name}</span>
-          <div class="flex overflow-hidden rounded-lg border border-(--color-border)" role="group" aria-label="{name}: długość gotowania">
-            <button
-              type="button"
-              class="emw-press px-3 py-1.5 text-xs {cookDays[weekday] === undefined
-                ? 'emw-btn-primary'
-                : 'emw-tint'}"
-              aria-pressed={cookDays[weekday] === undefined}
-              onclick={() => setCookDay(weekday, null)}
-            >
-              normalnie
-            </button>
-            {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
-              <button
-                type="button"
-                class="emw-press px-3 py-1.5 text-xs tabular-nums {cookDays[weekday] === length
-                  ? 'emw-btn-primary'
-                  : 'emw-tint'}"
-                aria-pressed={cookDays[weekday] === length}
-                aria-label="{name}: gotuję na {length} {length === 1 ? 'dzień' : 'dni'}"
-                onclick={() => setCookDay(weekday, length)}
-              >
-                {length}
-              </button>
-            {/each}
-          </div>
-        </li>
-      {/each}
-    </ul>
 
     <div class="flex flex-wrap items-center gap-2 pt-4">
       <button
@@ -367,6 +308,6 @@
   onconfirm={() => void reset()}
   oncancel={() => (resetOpen = false)}
 >
-  Wrócimy do czterech posiłków (25/40/10/25%), z obiadem gotowanym na 2 dni, i wyczyścimy dni
-  gotowane inaczej. Przepisy i plan w kalendarzu zostaną nietknięte.
+  Wrócimy do czterech posiłków (25/40/10/25%), z obiadem gotowanym na 2 dni. Przepisy i plan w
+  kalendarzu zostaną nietknięte.
 </ConfirmDialog>

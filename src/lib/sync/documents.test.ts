@@ -26,8 +26,7 @@ const PROFILE_JSON = {
 describe('readMealPlan', () => {
   it('reads a template back exactly as it was written', () => {
     const plan = {
-      slots: [{ id: 'obiad', label: 'Obiad', tagKeys: ['wege'], share: 0.4, batchDays: 2 }],
-      cookDays: { 6: 3 }
+      slots: [{ id: 'obiad', label: 'Obiad', tagKeys: ['wege'], share: 0.4, batchDays: 2 }]
     };
     expect(readMealPlan(plan)).toEqual(plan);
     expect(
@@ -42,12 +41,9 @@ describe('readMealPlan', () => {
     expect(readMealPlan({ slots: [{ label: 'Obiad' }, { id: 'x' }] })).toBeUndefined();
   });
 
-  it('drops a weekday outside the week, and a run length that is not a number', () => {
-    expect(
-      readMealPlan({ slots: [{ id: 'a', label: 'A' }], cookDays: { 6: 3, 9: 2, 1: 'dużo' } })
-    ).toEqual({
-      slots: [{ id: 'a', label: 'A', tagKeys: [], share: 0, batchDays: 1 }],
-      cookDays: { 6: 3 }
+  it('ignores the per-weekday table an older build wrote (decision 430)', () => {
+    expect(readMealPlan({ slots: [{ id: 'a', label: 'A' }], cookDays: { 6: 3 } })).toEqual({
+      slots: [{ id: 'a', label: 'A', tagKeys: [], share: 0, batchDays: 1 }]
     });
   });
 

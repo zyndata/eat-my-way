@@ -214,6 +214,9 @@ export function geminiUsageByModel(
  * A malformed template degrades to `undefined` — the built-in default — rather than to a
  * half-built one, for the same reason every other reader here is forgiving in one direction
  * only: sync must never turn a damaged file into damaged local data.
+ *
+ * `cookDays`, which builds before STATE.md decision 430 wrote beside the slots, is not read:
+ * the planner no longer has anything to do with it, and the next write drops it.
  */
 export function readMealPlan(value: unknown): MealPlanTemplate | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
@@ -234,17 +237,7 @@ export function readMealPlan(value: unknown): MealPlanTemplate | undefined {
         typeof row.batchDays === 'number' && Number.isFinite(row.batchDays) ? row.batchDays : 1
     });
   }
-  if (slots.length === 0) return undefined;
-
-  const cookDays: Record<number, number> = {};
-  for (const [weekday, length] of Object.entries(doc.cookDays ?? {})) {
-    const day = Number(weekday);
-    if (!Number.isInteger(day) || day < 0 || day > 6) continue;
-    if (typeof length !== 'number' || !Number.isFinite(length)) continue;
-    cookDays[day] = length;
-  }
-
-  return Object.keys(cookDays).length === 0 ? { slots } : { slots, cookDays };
+  return slots.length === 0 ? undefined : { slots };
 }
 
 /** `profile.json`. Unknown or missing fields fall back to what the caller already had. */
