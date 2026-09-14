@@ -38,11 +38,13 @@ export interface ShoppingLine {
   /**
    * The household measure this line prints itself in — „2 ząbki" rather than „2 szt.".
    *
-   * Kept only while every row that merged into the line agrees (STATE.md decision 351). Lines
-   * are still keyed by `ingredientId + unit` and nothing about that changes, so a recipe
-   * counting cloves and one counting plain pieces land together; printing either label would
-   * be a claim about the other recipe's row, so the line falls back to „szt." instead, which
-   * is what it said before measures existed and is true of both.
+   * Kept only while every row that merged into the line agrees (STATE.md decision 351). Rows
+   * are summed by `ingredientId + unit`, so a recipe counting cloves and one counting plain
+   * pieces land together; printing either label would be a claim about the other recipe's row,
+   * so the line falls back to „szt." instead, which is what it said before measures existed
+   * and is true of both. The same holds of the units merged afterwards (`mergeUnits`): a
+   * weighed row carries no label, but it says nothing about the label either, so it does not
+   * drop one the counted rows agree on.
    */
   measureName?: MeasureName;
   /**
@@ -131,10 +133,98 @@ function showGrams(line: ShoppingLine): boolean {
 }
 
 /**
+ * Whether this line's amount and its grams are the same fact told twice, so another line of
+ * the same ingredient may be added to it.
+ *
+ * A `g` line always is. An `ml` or `szt` line is only while it weighs something: `szt` with no
+ * `gramsPerUnit` weighs 0 (`macros.ts`), which is „not filled in yet" rather than „weightless",
+ * and folding such a row into a total would quietly delete it. A row of nothing at all is
+ * weightless honestly and merges fine.
+ */
+function weighable(line: ShoppingLine): boolean {
+  return line.unit === 'g' || line.grams > 0 || line.amount === 0;
+}
+
+/**
+ * Collapse the lines of one ingredient that differ only in the unit they were typed in.
+ *
+ * Reported from a real week's list: „Cebula — 100 g" directly above „Cebula — 1 szt. (80 g)",
+ * because one recipe counted the onion and another weighed it. Keying by `ingredientId + unit`
+ * is right for *adding* — 2 szt and 100 g cannot be summed as they stand — but it is the wrong
+ * thing to *print*: a shopping list is read in a shop, where two lines for one onion are two
+ * things to look for and one of them gets bought twice (STATE.md decision 432).
+ *
+ * Grams are the common denominator and every row already carries them, so the lines are summed
+ * in grams and the result is printed in the unit the ingredient is actually bought in:
+ *
+ *   - a countable row wins, because that is how a shop sells onions, eggs and lemons. The
+ *     pieces come back out of the grams at the weight the `szt` rows themselves used, so the
+ *     total still weighs exactly what the recipes asked for — and the household measure
+ *     survives on the same terms as before, kept only while every `szt` row agreed on it;
+ *   - with no countable row — millilitres against grams — the line falls back to grams, which
+ *     is the only thing both sides are certain to mean.
+ *
+ * A `szt` row nobody has given a weight (`weighable`) blocks the merge for that ingredient:
+ * its grams are unknown, not zero, and its lines are left exactly as they were.
+ */
+function mergeUnits(lines: readonly ShoppingLine[]): ShoppingLine[] {
+  const byIngredient = new Map<string, ShoppingLine[]>();
+  for (const line of lines) {
+    const group = byIngredient.get(line.ingredientId);
+    if (group === undefined) byIngredient.set(line.ingredientId, [line]);
+    else group.push(line);
+  }
+
+  const merged: ShoppingLine[] = [];
+  for (const line of lines) {
+    const group = byIngredient.get(line.ingredientId);
+    // Emitted at the position of the group's first line, so the walk order never moves.
+    if (group === undefined) continue;
+    byIngredient.delete(line.ingredientId);
+
+    if (group.length === 1 || !group.every(weighable)) {
+      merged.push(...group);
+      continue;
+    }
+
+    const grams = group.reduce((sum, row) => sum + row.grams, 0);
+    const counted = group.filter((row) => row.unit === 'szt');
+    // Pieces and what they weigh, as the counted rows themselves had it. Rows disagreeing on
+    // the weight of one piece — cloves against whole heads — blend, which is the same average
+    // the dropped label already admits to.
+    const countedGrams = counted.reduce((sum, row) => sum + row.grams, 0);
+    const pieces = counted.reduce((sum, row) => sum + row.amount, 0);
+    const measureNames = new Set(counted.map((row) => row.measureName));
+
+    const base = {
+      ingredientId: line.ingredientId,
+      name: line.name,
+      department: line.department
+    };
+
+    if (pieces > 0 && countedGrams > 0) {
+      const measureName = measureNames.size === 1 ? counted[0]?.measureName : undefined;
+      merged.push({
+        ...base,
+        unit: 'szt',
+        amount: (grams * pieces) / countedGrams,
+        grams,
+        ...(measureName === undefined ? {} : { measureName })
+      });
+      continue;
+    }
+
+    merged.push({ ...base, unit: 'g', amount: grams, grams });
+  }
+  return merged;
+}
+
+/**
  * Sum the ingredients of every meal in the scope.
  *
- * Lines are keyed by ingredient **and unit**: 2 szt and 100 g of the same thing cannot be
- * added, and pretending otherwise would print a number nobody can shop by.
+ * Rows are summed by ingredient **and unit**: 2 szt and 100 g of the same thing cannot be
+ * added as they stand. They do not stay two lines, though — `mergeUnits` puts one ingredient
+ * back on one line through the grams both rows carry (decision 432).
  *
  * The order is the shop's: by department first, and within a department by the order the
  * ingredients were first met (decision 329). The sort is stable, which is what makes the second
@@ -186,7 +276,7 @@ export function shoppingLines(
     }
   }
 
-  return [...lines.values()].sort(
+  return mergeUnits([...lines.values()]).sort(
     (a, b) => departmentIndex(a.department) - departmentIndex(b.department)
   );
 }

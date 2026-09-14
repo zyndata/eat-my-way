@@ -560,3 +560,71 @@ test('the week is planned from the day the user picks, not from a fixed Monday',
     expected
   );
 });
+
+test('every slot set to two days really is cooked for two days across the week', async ({
+  device,
+  drive
+}) => {
+  /*
+   * Reported from use: „w ustawieniach ustawiam że wszystkie posiłki gotuję na dwa dni a potem
+   * jak dam planowanie tygodnia to mam tylko jeden posiłek na dwa dni a resztę na jeden".
+   * The stagger rule (decision 275) banned a second long cook on any date outright, so with
+   * four two-day slots over seven days the last two slots found every date already spoken for
+   * and cooked fresh every day (decision 431).
+   */
+  await connectWith(device, drive);
+
+  const planner = device.locator('section').filter({ hasText: 'Planer posiłków' }).first();
+  for (const label of ['Śniadanie', 'Obiad', 'Podwieczorek', 'Kolacja']) {
+    await planner.getByRole('button', { name: `${label}: gotuję na 2 dni` }).click();
+  }
+  await planner.getByRole('button', { name: 'Zapisz planer' }).click();
+  await expect(planner.getByText('Zapisano.')).toBeVisible();
+
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Zaplanuj tydzień' }).first().click();
+
+  const sheet = device.getByRole('dialog');
+  await expect(sheet.getByRole('heading', { name: /^Zaplanuj tydzień/ })).toBeVisible();
+  await expect(sheet.getByText('Gotujesz na 2 dni').first()).toBeVisible();
+
+  // Every slot batches, not just the first one. Three two-day cooks each: seven days do not
+  // halve evenly, so each slot also has one single Sunday-shaped day.
+  for (const label of ['Śniadanie', 'Obiad', 'Podwieczorek', 'Kolacja']) {
+    const rows = sheet.locator(`li:has(> div > p:text-is("${label}"))`);
+    await expect(rows.filter({ hasText: 'Gotujesz na 2 dni' })).toHaveCount(3);
+  }
+
+  // Twelve cooks over the week rather than twenty-eight.
+  await expect(sheet.getByText('Gotujesz na 2 dni')).toHaveCount(12);
+});
+
+test('a long recipe name is shown whole on a phone, not cut off with an ellipsis', async ({
+  device,
+  drive
+}) => {
+  /*
+   * Reported with an Android screenshot: „nazwy posiłków nie są w pełni widoczne" — every row
+   * of the proposal read „Sałatka z chrupiąc…". The name is the one thing on that row the user
+   * has to read to judge the plan, and the 1/2/3 control and the two buttons beside it leave
+   * about half the width on a phone, so it wraps now instead of being clipped (decision 433).
+   */
+  const LONG = 'Sałatka z chrupiącym boczkiem i pieczoną dynią';
+  await device.setViewportSize({ width: 360, height: 740 });
+  await connectWith(device, drive, {
+    recipes: [{ ...plannerRecipe('rlong', LONG, 520), tags: ['jedyne'] }],
+    mealPlan: { slots: [{ id: 'obiad', label: 'Obiad', tagKeys: ['jedyne'], share: 1, batchDays: 1 }] }
+  });
+
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Zaplanuj dzień', exact: true }).click();
+
+  const name = device.getByRole('dialog').getByText(LONG, { exact: true });
+  await expect(name).toBeVisible();
+
+  // Nothing is hidden behind the ellipsis: the text lays out inside the box it is given.
+  const clipped = await name.evaluate(
+    (element) => element.scrollWidth > element.clientWidth + 1
+  );
+  expect(clipped).toBe(false);
+});

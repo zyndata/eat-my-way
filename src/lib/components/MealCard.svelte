@@ -130,7 +130,9 @@
         suppressClick = false;
       }}
     >
-      <span class="block truncate font-medium {missing ? 'text-(--color-ink-muted) italic' : ''}">
+      <!-- Wrapped rather than clipped, for the reason the planner sheet wraps: on a phone a
+           recipe name is longer than the row and the name is what the row is for. -->
+      <span class="block font-medium break-words {missing ? 'text-(--color-ink-muted) italic' : ''}">
         {name}
       </span>
       <span class="block pt-0.5 text-xs text-(--color-ink-muted)">

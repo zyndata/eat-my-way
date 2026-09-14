@@ -33,6 +33,7 @@ import {
   runId,
   runsForDates,
   skippedLabel,
+  staggerAllowance,
   templateOf,
   weekBalance
 } from './planner';
@@ -397,6 +398,45 @@ describe('planBlocks', () => {
 
     const starts = blocks.filter((block) => block.dates.length > 1).map((block) => block.dates[0]);
     expect(new Set(starts).size).toBe(starts.length);
+  });
+
+  it('lets every slot batch when the week has no room to stagger them all', () => {
+    // Reported: „w ustawieniach ustawiam że wszystkie posiłki gotuję na dwa dni […] mam tylko
+    // jeden posiłek na dwa dni a resztę na jeden". The stagger banned a second long run on any
+    // date outright, so breakfast took Monday/Wednesday/Friday, lunch took the days between,
+    // and the last two slots found every date taken and cooked fresh all week (decision 431).
+    const template: MealPlanTemplate = {
+      slots: [
+        slot('sniadanie', 0.25, 2),
+        slot('obiad', 0.4, 2),
+        slot('podwieczorek', 0.1, 2),
+        slot('kolacja', 0.25, 2)
+      ]
+    };
+    const blocks = planBlocks({ days: inputs(WEEK), template });
+
+    for (const { id } of template.slots) {
+      const lengths = blocks.filter((block) => block.slotId === id).map((block) => block.dates.length);
+      // Three two-day cooks and one single day, in some order: seven days do not halve evenly.
+      expect(lengths.filter((length) => length === 2)).toHaveLength(3);
+    }
+
+    // Still spread as thinly as seven dates allow — sixteen cooks cannot be fewer than two a day.
+    const starts = new Map<string, number>();
+    for (const block of blocks) {
+      if (block.dates.length > 1) {
+        const first = block.dates[0] as string;
+        starts.set(first, (starts.get(first) ?? 0) + 1);
+      }
+    }
+    expect(Math.max(...starts.values())).toBe(2);
+  });
+
+  it('still refuses a second long start while a date is going spare', () => {
+    // Two three-day slots over a week need four long starts and have seven dates: the
+    // allowance is one, which is the rule exactly as it was (decision 275).
+    expect(staggerAllowance([slot('obiad', 0.6, 3), slot('kolacja', 0.4, 3)], WEEK.length)).toBe(1);
+    expect(staggerAllowance([slot('obiad', 0.6, 2), slot('kolacja', 0.4, 1)], WEEK.length)).toBe(1);
   });
 
   it('honours the sheet’s one-off run length without touching the template', () => {

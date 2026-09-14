@@ -105,6 +105,37 @@ export function resolveRunLength(slot: MealSlot): number {
 }
 
 /**
+ * How many cooks longer than a day may start on the same date.
+ *
+ * The stagger rule (STATE.md decision 275) reads „two runs longer than a day may not start on
+ * the same date **while any arrangement exists in which they do not**", and only its first half
+ * was ever implemented: the ban was absolute. Over a seven-day week whose four slots all cook
+ * for two days that is a rule with no room left — breakfast takes Monday, Wednesday and Friday,
+ * lunch takes Tuesday, Thursday and Saturday, and the two slots after them find every date
+ * already spoken for and cook fresh every single day (decision 431).
+ *
+ * The arrangement the rule waits for exists only while there are dates enough to go round, so
+ * this is where the second half is counted. A slot cooking for `length` days over `dateCount`
+ * dates needs `floor(dateCount / length)` starts of more than one day; summed over the slots
+ * that batch at all, that is how many long starts the range has to hold, and they can be spread
+ * no thinner than over its dates. The ceiling of that ratio is therefore the fewest same-date
+ * collisions **any** arrangement can achieve, and handing it out as an allowance shortens
+ * nothing that did not have to be shortened.
+ *
+ * Counted from the template's own lengths only. A length chosen on the sheet is a decision
+ * rather than a habit and the stagger has not overruled one since decision 428.
+ */
+export function staggerAllowance(slots: readonly MealSlot[], dateCount: number): number {
+  if (dateCount <= 0) return 1;
+  let starts = 0;
+  for (const slot of slots) {
+    const length = resolveRunLength(slot);
+    if (length > 1) starts += Math.floor(dateCount / length);
+  }
+  return Math.max(1, Math.ceil(starts / dateCount));
+}
+
+/**
  * Shares as fractions of one, over exactly the slots handed in. Normalized rather than
  * validated: three rows of 30% mean a third each. Slots with no usable share fall back to an
  * even split, so a template nobody has touched still says something.
@@ -462,11 +493,15 @@ export function planBlocks(
   const locked = request.locked ?? [];
   const pinned = request.pinned ?? [];
 
-  /** Dates on which a run longer than one day already starts, in any slot. */
-  const longStarts = new Set<string>();
+  /** How many cooks longer than one day already start on each date, in any slot. */
+  const longStarts = new Map<string, number>();
+  const noteLongStart = (date: string): void => {
+    longStarts.set(date, (longStarts.get(date) ?? 0) + 1);
+  };
   for (const run of [...locked, ...pinned]) {
-    if (run.dates.length > 1) longStarts.add(run.dates[0] as string);
+    if (run.dates.length > 1) noteLongStart(run.dates[0] as string);
   }
+  const allowance = staggerAllowance(template.slots, dates.length);
   const blocks: PlanBlock[] = [];
 
   for (const [slotIndex, slot] of template.slots.entries()) {
@@ -511,8 +546,10 @@ export function planBlocks(
         length += 1;
       }
 
-      if (chosen === undefined && length > 1 && longStarts.has(date)) length = 1;
-      if (length > 1) longStarts.add(date);
+      if (chosen === undefined && length > 1 && (longStarts.get(date) ?? 0) >= allowance) {
+        length = 1;
+      }
+      if (length > 1) noteLongStart(date);
 
       blocks.push({ id, slotIndex, slotId: slot.id, dates: dates.slice(index, index + length) });
       index += length;

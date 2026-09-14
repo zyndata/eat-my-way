@@ -5540,6 +5540,74 @@ Outside the phase sequence, reported from use with two screenshots of „Zaplanu
      Settings gains one sentence pointing at the sheet for a week that cooks differently.
 
 
+### 2026-09-14 — three things found in a real week's list and a real Android screenshot
+
+Outside the phase sequence, reported from use with one screenshot of „Zaplanuj tydzień" taken on
+Android and one whole week's shopping list pasted in.
+
+431. **The stagger rule was only half implemented, and the half that was missing is what made
+     „gotuję na 2 dni" a setting for one meal** (a defect against STATE.md decision 275, not a
+     deviation from PLAN.md). Reported: „w ustawieniach ustawiam że wszystkie posiłki gotuję na
+     dwa dni a potem jak dam planowanie tygodnia to mam tylko jeden posiłek na dwa dni a resztę na
+     jeden". Decision 275 reads „two runs longer than a day may not start on the same date **while
+     any arrangement exists in which they do not**"; `planBlocks` implemented the ban and never
+     the escape clause. Over a seven-day week whose four slots all cook for two days there is no
+     such arrangement: breakfast takes Monday, Wednesday and Friday, lunch takes the days between
+     them, and the third and fourth slots find every date already spoken for and are cut to a
+     single day — every single day, all week. A new `staggerAllowance` counts the escape clause
+     instead of assuming it: a slot cooking for `length` days over `n` dates needs
+     `floor(n / length)` long starts, and summed over the slots that batch, `ceil(starts / n)` is
+     the fewest same-date collisions any arrangement can reach. That number is the allowance the
+     walk hands out, so nothing is shortened that did not have to be. Two three-day slots over a
+     week still get an allowance of one — decision 275 exactly as it was — and the four two-day
+     slots get two, which is three two-day cooks each and two cooking starts a day.
+
+432. **One ingredient is one line, whichever unit its rows were typed in** (a reversal of the
+     „keeps different units apart" rule this file has held since Phase 9). Reported: „w liście
+     zakupów pojawiają się duplikaty, jeśli składnik jest wpisany z miarą domową i bez", with a
+     week's list showing „Cebula — 100 g" four lines above „Cebula — 1 szt. (80 g)" and the same
+     for the garlic. Keying by `ingredientId + unit` is right for *adding* — 2 szt and 100 g
+     cannot be summed as they stand — but it was never right to *print*: a list is read in a
+     shop, where two lines for one onion are two things to look for and one of them gets bought
+     twice. Every row already carries grams, so `mergeUnits` sums the group in grams and prints
+     it in the unit the thing is bought in: a counted row wins and the pieces come back out of
+     the grams at the weight the `szt` rows themselves used, so „Czosnek — 6 g" plus „Czosnek —
+     1 ząbek (5 g)" reads „Czosnek — 2,2 ząbka (11 g)" and still weighs 11 g. With nothing counted
+     in the group — millilitres against grams — the line falls back to grams, the only thing both
+     sides are certain to mean. A `szt` row nobody has given a `gramsPerUnit` weighs 0, which
+     means „not filled in yet" rather than „weightless", and blocks the merge for that ingredient
+     rather than being silently deleted from the list. The household measure survives on the
+     terms decision 351 set: kept only while every counted row agrees, and a weighed row makes no
+     claim about the label either way.
+
+433. **A recipe name on the planner sheet wraps instead of being clipped.** Reported with the
+     Android screenshot: every row read „Sałatka z chrupiąc…". The name is the one thing on that
+     row a person has to read to judge the proposal, and the 1/2/3 control and the two icon
+     buttons beside it leave about half a phone's width for it. `truncate` is dropped from the
+     proposed meal, from the „już zaplanowane" line above it and from the meal card on the day
+     screen; the rows grow a line instead of hiding the answer. Everything else keeps its
+     ellipsis — a one-line library row is a different question from a name in a decision.
+
+- **Tests.** `planner.test.ts` +2: four two-day slots over a week batch in every slot, with the
+  long starts still spread as thinly as seven dates allow, and `staggerAllowance` still returns
+  one where decision 275's own case has room. `shopping.test.ts` +5 and one rewritten (the test
+  that asserted the two lines the user reported): the reported garlic case, the measure kept and
+  dropped, the millilitre fallback, the half-typed row left alone, and the merged line staying
+  where the ingredient was first met. `e2e/planner.spec.ts` +2: the whole path from four
+  „gotuję na 2 dni" buttons in Settings to twelve two-day cooks on the sheet, and a long name
+  measured as unclipped at 360 px. `e2e/measures.spec.ts` +1: one recipe counting and weighing
+  the same garlic produces one line.
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1024/1024.
+  `npx playwright test` (Chromium) 153/154 — the one failure is `interaction.spec.ts` „a keyboard
+  focus is visible", which fails identically on an unmodified checkout in this container because
+  its Chromium is build 1194 against the 1234 the lockfile pins. WebKit not run locally; CI runs
+  both.
+- **Not re-taken:** the README screenshots. The planner and day captures were taken before and
+  after and compared: `day.png` and `recipe-editor.png` are pixel-identical, and `planner.png`
+  differs only in which recipe the draw produced — the seeded names are short enough that they
+  were never clipped at 400 px, so nothing in the screenshots was showing the defect.
+
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
