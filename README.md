@@ -81,7 +81,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   so a day's or a week's list comes out under headings instead of in the order the recipes
   happened to mention things, and flour between two vegetables stops costing a walk back across
   the building. Departments nothing was bought from are not printed; an ingredient nobody has
-  filed shops under „Inne", and nothing ever makes you choose one before saving.
+  filed shops under „Inne", and nothing ever makes you choose one before saving. One ingredient
+  is one line, whichever way your recipes happened to type it: a clove counted in one and six
+  grams weighed in another come out as a single entry, not as two things to look for.
 - **You can look for a recipe by what is in the house.** Typing „soczewica" into the library
   finds the recipes that *contain* lentils, not only the one with lentils in its name — those
   still come first, so „sernik" never disappears under every recipe holding cheese. Ingredient

@@ -112,8 +112,9 @@ describe('shoppingLines', () => {
     expect(shoppingLines(scope, lookup)[0]?.amount).toBe(400);
   });
 
-  it('keeps different units of one ingredient apart', () => {
-    // 2 szt and 100 g cannot be added into a number anyone can shop by.
+  it('puts one ingredient on one line however its rows were typed', () => {
+    // Was two lines until decision 432: 2 szt and 100 g cannot be added *as they stand*, but
+    // both rows carry grams, and a shop has one shelf of eggs rather than two.
     const scope: ShoppingMeal[] = [
       {
         meal: meal(),
@@ -125,11 +126,9 @@ describe('shoppingLines', () => {
     ];
 
     const lines = shoppingLines(scope, lookup);
-    expect(lines).toHaveLength(2);
-    expect(lines.map((line) => [line.unit, line.amount, line.grams])).toEqual([
-      ['szt', 2, 100],
-      ['g', 100, 100]
-    ]);
+    expect(lines).toHaveLength(1);
+    // Printed in the unit eggs are bought in, at the weight the counted rows themselves used.
+    expect(lines.map((line) => [line.unit, line.amount, line.grams])).toEqual([['szt', 4, 200]]);
   });
 
   it('a meal whose recipe was deleted contributes nothing', () => {
@@ -449,5 +448,101 @@ describe('shop departments (Phase 17)', () => {
     expect(formatShoppingList('Lista zakupów — środa', [])).toBe(
       'Lista zakupów — środa\n\nBrak składników do kupienia.\n'
     );
+  });
+});
+
+describe('one ingredient, one line, whatever unit it was typed in (decision 432)', () => {
+  it('merges the weighed row into the counted one and keeps the household measure', () => {
+    // The reported list: „Czosnek — 6 g" directly above „Czosnek — 1 szt. (5 g)".
+    const weighed = makeRecipe({ id: 'r1', items: [item(garlic.id, 6)] });
+    const counted = makeRecipe({
+      id: 'r2',
+      items: [item(garlic.id, 1, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+
+    const lines = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: weighed },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: counted }
+      ],
+      lookup
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.grams).toBe(11);
+    expect(formatShoppingLine(lines[0]!)).toBe('Czosnek — 2,2 ząbka (11 g)');
+  });
+
+  it('keeps the label the counted rows agree on — a weighed row claims none', () => {
+    const weighed = makeRecipe({ id: 'r1', items: [item(garlic.id, 5)] });
+    const cloves = makeRecipe({
+      id: 'r2',
+      items: [item(garlic.id, 2, 'szt', { gramsPerUnit: 5, measureName: 'ząbek' })]
+    });
+    const heads = makeRecipe({ id: 'r3', items: [item(garlic.id, 1, 'szt', { gramsPerUnit: 45 })] });
+
+    const agreeing = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: weighed },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: cloves }
+      ],
+      lookup
+    );
+    expect(agreeing[0]?.measureName).toBe('ząbek');
+
+    const disagreeing = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: weighed },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: cloves },
+        { meal: meal({ id: 'm3', recipeId: 'r3' }), recipe: heads }
+      ],
+      lookup
+    );
+    expect(disagreeing).toHaveLength(1);
+    expect(disagreeing[0]?.measureName).toBeUndefined();
+    expect(disagreeing[0]?.grams).toBe(60);
+  });
+
+  it('falls back to grams when nothing in the group is counted', () => {
+    // Millilitres against grams: only the weight is a thing both rows are certain to mean.
+    const drunk = makeRecipe({ id: 'r1', items: [item(oil.id, 20, 'ml', { gramsPerUnit: 0.9 })] });
+    const weighed = makeRecipe({ id: 'r2', items: [item(oil.id, 10)] });
+
+    const lines = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: drunk },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: weighed }
+      ],
+      lookup
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(formatShoppingLine(lines[0]!)).toBe('Oliwa z oliwek — 28 g');
+  });
+
+  it('leaves a half-typed row alone rather than folding an unknown weight into a total', () => {
+    // `szt` with no `gramsPerUnit` weighs 0, which means „not filled in yet". Merging would
+    // delete it from the list without saying so.
+    const recipe = makeRecipe({
+      id: 'r1',
+      items: [item(egg.id, 2, 'szt'), item(egg.id, 100)]
+    });
+
+    const lines = shoppingLines([{ meal: meal(), recipe }], lookup);
+    expect(lines.map((line) => [line.unit, line.amount])).toEqual([
+      ['szt', 2],
+      ['g', 100]
+    ]);
+  });
+
+  it('leaves the merged line where the ingredient was first met, under its own heading', () => {
+    const recipe = makeRecipe({
+      id: 'r1',
+      items: [item(chicken.id, 200), item(garlic.id, 5), item(garlic.id, 1, 'szt', { gramsPerUnit: 5 })]
+    });
+
+    const lines = shoppingLines([{ meal: meal(), recipe }], lookup);
+    expect(lines.map((line) => line.name)).toEqual([garlic.name, chicken.name]);
+    expect(lines[0]?.department).toBe('warzywa');
   });
 });

@@ -84,3 +84,41 @@ test('an ingredient with no household measures behaves exactly as it did before'
   await device.getByLabel('Ilość').fill('150');
   await expect(device.getByText(/^150 g · /)).toBeVisible();
 });
+
+test('one ingredient counted and weighed in the same recipe is one shopping line', async ({
+  device
+}) => {
+  /*
+   * Reported from a real week's list: „w liście zakupów pojawiają się duplikaty, jeśli składnik
+   * jest wpisany z miarą domową i bez" — „Czosnek — 6 g" sat directly above „Czosnek — 1 szt.
+   * (5 g)". Two lines for one head of garlic is two things to look for in a shop, and one of
+   * them gets bought twice (STATE.md decision 432).
+   */
+  await openRecipeEditor(device);
+  await device.getByLabel('Nazwa').fill('Czosnek dwa razy');
+
+  await device.getByRole('button', { name: 'Dodaj składnik' }).click();
+  await device.getByLabel('Składnik 1').fill('czosnek');
+  await device.getByRole('listbox', { name: 'Składnik 1' }).getByRole('option').first().click();
+  await chip(device, 'ząbek').click();
+  await device.getByLabel('Ilość').nth(0).fill('2');
+
+  await device.getByRole('button', { name: 'Dodaj składnik' }).click();
+  await device.getByLabel('Składnik 2').fill('czosnek');
+  await device.getByRole('listbox', { name: 'Składnik 2' }).getByRole('option').first().click();
+  await device.getByLabel('Ilość').nth(1).fill('6');
+
+  await device.getByRole('button', { name: 'Zapisz przepis' }).click();
+  await expect(device.getByRole('heading', { name: 'Przepisy' })).toBeVisible();
+
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
+  await device.getByRole('button', { name: /Czosnek dwa razy/ }).click();
+
+  // One line, in the unit garlic is bought in, weighing what both rows asked for: 10 g + 6 g.
+  await device.getByLabel('Menu dnia').click();
+  await device.getByRole('button', { name: 'Lista zakupów — dzień' }).click();
+  const list = device.getByRole('dialog');
+  await expect(list).toContainText('Czosnek — 3,2 ząbka (16 g)');
+  await expect(list.getByText(/^Czosnek — /)).toHaveCount(1);
+});

@@ -384,19 +384,44 @@ describe('planBlocks', () => {
     ]);
   });
 
-  it('staggers two long runs rather than starting both on the same day', () => {
+  it('starts every slot’s cooks on the same days rather than spreading them out', () => {
+    // Reversed in decision 434. Once decision 431 let four two-day slots all batch, two of them
+    // still started a day later than the others. Asked for instead: „wolę gotowanie wszystkiego
+    // tego samego dnia jeśli user tak wybierze […] nie decydujemy za usera".
+    const template: MealPlanTemplate = {
+      slots: [
+        slot('sniadanie', 0.25, 2),
+        slot('obiad', 0.4, 2),
+        slot('podwieczorek', 0.1, 2),
+        slot('kolacja', 0.25, 2)
+      ]
+    };
+    const blocks = planBlocks({ days: inputs(WEEK), template });
+
+    for (const { id } of template.slots) {
+      expect(blocks.filter((block) => block.slotId === id).map((block) => block.dates)).toEqual([
+        [WEEK[0], WEEK[1]],
+        [WEEK[2], WEEK[3]],
+        [WEEK[4], WEEK[5]],
+        // Only the end of the range shortens a cook: seven days do not halve evenly.
+        [WEEK[6]]
+      ]);
+    }
+  });
+
+  it('never cuts a cook short because another slot starts one on the same day', () => {
+    // Decision 275's own example — a three-day lunch and a three-day dinner — which used to drop
+    // the dinner to a single Monday so it could start on Tuesday.
     const template: MealPlanTemplate = { slots: [slot('obiad', 0.6, 3), slot('kolacja', 0.4, 3)] };
     const blocks = planBlocks({ days: inputs(WEEK), template });
-    const obiad = blocks.filter((block) => block.slotId === 'obiad');
-    const kolacja = blocks.filter((block) => block.slotId === 'kolacja');
 
-    expect(obiad[0]?.dates).toEqual([WEEK[0], WEEK[1], WEEK[2]]);
-    // The later slot drops to a single day rather than doubling the first three.
-    expect(kolacja[0]?.dates).toEqual([WEEK[0]]);
-    expect(kolacja[1]?.dates).toEqual([WEEK[1], WEEK[2], WEEK[3]]);
-
-    const starts = blocks.filter((block) => block.dates.length > 1).map((block) => block.dates[0]);
-    expect(new Set(starts).size).toBe(starts.length);
+    for (const id of ['obiad', 'kolacja']) {
+      expect(blocks.filter((block) => block.slotId === id).map((block) => block.dates)).toEqual([
+        [WEEK[0], WEEK[1], WEEK[2]],
+        [WEEK[3], WEEK[4], WEEK[5]],
+        [WEEK[6]]
+      ]);
+    }
   });
 
   it('honours the sheet’s one-off run length without touching the template', () => {
