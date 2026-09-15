@@ -6,12 +6,16 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.14.2] - 2026-09-15
 
 ### Bug Fixes
 
 - **planer,zakupy:** Batch every slot, merge a split ingredient, show whole names
 - **planer:** Cook every slot on the same days instead of spreading them out
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [1.14.1] - 2026-09-14
 
