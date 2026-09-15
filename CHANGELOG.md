@@ -11,6 +11,7 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Bug Fixes
 
 - **planer,zakupy:** Batch every slot, merge a split ingredient, show whole names
+- **planer:** Cook every slot on the same days instead of spreading them out
 
 ## [1.14.1] - 2026-09-14
 
