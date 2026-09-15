@@ -105,37 +105,6 @@ export function resolveRunLength(slot: MealSlot): number {
 }
 
 /**
- * How many cooks longer than a day may start on the same date.
- *
- * The stagger rule (STATE.md decision 275) reads „two runs longer than a day may not start on
- * the same date **while any arrangement exists in which they do not**", and only its first half
- * was ever implemented: the ban was absolute. Over a seven-day week whose four slots all cook
- * for two days that is a rule with no room left — breakfast takes Monday, Wednesday and Friday,
- * lunch takes Tuesday, Thursday and Saturday, and the two slots after them find every date
- * already spoken for and cook fresh every single day (decision 431).
- *
- * The arrangement the rule waits for exists only while there are dates enough to go round, so
- * this is where the second half is counted. A slot cooking for `length` days over `dateCount`
- * dates needs `floor(dateCount / length)` starts of more than one day; summed over the slots
- * that batch at all, that is how many long starts the range has to hold, and they can be spread
- * no thinner than over its dates. The ceiling of that ratio is therefore the fewest same-date
- * collisions **any** arrangement can achieve, and handing it out as an allowance shortens
- * nothing that did not have to be shortened.
- *
- * Counted from the template's own lengths only. A length chosen on the sheet is a decision
- * rather than a habit and the stagger has not overruled one since decision 428.
- */
-export function staggerAllowance(slots: readonly MealSlot[], dateCount: number): number {
-  if (dateCount <= 0) return 1;
-  let starts = 0;
-  for (const slot of slots) {
-    const length = resolveRunLength(slot);
-    if (length > 1) starts += Math.floor(dateCount / length);
-  }
-  return Math.max(1, Math.ceil(starts / dateCount));
-}
-
-/**
  * Shares as fractions of one, over exactly the slots handed in. Normalized rather than
  * validated: three rows of 30% mean a third each. Slots with no usable share fall back to an
  * even split, so a template nobody has touched still says something.
@@ -463,8 +432,8 @@ export function runId(slotId: string, firstDate: string): string {
  *
  * Walked per slot, left to right: a day whose slot is already taken by an existing meal is
  * skipped, a locked or pinned cook is placed exactly where it already is, and otherwise a run
- * starts there and covers `resolveRunLength` days — shortened by the end of the range, by a
- * gap in it, by the next day already spoken for, and by the stagger rule.
+ * starts there and covers `resolveRunLength` days — shortened only by the end of the range, by
+ * a gap in it, and by the next day already spoken for.
  *
  * **A gap ends a run.** The range is the days the user left ticked, which need not be
  * consecutive: a pot cooked on Monday is not eaten on Wednesday because Tuesday was unticked,
@@ -474,13 +443,12 @@ export function runId(slotId: string, firstDate: string): string {
  * became local edits, every block landed where the previous solve had put it; now a free run
  * can meet a locked one mid-stride, and it stops short rather than silently dropping it.
  *
- * **Stagger** (STATE.md decision 275): two runs longer than a day may not start on the same
- * date while any arrangement exists in which they do not. It is settled here, in the
- * structure, rather than in the cost function: the structure is chosen before the recipes
- * are, so a cost term over it would mean searching structures too. The later slot's block
- * drops to a single day and its next run is resolved from the following date — which is the
- * shortening the rule asks for, not a refusal to cook. A length the user chose on the sheet
- * is a decision rather than a default, and the stagger does not overrule it.
+ * **No stagger** (STATE.md decision 434, reversing 275, 279 and 431). Slots of one length start
+ * their cooks on the same days, so four slots at two days all cook on the first, third and fifth
+ * day of a week. Spreading them out used to be decided here, and it was the planner overruling a
+ * length the user had set — cutting one cook to a single day so the next could start later. The
+ * slot's „Gotuję na" and the sheet's 1/2/3 control are the only things that say how long a cook
+ * lasts, and so when the next one starts.
  */
 export function planBlocks(
   request: Pick<PlanRequest, 'days' | 'template' | 'locked' | 'pinned' | 'runLengths'>
@@ -493,15 +461,6 @@ export function planBlocks(
   const locked = request.locked ?? [];
   const pinned = request.pinned ?? [];
 
-  /** How many cooks longer than one day already start on each date, in any slot. */
-  const longStarts = new Map<string, number>();
-  const noteLongStart = (date: string): void => {
-    longStarts.set(date, (longStarts.get(date) ?? 0) + 1);
-  };
-  for (const run of [...locked, ...pinned]) {
-    if (run.dates.length > 1) noteLongStart(run.dates[0] as string);
-  }
-  const allowance = staggerAllowance(template.slots, dates.length);
   const blocks: PlanBlock[] = [];
 
   for (const [slotIndex, slot] of template.slots.entries()) {
@@ -545,11 +504,6 @@ export function planBlocks(
         if (next !== addDays(date, length) || taken(next, slot.id) || held.has(next)) break;
         length += 1;
       }
-
-      if (chosen === undefined && length > 1 && (longStarts.get(date) ?? 0) >= allowance) {
-        length = 1;
-      }
-      if (length > 1) noteLongStart(date);
 
       blocks.push({ id, slotIndex, slotId: slot.id, dates: dates.slice(index, index + length) });
       index += length;

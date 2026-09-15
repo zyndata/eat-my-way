@@ -566,11 +566,10 @@ test('every slot set to two days really is cooked for two days across the week',
   drive
 }) => {
   /*
-   * Reported from use: „w ustawieniach ustawiam że wszystkie posiłki gotuję na dwa dni a potem
-   * jak dam planowanie tygodnia to mam tylko jeden posiłek na dwa dni a resztę na jeden".
-   * The stagger rule (decision 275) banned a second long cook on any date outright, so with
-   * four two-day slots over seven days the last two slots found every date already spoken for
-   * and cooked fresh every day (decision 431).
+   * Reported from use twice. First „mam tylko jeden posiłek na dwa dni a resztę na jeden": the
+   * stagger rule left the last two slots cooking fresh every day (decision 431). Then, once all
+   * four batched, two of them still started a day later: „wolę gotowanie wszystkiego tego
+   * samego dnia […] nie decydujemy za usera" (decision 434).
    */
   await connectWith(device, drive);
 
@@ -589,11 +588,18 @@ test('every slot set to two days really is cooked for two days across the week',
   await expect(sheet.getByText('Gotujesz na 2 dni').first()).toBeVisible();
 
   // Every slot batches, not just the first one. Three two-day cooks each: seven days do not
-  // halve evenly, so each slot also has one single Sunday-shaped day.
+  // halve evenly, so each slot also has one single last day.
   for (const label of ['Śniadanie', 'Obiad', 'Podwieczorek', 'Kolacja']) {
     const rows = sheet.locator(`li:has(> div > p:text-is("${label}"))`);
     await expect(rows.filter({ hasText: 'Gotujesz na 2 dni' })).toHaveCount(3);
   }
+
+  // And all four start together: the first day cooks every slot, and the second eats every
+  // one of them out of yesterday's pot — nothing is pushed back a day.
+  const dayCards = sheet.locator('li:has(> div > div > input[type="checkbox"])');
+  await expect(dayCards.nth(0).getByText('Gotujesz na 2 dni')).toHaveCount(4);
+  await expect(dayCards.nth(1).getByText('Gotujesz na 2 dni')).toHaveCount(0);
+  await expect(dayCards.nth(1).getByText(/z garnka z/)).toHaveCount(4);
 
   // Twelve cooks over the week rather than twenty-eight.
   await expect(sheet.getByText('Gotujesz na 2 dni')).toHaveCount(12);

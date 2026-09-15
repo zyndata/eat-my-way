@@ -5607,6 +5607,38 @@ Android and one whole week's shopping list pasted in.
   differs only in which recipe the draw produced — the seeded names are short enough that they
   were never clipped at 400 px, so nothing in the screenshots was showing the defect.
 
+### 2026-09-15 — the planner stops spreading cooks out
+
+434. **Slots start their cooks on the same days, and the stagger is gone** (deviation from PLAN.md
+     phase 13: the „Runs in different slots are staggered" paragraph, task 3's „staggered so that
+     two of them rarely start together", the stagger in task 10's tests, and the acceptance
+     criterion „Two runs do not start on the same day while any arrangement exists in which they
+     do not"; a reversal of decision 275's first half, of 279, and of 431, which only made the
+     stagger fit). Reported against 1.14.1-2-ge9723af, once decision 431 had every slot batch:
+     with four slots at „gotuję na 2 dni", two started on the first day and two a day later, so
+     each day card showed two cooks and two pots carried over. Asked for: „wolę gotowanie
+     wszystkiego tego samego dnia jeśli user tak wybierze. Po to są opcje w planerze, żeby
+     zmienić ilość dni, nie decydujemy za usera". The stagger was the planner overruling a length
+     the user had set — cutting one cook to a single day so another could start later — and
+     275's reason for it, that two long runs starting together make identical days, is exactly
+     the week someone who cooks everything on one day wants. `planBlocks` now shortens a run only
+     for the end of the range, a gap in it and a day already spoken for, and `staggerAllowance` is
+     deleted. A week that should cook differently is changed on the sheet with the 1/2/3 control,
+     which already re-solves only the days it touches (decision 428). The second half of 275
+     stands: enough long runs can still leave the per-day band unsatisfiable, and „zbyt wiele dni
+     gotowanych na zapas" still says so.
+
+- **Tests.** `planner.test.ts`: the stagger test and both `staggerAllowance` tests from decision
+  431 are replaced by two — four two-day slots all cooking on days 1, 3 and 5, and 275's own
+  three-day lunch and dinner no longer cut to a single day. `e2e/planner.spec.ts`: the four-slot
+  test now also asserts that the first day card cooks all four and the second eats all four „z
+  garnka".
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1023/1023.
+  `npx playwright test e2e/planner.spec.ts` (Chromium) 15/15. The whole suite and WebKit run in CI.
+- **README and screenshots unchanged.** The README never described the stagger, and its „cook
+  one pot for two or three days where you said you cook that way" is now true without an asterisk.
+  The planner screenshot is one day on the default template, where only lunch batches.
+
 
 ## Open questions
 
