@@ -6,6 +6,12 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Bug Fixes
+
+- **zakupy:** Keep a half-typed row out of the merge, and say „3 ząbki" for three pieces
+
 ## [1.14.2] - 2026-09-15
 
 ### Bug Fixes
