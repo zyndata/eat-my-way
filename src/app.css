@@ -479,6 +479,18 @@
   }
 
   /*
+   * A recipe name in a decision — the planner's proposal, the „już zaplanowane" row above it
+   * and the meal card the plan becomes — wraps and never clips (STATE.md decision 433). Once,
+   * here, so the three places break the same long name the same way; the container still has
+   * to be allowed to shrink (`min-w-0`) for the wrap to have anywhere to happen. Hyphenation
+   * follows the document's `lang="pl"`.
+   */
+  .emw-recipe-name {
+    overflow-wrap: break-word;
+    hyphens: auto;
+  }
+
+  /*
    * There is deliberately no blanket `.emw-press:disabled:hover` reset. The obvious one —
    * `background-color: revert-layer` — reverts to the *previous cascade layer* rather than to
    * the variant's resting colour, which on a disabled primary button resolves to very nearly

@@ -551,7 +551,7 @@
               <ul class="pt-2">
                 {#each mealsOn(day.date) as meal, index (meal.id)}
                   <li class="flex items-center justify-between gap-2 py-1 text-sm">
-                    <span class="min-w-0 flex-1 break-words text-(--color-ink-muted)">
+                    <span class="emw-recipe-name min-w-0 flex-1 text-(--color-ink-muted)">
                       {recipeNames.get(meal.recipeId) ?? 'Usunięty przepis'}
                       <span class="text-xs">· już zaplanowane</span>
                     </span>
@@ -578,10 +578,10 @@
                 <li class="flex items-start justify-between gap-2 border-t border-(--color-border) py-2 first:border-t-0">
                   <div class="min-w-0 flex-1">
                     <p class="text-xs text-(--color-ink-muted)">{slotLabel(run.slotId)}</p>
-                    <!-- Wrapped, never clipped: „Sałatka z chrupiącym…" is the one thing on this
-                         row the user has to read to judge the proposal, and on a phone the
-                         1/2/3 control and the two buttons leave it about half the width. -->
-                    <p class="text-sm font-medium break-words hyphens-auto">{run.recipeName}</p>
+                    <!-- Wrapped, never clipped (emw-recipe-name): „Sałatka z chrupiącym…" is the
+                         one thing on this row the user has to read to judge the proposal, and on
+                         a phone the 1/2/3 control and the two buttons leave it about half the width. -->
+                    <p class="emw-recipe-name text-sm font-medium">{run.recipeName}</p>
                     <p class="text-xs text-(--color-ink-muted)">
                       {portionLabel(run)}
                       {#if cooking && run.dates.length > 1}

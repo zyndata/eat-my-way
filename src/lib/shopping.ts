@@ -1,6 +1,6 @@
 import type { Department, Ingredient, MeasureName, PlannedMeal, Recipe, Unit } from './types';
 import type { IngredientLookup } from './macros';
-import { displayedAmount, displayedGrams } from './macros';
+import { displayedAmount, displayedGrams, isRecipeItemComplete } from './macros';
 import { DEPARTMENT_LABELS, departmentIndex, departmentOf } from './departments';
 import { formatMeasureAmount } from './text';
 import { effectiveItems } from './adjustments';
@@ -133,19 +133,6 @@ function showGrams(line: ShoppingLine): boolean {
 }
 
 /**
- * Whether this line's amount and its grams are the same fact told twice, so another line of
- * the same ingredient may be added to it.
- *
- * A `g` line always is. An `ml` or `szt` line is only while it weighs something: `szt` with no
- * `gramsPerUnit` weighs 0 (`macros.ts`), which is „not filled in yet" rather than „weightless",
- * and folding such a row into a total would quietly delete it. A row of nothing at all is
- * weightless honestly and merges fine.
- */
-function weighable(line: ShoppingLine): boolean {
-  return line.unit === 'g' || line.grams > 0 || line.amount === 0;
-}
-
-/**
  * Collapse the lines of one ingredient that differ only in the unit they were typed in.
  *
  * Reported from a real week's list: „Cebula — 100 g" directly above „Cebula — 1 szt. (80 g)",
@@ -157,17 +144,26 @@ function weighable(line: ShoppingLine): boolean {
  * Grams are the common denominator and every row already carries them, so the lines are summed
  * in grams and the result is printed in the unit the ingredient is actually bought in:
  *
- *   - a countable row wins, because that is how a shop sells onions, eggs and lemons. The
- *     pieces come back out of the grams at the weight the `szt` rows themselves used, so the
- *     total still weighs exactly what the recipes asked for — and the household measure
- *     survives on the same terms as before, kept only while every `szt` row agreed on it;
- *   - with no countable row — millilitres against grams — the line falls back to grams, which
- *     is the only thing both sides are certain to mean.
+ *   - the `szt` line wins, because that is how a shop sells onions, eggs and lemons. The pieces
+ *     come back out of the grams at the weight that line itself used, so the total still weighs
+ *     exactly what the recipes asked for — and its household measure survives untouched, since
+ *     a weighed row makes no claim about the label (decision 351 was already applied when the
+ *     `szt` rows were summed into that one line);
+ *   - with no `szt` line — millilitres against grams — the line falls back to grams. Note that
+ *     an `ml` row with no density weighs 1 g/ml (`gramsPerUnit` in `macros.ts`), the same
+ *     water-like default the macros and the „(500 g)" already printed after „500 ml" rest on,
+ *     so „500 ml" of density-less milk plus „50 g" reads „550 g".
  *
- * A `szt` row nobody has given a weight (`weighable`) blocks the merge for that ingredient:
- * its grams are unknown, not zero, and its lines are left exactly as they were.
+ * Two things hold a group apart. An ingredient with a **half-typed row** — `szt` and no weight,
+ * which the editor flags but still saves — is `unfinished`: its grams are unknown, not zero, and
+ * folding them into a total would quietly delete them, so its lines are left exactly as they
+ * were. And a group has to have two rows that **say something**: „250 ml" beside a stray „0 g"
+ * is one fact, not two to reconcile, and stays as typed.
  */
-function mergeUnits(lines: readonly ShoppingLine[]): ShoppingLine[] {
+function mergeUnits(
+  lines: readonly ShoppingLine[],
+  unfinished: ReadonlySet<string>
+): ShoppingLine[] {
   const byIngredient = new Map<string, ShoppingLine[]>();
   for (const line of lines) {
     const group = byIngredient.get(line.ingredientId);
@@ -175,46 +171,35 @@ function mergeUnits(lines: readonly ShoppingLine[]): ShoppingLine[] {
     else group.push(line);
   }
 
+  // A `Map` keeps insertion order, so each group comes out where its first line was met and
+  // the walk order never moves.
   const merged: ShoppingLine[] = [];
-  for (const line of lines) {
-    const group = byIngredient.get(line.ingredientId);
-    // Emitted at the position of the group's first line, so the walk order never moves.
-    if (group === undefined) continue;
-    byIngredient.delete(line.ingredientId);
-
-    if (group.length === 1 || !group.every(weighable)) {
+  for (const [ingredientId, group] of byIngredient) {
+    const spoken = group.filter((row) => row.amount > 0).length;
+    if (spoken < 2 || unfinished.has(ingredientId)) {
       merged.push(...group);
       continue;
     }
 
+    const { name, department } = group[0] as ShoppingLine;
     const grams = group.reduce((sum, row) => sum + row.grams, 0);
-    const counted = group.filter((row) => row.unit === 'szt');
-    // Pieces and what they weigh, as the counted rows themselves had it. Rows disagreeing on
-    // the weight of one piece — cloves against whole heads — blend, which is the same average
-    // the dropped label already admits to.
-    const countedGrams = counted.reduce((sum, row) => sum + row.grams, 0);
-    const pieces = counted.reduce((sum, row) => sum + row.amount, 0);
-    const measureNames = new Set(counted.map((row) => row.measureName));
+    // At most one, because the lines were summed by `ingredientId + unit`.
+    const counted = group.find((row) => row.unit === 'szt');
 
-    const base = {
-      ingredientId: line.ingredientId,
-      name: line.name,
-      department: line.department
-    };
-
-    if (pieces > 0 && countedGrams > 0) {
-      const measureName = measureNames.size === 1 ? counted[0]?.measureName : undefined;
+    if (counted !== undefined && counted.amount > 0 && counted.grams > 0) {
       merged.push({
-        ...base,
+        ingredientId,
+        name,
+        department,
         unit: 'szt',
-        amount: (grams * pieces) / countedGrams,
+        amount: (grams * counted.amount) / counted.grams,
         grams,
-        ...(measureName === undefined ? {} : { measureName })
+        ...(counted.measureName === undefined ? {} : { measureName: counted.measureName })
       });
       continue;
     }
 
-    merged.push({ ...base, unit: 'g', amount: grams, grams });
+    merged.push({ ingredientId, name, department, unit: 'g', amount: grams, grams });
   }
   return merged;
 }
@@ -240,6 +225,10 @@ export function shoppingLines(
   lookup: IngredientLookup
 ): ShoppingLine[] {
   const lines = new Map<string, ShoppingLine>();
+  // Ingredients with a row that weighs nothing because nobody has said what a piece weighs.
+  // Judged here, on the `RecipeItem`, because once rows are summed a half-typed „2 szt" hides
+  // behind another recipe's „1 szt (5 g)" and the line as a whole looks weighed.
+  const unfinished = new Set<string>();
   const scales = cookedScales(meals);
 
   for (const [index, { meal, recipe }] of meals.entries()) {
@@ -249,6 +238,7 @@ export function shoppingLines(
 
     for (const item of effectiveItems(recipe, meal.adjustments)) {
       if (item.ingredientId === '') continue;
+      if (!isRecipeItemComplete(item)) unfinished.add(item.ingredientId);
 
       const key = `${item.ingredientId} ${item.unit}`;
       const existing = lines.get(key);
@@ -276,7 +266,7 @@ export function shoppingLines(
     }
   }
 
-  return mergeUnits([...lines.values()]).sort(
+  return mergeUnits([...lines.values()], unfinished).sort(
     (a, b) => departmentIndex(a.department) - departmentIndex(b.department)
   );
 }

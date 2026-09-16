@@ -123,9 +123,14 @@ export function unitLabel(unit: Unit): string {
   return unit === 'szt' ? 'szt.' : unit;
 }
 
+/** The two decimals every printed amount is rounded to. */
+function roundAmount(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 /** Two decimals at most, with the Polish decimal comma. */
 export function formatAmount(value: number): string {
-  return (Math.round(value * 100) / 100).toLocaleString('pl-PL');
+  return roundAmount(value).toLocaleString('pl-PL');
 }
 
 /** An amount as it is written next to an ingredient: „200 g", „1,5 szt.". */
@@ -238,10 +243,14 @@ export function measureWord(name: string, count: number): string {
  *
  * A measure only ever labels a `szt` row (decision 323). On `g` and `ml` — and on a row with
  * no measure — this is `formatAmountWithUnit` exactly.
+ *
+ * The word is chosen for the number that is *printed*, not the raw one: a shopping line's
+ * pieces are computed back out of grams, and 2.9999999999999996 prints as „3", which has to
+ * read „3 ząbki" and not „3 ząbka".
  */
 export function formatMeasureAmount(amount: number, unit: Unit, measureName?: string): string {
   if (unit !== 'szt' || measureName === undefined || measureName === '') {
     return formatAmountWithUnit(amount, unit);
   }
-  return `${formatAmount(amount)} ${measureWord(measureName, amount)}`;
+  return `${formatAmount(amount)} ${measureWord(measureName, roundAmount(amount))}`;
 }
