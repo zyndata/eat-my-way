@@ -5679,6 +5679,7 @@ Android and one whole week's shopping list pasted in.
   (Chromium) on `measures`, `planner`, `departments`, `udostepnij` and `adjustments`: 30/30.
   The whole suite and WebKit run in CI.
 - **README and screenshots.** One sentence qualified; no screen changed.
+
 ### 2026-09-16 — the console after v1.14.3
 
 436. **`mobile-web-app-capable` sits beside the Apple meta tag.** Checking v1.14.3 in Chrome
