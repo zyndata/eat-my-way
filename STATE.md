@@ -5679,6 +5679,19 @@ Android and one whole week's shopping list pasted in.
   (Chromium) on `measures`, `planner`, `departments`, `udostepnij` and `adjustments`: 30/30.
   The whole suite and WebKit run in CI.
 - **README and screenshots.** One sentence qualified; no screen changed.
+### 2026-09-16 — the console after v1.14.3
+
+436. **`mobile-web-app-capable` sits beside the Apple meta tag.** Checking v1.14.3 in Chrome
+     logged „<meta name="apple-mobile-web-app-capable"> is deprecated". The standard tag is
+     added and the Apple one kept, because iOS reads only the Apple spelling. The same console
+     showed three messages that need nothing here: Cloudflare's injected bot-detection script
+     blocked by `script-src` (decision 218; switched off in the Cloudflare dashboard, never
+     allowed in the CSP), a Chrome extension's own `content.js` error, and „Banner not shown",
+     which is `pwa.svelte.ts` deferring the install prompt to Settings on purpose.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1029/1029. `npm run build`
+  carries both tags into `dist/index.html`. No script, style or source added, so the CSP is
+  untouched.
 
 ## Open questions
 
