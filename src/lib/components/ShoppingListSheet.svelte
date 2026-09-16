@@ -18,7 +18,8 @@
    *
    * Amounts follow `cookingScale` and never `portionsEaten` — the list is what has to be
    * bought and cooked, not what will be eaten off it. The same ingredient is summed across
-   * every meal in the scope, per unit, because 2 szt and 100 g cannot be added.
+   * every meal in the scope, per unit — 2 szt and 100 g cannot be added as they stand — and
+   * then printed as one line through the grams both rows carry (decision 432).
    *
    * It leaves through `navigator.share()` or the clipboard, neither of which is a network
    * request: the CSP is untouched (decision 144). The text is also on screen, so a browser

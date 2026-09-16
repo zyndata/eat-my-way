@@ -5640,6 +5640,46 @@ Android and one whole week's shopping list pasted in.
   The planner screenshot is one day on the default template, where only lunch batches.
 
 
+### 2026-09-16 — a code review of 1.14.2, nine findings
+
+435. **A half-typed row is caught while it is still a `RecipeItem`, and the `weighable`
+     heuristic is gone.** Decision 432 said a `szt` row with no weight blocks the merge for its
+     ingredient, and the code checked that on the summed line: `grams > 0`. That is the wrong
+     place, because a half-typed „2 szt" from one recipe is summed with a finished „1 szt (5 g)"
+     from another *before* the check runs, and the line as a whole weighs something — so the two
+     unknown pieces were priced at 0 g and then inflated by the back-computation into
+     „6,6 szt. (11 g)". `shoppingLines` now marks the ingredient unfinished on the row itself
+     (`isRecipeItemComplete`, the test the editor already uses) and `mergeUnits` leaves such an
+     ingredient exactly as typed. Three more things the review found in the same function:
+     - the pluralised word was chosen for the raw float while the number printed was rounded, so
+       pieces computed back out of grams (2.9999999999999996) read „3 ząbka". `formatMeasureAmount`
+       now picks the word for the rounded number it prints — the fix is there, not in the merge,
+       because it is the printing that has to agree with itself;
+     - an `ml` row with no density weighs 1 g/ml, the water-like default `macros.ts` has always
+       used and that the „(500 g)" after „500 ml" was already printing. 432 never said so; the
+       merge rests on it deliberately now, recorded and tested, rather than blocking the way a
+       weightless `szt` row does — the default is a claim the app makes everywhere else too;
+     - a group has to have two rows that say something. „250 ml" beside a stray „0 g" is one
+       fact, and turning it into „250 g" was a guess nobody asked for.
+     The rest of the merge is simpler for it: a group holds at most one `szt` line, because the
+     lines were summed by `ingredientId + unit`, so the label-agreement test that re-implemented
+     decision 351 on the merged group was dead and is deleted; and the groups are emitted straight
+     from the `Map`, which already holds first-met order, instead of a second walk over the lines.
+     Two stale comments were corrected — `assemble` still listed the stagger 434 removed as a
+     cause of shortening, the shopping sheet still said 2 szt and 100 g stay two lines — and the
+     README's „one ingredient is one line" now carries the qualifier that makes it true.
+     Decision 433's wrap is one `emw-recipe-name` class in `app.css` instead of three hand-typed
+     variants, so the proposal row, the „już zaplanowane" row and the meal card break a long name
+     the same way.
+
+- **Tests.** `shopping.test.ts` +5: the half-typed row beside another recipe's weighed one, the
+  whole-number word, the density-less millilitre, millilitres against a counted row, and the
+  stray zero. `text.test.ts` +1: the word follows the printed number.
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1029/1029. Playwright
+  (Chromium) on `measures`, `planner`, `departments`, `udostepnij` and `adjustments`: 30/30.
+  The whole suite and WebKit run in CI.
+- **README and screenshots.** One sentence qualified; no screen changed.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

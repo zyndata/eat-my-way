@@ -135,6 +135,12 @@ describe('household measures', () => {
     expect(measureWord('porcja', 5)).toBe('porcji');
   });
 
+  it('picks the word for the number that is printed, not for the raw float', () => {
+    // A shopping line's pieces come back out of grams: 2.9999999999999996 prints „3".
+    expect(formatMeasureAmount(2.9999999999999996, 'szt', 'ząbek')).toBe('3 ząbki');
+    expect(formatMeasureAmount(1.5000000000000002, 'szt', 'ząbek')).toBe('1,5 ząbka');
+  });
+
   it('keeps the teens on the many form, like every other Polish count', () => {
     expect(measureWord('ząbek', 12)).toBe('ząbków');
     expect(measureWord('ząbek', 22)).toBe('ząbki');

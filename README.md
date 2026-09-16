@@ -83,7 +83,8 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   the building. Departments nothing was bought from are not printed; an ingredient nobody has
   filed shops under „Inne", and nothing ever makes you choose one before saving. One ingredient
   is one line, whichever way your recipes happened to type it: a clove counted in one and six
-  grams weighed in another come out as a single entry, not as two things to look for.
+  grams weighed in another come out as a single entry, not as two things to look for — as long
+  as the counted row says what one piece weighs, which the recipe editor asks for anyway.
 - **You can look for a recipe by what is in the house.** Typing „soczewica" into the library
   finds the recipes that *contain* lentils, not only the one with lentils in its name — those
   still come first, so „sernik" never disappears under every recipe holding cheese. Ingredient

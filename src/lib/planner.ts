@@ -905,8 +905,9 @@ function assemble(
     if (!filled.has(block.id)) shortened.add(block.slotId);
   }
   // A block that had to be cut short of what its slot or its weekday asked for — because it
-  // would have overrun the end of the range, met a day already spoken for, or collided with
-  // another slot's cook (PLAN.md: „it shortens, and the sheet says which slot that happened to").
+  // would have overrun the end of the range, met a gap in it, or met a day already spoken for;
+  // the three causes `planBlocks` lists, and nothing else since decision 434 (PLAN.md: „it
+  // shortens, and the sheet says which slot that happened to").
   for (const block of blocks) {
     const slot = request.template.slots.find((row) => row.id === block.slotId);
     if (slot === undefined || block.locked !== undefined) continue;

@@ -535,6 +535,89 @@ describe('one ingredient, one line, whatever unit it was typed in (decision 432)
     ]);
   });
 
+  it('still leaves the half-typed row alone when another recipe weighs the same ingredient', () => {
+    // The unfinished „2 szt" is summed into one `szt` line with the finished „1 szt (5 g)",
+    // and that line as a whole weighs something — so the row has to be caught while it is a
+    // `RecipeItem`, not judged on the sum. Otherwise two unknown pieces would be priced at
+    // 0 g and then inflated: 11 g over 5 counted grams would have read „6,6 szt.".
+    const unfinished = makeRecipe({ id: 'r1', items: [item(garlic.id, 2, 'szt')] });
+    const counted = makeRecipe({ id: 'r2', items: [item(garlic.id, 1, 'szt', { gramsPerUnit: 5 })] });
+    const weighed = makeRecipe({ id: 'r3', items: [item(garlic.id, 6)] });
+
+    const lines = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: unfinished },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: counted },
+        { meal: meal({ id: 'm3', recipeId: 'r3' }), recipe: weighed }
+      ],
+      lookup
+    );
+    expect(lines.map((line) => [line.unit, line.amount, line.grams])).toEqual([
+      ['szt', 3, 5],
+      ['g', 6, 6]
+    ]);
+  });
+
+  it('prints a whole number of pieces with the whole-number word', () => {
+    // 1 × 1.4 g plus 2.8 g is 4.199999999999999 g, and the pieces come back out of it as
+    // 2.9999999999999996 — printed „3", so the word has to be „ząbki", not the fraction's „ząbka".
+    const counted = makeRecipe({
+      id: 'r1',
+      items: [item(garlic.id, 1, 'szt', { gramsPerUnit: 1.4, measureName: 'ząbek' })]
+    });
+    const weighed = makeRecipe({ id: 'r2', items: [item(garlic.id, 2.8)] });
+
+    const lines = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: counted },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: weighed }
+      ],
+      lookup
+    );
+    expect(formatShoppingLine(lines[0]!)).toBe('Czosnek — 3 ząbki (4 g)');
+  });
+
+  it('weighs a density-less millilitre row at 1 g/ml, as the macros already do', () => {
+    // No `gramsPerUnit` on `ml` is the water-like default in `macros.ts`, and the line was
+    // already printing „(100 g)" after „100 ml" on that basis — so the merge rests on it too.
+    const poured = makeRecipe({ id: 'r1', items: [item(oil.id, 100, 'ml')] });
+    const weighed = makeRecipe({ id: 'r2', items: [item(oil.id, 10)] });
+
+    const lines = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: poured },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: weighed }
+      ],
+      lookup
+    );
+    expect(lines.map((line) => [line.unit, line.amount])).toEqual([['g', 110]]);
+  });
+
+  it('counts millilitres into the pieces when the ingredient is also counted', () => {
+    const poured = makeRecipe({ id: 'r1', items: [item(oil.id, 100, 'ml', { gramsPerUnit: 0.9 })] });
+    const bottled = makeRecipe({ id: 'r2', items: [item(oil.id, 1, 'szt', { gramsPerUnit: 450 })] });
+
+    const lines = shoppingLines(
+      [
+        { meal: meal({ id: 'm1', recipeId: 'r1' }), recipe: poured },
+        { meal: meal({ id: 'm2', recipeId: 'r2' }), recipe: bottled }
+      ],
+      lookup
+    );
+    expect(lines.map((line) => [line.unit, line.amount, line.grams])).toEqual([['szt', 1.2, 540]]);
+  });
+
+  it('does not let a row of nothing turn a volume into a weight', () => {
+    // „250 ml" beside a stray „0 g" is one fact, not two to reconcile: left as typed.
+    const recipe = makeRecipe({ id: 'r1', items: [item(oil.id, 250, 'ml'), item(oil.id, 0)] });
+
+    const lines = shoppingLines([{ meal: meal(), recipe }], lookup);
+    expect(lines.map((line) => [line.unit, line.amount])).toEqual([
+      ['ml', 250],
+      ['g', 0]
+    ]);
+  });
+
   it('leaves the merged line where the ingredient was first met, under its own heading', () => {
     const recipe = makeRecipe({
       id: 'r1',
