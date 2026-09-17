@@ -5694,6 +5694,37 @@ Android and one whole week's shopping list pasted in.
   carries both tags into `dist/index.html`. No script, style or source added, so the CSP is
   untouched.
 
+### 2026-09-17 — a swap in one imported recipe leaked into every later import
+
+437. **Only filling a row the import left empty is remembered; swapping a matched row changes
+     that recipe alone** (a narrowing of decision 116 and a deviation from PLAN.md Phase 7 task 5,
+     whose „correcting a mismatch" read as covering a wrong model match too). Reported: import a
+     salad, save it as v1; import it again as v2 and swap „Sok z cytryny" for Ketchup; a third
+     import arrived with Ketchup. Since Phase 7 (`4c3bfc4`, 2026-09-01, first shipped in v1.0.0)
+     `pick()` stored *every* pick on an imported row as `normalizeKey(sourceName) → id`, and
+     `classifyName` consulted corrections before the exact name hit — so a per-recipe
+     preference became what the name means everywhere, even overriding a database row whose
+     name is literally „Sok z cytryny". The user's rule: a substitution can be trivial in one
+     recipe and essential in another, and an imported recipe is often a base to adapt, so no
+     swap may carry over. Two changes:
+     - `toDraftItems` sets `sourceName` only on rows the import could not fill (an id that no
+       longer resolves counts as unfilled). A matched row carries `null`, so swapping it records
+       nothing. The cost, accepted: a wrong model match fixed by hand is not learned, and the
+       next import of that name asks the model again.
+     - `classifyName` takes the exact name hit before a correction. Under the new rule no
+       correction can be recorded for an exact-hit name, so this changes nothing going forward
+       and heals the corrections the old editor stored for such names. A stale correction for a
+       name that is *not* an exact hit (a swapped model match) still wins; stored corrections
+       carry no record of how they were made, so there is nothing to tell them apart by.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1030/1030 (a new
+  `classifyName` case: an exact hit beats a correction). A new e2e spec in `import.spec.ts`
+  swaps an exact-hit row and a model-matched row, saves, re-imports and expects the source's
+  ingredients and a fresh model question; it failed on the old code with Ketchup and Oliwa z
+  oliwek in the third draft. The reported scenario was also run once, outside the suite, against
+  the real Gemini API with the user's test key: Ketchup in v3 before the change, „Sok z
+  cytryny" after.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

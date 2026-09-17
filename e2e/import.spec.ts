@@ -211,6 +211,79 @@ test('correcting a mismatch once makes the next import of that name match itself
   expect(asked[1]?.prompt).not.toContain('mąka pszenna');
 });
 
+const SALAD = [
+  'Składniki',
+  '4 porcje',
+  'jabłka, czerwone 250 g',
+  'marchew 350 g',
+  'olej roślinny 30 g',
+  'sok z cytryny 40 g',
+  'cukier do przyprawienia'
+].join('\n');
+
+const SALAD_PARSED = {
+  name: 'Surówka z marchewki i jabłek',
+  portions: 4,
+  instructions: '',
+  ingredients: [
+    { name: 'jabłka, czerwone', amount: 250, unit: 'g', state: 'raw' },
+    { name: 'marchew', amount: 350, unit: 'g', state: 'raw' },
+    { name: 'olej roślinny', amount: 30, unit: 'g', state: 'raw' },
+    { name: 'sok z cytryny', amount: 40, unit: 'g', state: 'raw' }
+  ]
+};
+
+test('swapping an ingredient the import matched changes this recipe, not the next import', async ({
+  device,
+  gemini
+}) => {
+  gemini.script.recipe = SALAD_PARSED;
+  const importSalad = async (): Promise<void> => {
+    await device.getByRole('link', { name: 'Nowy przepis' }).first().click();
+    await device.getByRole('button', { name: 'Wklej przepis z internetu' }).click();
+    await device.getByLabel('Link do przepisu albo jego treść').fill(SALAD);
+    await device.getByRole('button', { name: 'Importuj' }).click();
+    await expect(device.getByText('Przepis wczytany.')).toBeVisible();
+  };
+  const row = (name: string) => device.getByRole('listitem').filter({ hasText: name });
+
+  await setUpKey(device);
+  await device.getByRole('link', { name: 'Przepisy' }).click();
+
+  // The user's own variant: lemon juice (an exact name hit) becomes ketchup, and the vegetable
+  // oil (a row the model matched) becomes olive oil. Both are preferences for this recipe.
+  await importSalad();
+  await row('Sok z cytryny').getByRole('button', { name: 'Zmień', exact: true }).click();
+  await device.getByLabel('Składnik 4').fill('ketchup');
+  await device
+    .getByRole('listbox', { name: 'Składnik 4' })
+    .getByRole('option', { name: /Ketchup/ })
+    .first()
+    .click();
+  await expect(device.getByText('Ketchup', { exact: true })).toBeVisible();
+
+  await row('olej').first().getByRole('button', { name: 'Zmień', exact: true }).click();
+  await device.getByLabel('Składnik 3').fill('oliwa z oliwek');
+  await device
+    .getByRole('listbox', { name: 'Składnik 3' })
+    .getByRole('option', { name: /Oliwa z oliwek/ })
+    .first()
+    .click();
+  await expect(device.getByText('Oliwa z oliwek', { exact: true })).toBeVisible();
+  await device.getByRole('button', { name: 'Zapisz przepis' }).click();
+
+  // The same text again: the source's ingredients, not the previous recipe's swaps.
+  await importSalad();
+  await expect(device.getByText('Sok z cytryny', { exact: true })).toBeVisible();
+  await expect(device.getByText('Ketchup', { exact: true })).toHaveCount(0);
+  await expect(device.getByText('Oliwa z oliwek', { exact: true })).toHaveCount(0);
+
+  // The swapped model match was asked about again rather than settled by a stored lookup.
+  const asked = modelCalls(gemini).filter((call) => call.system.startsWith('Dopasowujesz'));
+  expect(asked).toHaveLength(2);
+  expect(asked[1]?.prompt).toContain('olej roślinny');
+});
+
 test('the Gemini usage counter records what an import spent, per model', async ({
   device,
   gemini

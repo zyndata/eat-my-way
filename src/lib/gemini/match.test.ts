@@ -37,6 +37,18 @@ describe('classifyName', () => {
     expect(outcome.target).toBeUndefined();
   });
 
+  it('lets an exact name match win over a stored correction', () => {
+    // A correction left behind by a per-recipe swap („jajko" → chicken) must not rename the
+    // ingredient in every later import (STATE.md decision 437).
+    const corrections = correctionMap([
+      { nameKey: 'jajko', ingredientId: chicken.id, updatedAt: '2026-09-01T00:00:00.000Z' }
+    ]);
+
+    const outcome = classifyName('jajko', ranked([egg, chicken]), corrections);
+
+    expect(outcome.resolved).toEqual({ nameKey: 'jajko', ingredientId: egg.id, via: 'exact' });
+  });
+
   it('takes an exact name match without spending a request on it', () => {
     const outcome = classifyName('jajko', ranked([egg, chicken]), NONE);
 

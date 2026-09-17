@@ -194,9 +194,10 @@
     // A fresh pick starts from the database values, never from a previous row's override.
     row.macroOverride = null;
 
-    // A row that came from an import carries the name the model produced. Picking on it — to
-    // fix a wrong match or to fill one it could not make — is the user saying what that name
-    // means, so it is stored and the next import matches it by lookup (STATE.md decision 116).
+    // A row the import could not fill carries the name the model produced. Filling it is the
+    // user saying what that name means, so it is stored and the next import matches it by
+    // lookup (STATE.md decision 116). A row the import did fill carries no name: swapping its
+    // ingredient is a change to this recipe only and never reaches another (decision 437).
     if (row.sourceName !== null) {
       void rememberCorrection(row.sourceName, ingredient.id).then(() => scheduleSync());
     }

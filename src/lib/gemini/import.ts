@@ -193,26 +193,35 @@ async function resolveIngredients(
 }
 
 /**
- * Matched rows → editor rows. `sourceName` rides along on every row so a later correction can
- * be recorded against the name the model produced (decision 116); an unmatched row is an
- * ordinary empty ingredient row, which is exactly what the editor already knows how to show.
+ * Matched rows → editor rows. An unmatched row is an ordinary empty ingredient row, which is
+ * exactly what the editor already knows how to show.
+ *
+ * `sourceName` rides along only on the rows the import could not fill — an id that no longer
+ * resolves counts as unfilled, since the editor shows it as empty. Filling such a row is the
+ * user saying what the name means, and the editor records it as a correction (decision 116).
+ * A row the import did fill carries `null`: swapping its ingredient is a change to this recipe,
+ * never a statement about the name, and must not reach the next import (decision 437).
  */
 export function toDraftItems(
   matched: readonly MatchedIngredient[],
-  nextId: () => string
+  nextId: () => string,
+  resolves: (ingredientId: string) => boolean
 ): DraftItem[] {
-  return matched.map((row) => ({
-    id: nextId(),
-    ingredientId: row.ingredientId ?? '',
-    amount: row.parsed.amount,
-    unit: row.parsed.unit,
-    gramsPerUnit: row.parsed.gramsPerUnit ?? null,
-    // An import never names a household measure: the model returns an amount and a unit, and
-    // inventing a label for a „szt” row would be inventing a claim about the ingredient.
-    measureName: null,
-    macroOverride: null,
-    sourceName: row.parsed.name
-  }));
+  return matched.map((row) => {
+    const filled = row.ingredientId !== undefined && resolves(row.ingredientId);
+    return {
+      id: nextId(),
+      ingredientId: row.ingredientId ?? '',
+      amount: row.parsed.amount,
+      unit: row.parsed.unit,
+      gramsPerUnit: row.parsed.gramsPerUnit ?? null,
+      // An import never names a household measure: the model returns an amount and a unit, and
+      // inventing a label for a „szt” row would be inventing a claim about the ingredient.
+      measureName: null,
+      macroOverride: null,
+      sourceName: filled ? null : row.parsed.name
+    };
+  });
 }
 
 /**
@@ -269,7 +278,7 @@ async function importWithTally(
   const found = await repository.ingredientsByIds(ids);
   const ingredientsById = Object.fromEntries(found.map((row) => [row.id, row]));
 
-  const items = toDraftItems(matched, deps.nextId);
+  const items = toDraftItems(matched, deps.nextId, (id) => ingredientsById[id] !== undefined);
 
   return {
     name: recipe.name,
