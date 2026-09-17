@@ -46,6 +46,7 @@
     date,
     nameOf,
     onreorder,
+    onportions,
     onduplicate,
     oncopy,
     onremove
@@ -55,6 +56,7 @@
     /** Recipe name for a meal, already resolved by the day screen. */
     nameOf: (meal: PlannedMeal) => { name: string; missing: boolean };
     onreorder: (mealIds: string[]) => void;
+    onportions: (mealId: string) => void;
     onduplicate: (mealId: string) => void;
     oncopy: (mealId: string) => void;
     onremove: (mealId: string) => void;
@@ -108,6 +110,7 @@
           {date}
           name={resolved.name}
           missing={resolved.missing}
+          onportions={() => onportions(meal.id)}
           onduplicate={() => onduplicate(meal.id)}
           oncopy={() => oncopy(meal.id)}
           onremove={() => onremove(meal.id)}

@@ -6,6 +6,25 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Bug Fixes
+
+- **pwa:** Add the standard mobile-web-app-capable meta tag
+- **import:** Keep an ingredient swap in the recipe it was made in
+
+### Documentation
+
+- **state:** Separate decision 436 from the entry above it
+
+### Features
+
+- **kalendarz:** Set portions eaten from a meal card, stepper lands on halves
+
+### Miscellaneous
+
+- Update CHANGELOG
+
 ## [1.14.3] - 2026-09-16
 
 ### Bug Fixes

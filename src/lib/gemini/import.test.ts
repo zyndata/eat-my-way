@@ -175,7 +175,8 @@ describe('importing pasted text', () => {
         gramsPerUnit: 55,
         measureName: null,
         macroOverride: null,
-        sourceName: 'Jajko'
+        // Matched rows carry no name: swapping one is a change to this recipe (decision 437).
+        sourceName: null
       },
       {
         id: 'row-2',
@@ -196,7 +197,7 @@ describe('importing pasted text', () => {
         gramsPerUnit: null,
         measureName: null,
         macroOverride: null,
-        sourceName: 'oliwa do smażenia'
+        sourceName: null
       }
     ]);
     expect(result.unmatched).toBe(1);

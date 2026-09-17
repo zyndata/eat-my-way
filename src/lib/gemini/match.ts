@@ -10,11 +10,12 @@ import type { ParsedIngredient } from './parse';
  *
  * Three steps, cheapest first (PLAN.md Phase 7 task 4, STATE.md decision 114):
  *
- * 1. A **correction** the user has already made wins outright. It is a lookup, it is
+ * 1. The app ranks its own index. An exact hit on the normalized name is taken as-is — asking
+ *    a model to choose between „ryż biały" and „ryż biały" would be spending a request on a
+ *    decided question, and no stored correction can be more right than the name itself
+ *    (STATE.md decision 437).
+ * 2. Otherwise a **correction** the user has already made wins. It is a lookup, it is
  *    deterministic, and the name is never sent to Gemini again.
- * 2. Otherwise the app ranks its own index and picks candidates. An exact hit on the
- *    normalized name is taken as-is — asking a model to choose between „ryż biały" and
- *    „ryż biały" would be spending a request on a decided question.
  * 3. Whatever is left goes to Gemini as a **closed list of ids**. The model may answer with an
  *    id from that list or with `null`, and an answer outside the list is discarded here. It
  *    never sees macros and cannot invent an ingredient.
@@ -121,14 +122,17 @@ export function classifyName(
 ): { resolved?: ResolvedMatch; target?: MatchTarget } {
   const nameKey = normalizeKey(name);
 
-  const corrected = corrections.get(nameKey);
-  if (corrected !== undefined) {
-    return { resolved: { nameKey, ingredientId: corrected, via: 'correction' } };
-  }
-
+  // The exact hit goes first. A correction is only ever recorded for a row the import could not
+  // fill, which an exact hit never is — so one that shadows an exact hit is left over from the
+  // editor that stored a per-recipe swap as a correction, and it must not win (decision 437).
   const best = ranked[0];
   if (best !== undefined && normalizeKey(best.ingredient.name) === nameKey) {
     return { resolved: { nameKey, ingredientId: best.ingredient.id, via: 'exact' } };
+  }
+
+  const corrected = corrections.get(nameKey);
+  if (corrected !== undefined) {
+    return { resolved: { nameKey, ingredientId: corrected, via: 'correction' } };
   }
 
   const candidates = ranked.slice(0, MAX_CANDIDATES).map((match) => match.ingredient);

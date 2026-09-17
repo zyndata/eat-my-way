@@ -366,10 +366,12 @@ export interface DraftItem {
   /** Per-100 g values typed by hand at this point of use; `null` means "use the database". */
   macroOverride: Macros | null;
   /**
-   * The Polish name an import produced for this row, or `null` on a hand-written one. Editor
-   * state only — it is never written to a `Recipe` and never travels to Drive. It exists so
-   * that changing an imported row's ingredient can be stored as a correction, which is what
-   * makes the next import of the same name match by lookup (STATE.md decision 116).
+   * The Polish name an import produced for a row it could not fill, or `null` — on a
+   * hand-written row and on an imported row that arrived matched. Editor state only — it is
+   * never written to a `Recipe` and never travels to Drive. It exists so that filling such a row
+   * can be stored as a correction, which is what makes the next import of the same name match
+   * by lookup (STATE.md decision 116). Swapping a matched row is a change to one recipe and
+   * must not be remembered, which is why that row carries no name (decision 437).
    */
   sourceName: string | null;
 }

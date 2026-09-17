@@ -13,6 +13,9 @@
     <meta name="theme-color" content="#529888" />
     <!-- iOS reads these and ignores the manifest. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- The standard spelling of the same thing. Chrome logs the Apple one as deprecated when it
+         stands alone; iOS still reads only the Apple one, so both stay. -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Eat My Way" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <!-- The vector one wins wherever it is understood; the PNGs are the same mark for the

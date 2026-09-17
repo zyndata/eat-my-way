@@ -20,6 +20,13 @@
     children?: Snippet;
   } = $props();
 
+  /**
+   * Unique per instance, as in `ConfirmDialog`: every sheet on a screen is in the DOM at once,
+   * closed or not, so a fixed id named them all after whichever came first (decision 438).
+   */
+  const uid = $props.id();
+  const titleId = `bottom-sheet-title-${uid}`;
+
   let dialog = $state<HTMLDialogElement>();
 
   // The parent owns `open`; this only mirrors it onto the element.
@@ -34,7 +41,7 @@
 <dialog
   bind:this={dialog}
   class="mt-auto mb-0 max-h-[85dvh] w-full max-w-2xl rounded-t-2xl border border-(--color-border) bg-(--color-surface-raised) p-0 text-(--color-ink) shadow-xl backdrop:bg-black/40 md:m-auto md:rounded-2xl"
-  aria-labelledby="bottom-sheet-title"
+  aria-labelledby={titleId}
   oncancel={(event) => {
     event.preventDefault();
     onclose();
@@ -44,7 +51,7 @@
     <header
       class="flex items-center justify-between gap-3 border-b border-(--color-border) px-4 py-3"
     >
-      <h2 id="bottom-sheet-title" class="text-base font-semibold">{title}</h2>
+      <h2 id={titleId} class="text-base font-semibold">{title}</h2>
       <button
         type="button"
         class="emw-press emw-btn emw-btn-secondary py-1.5"

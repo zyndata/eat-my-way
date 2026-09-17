@@ -12,9 +12,11 @@ import {
   findMeal,
   planMeal,
   orderMeals,
+  parsePortions,
   removeMeal,
   reorderMeals,
   resnapshotMeals,
+  stepPortions,
   updateMeal,
   withGoals
 } from './day';
@@ -419,5 +421,40 @@ describe('updateMeal', () => {
 
   it('returns the same day when the meal is not there', () => {
     expect(updateMeal(day, 'ghost', { portionsEaten: 5 })).toBe(day);
+  });
+});
+
+describe('stepPortions', () => {
+  it('lands on the next whole or half portion from an uneven count', () => {
+    expect(stepPortions(1.75, -1)).toBe(1.5);
+    expect(stepPortions(1.75, 1)).toBe(2);
+    expect(stepPortions(1.25, -1)).toBe(1);
+    expect(stepPortions(0.33, 1)).toBe(0.5);
+  });
+
+  it('moves a whole or half count by exactly half a portion', () => {
+    expect(stepPortions(1.5, -1)).toBe(1);
+    expect(stepPortions(1.5, 1)).toBe(2);
+    expect(stepPortions(1, -1)).toBe(0.5);
+    expect(stepPortions(0, 1)).toBe(0.5);
+  });
+
+  it('never goes below zero, and treats a broken value as zero', () => {
+    expect(stepPortions(0, -1)).toBe(0);
+    expect(stepPortions(0.25, -1)).toBe(0);
+    expect(stepPortions(Number.NaN, 1)).toBe(0.5);
+  });
+});
+
+describe('parsePortions', () => {
+  it('rounds a typed count to two decimals and accepts zero', () => {
+    expect(parsePortions(1)).toBe(1);
+    expect(parsePortions(0.333)).toBe(0.33);
+    expect(parsePortions(0)).toBe(0);
+  });
+
+  it('rejects what is not a count', () => {
+    expect(parsePortions(Number.NaN)).toBeUndefined();
+    expect(parsePortions(-1)).toBeUndefined();
   });
 });

@@ -5680,6 +5680,79 @@ Android and one whole week's shopping list pasted in.
   The whole suite and WebKit run in CI.
 - **README and screenshots.** One sentence qualified; no screen changed.
 
+### 2026-09-16 — the console after v1.14.3
+
+436. **`mobile-web-app-capable` sits beside the Apple meta tag.** Checking v1.14.3 in Chrome
+     logged „<meta name="apple-mobile-web-app-capable"> is deprecated". The standard tag is
+     added and the Apple one kept, because iOS reads only the Apple spelling. The same console
+     showed three messages that need nothing here: Cloudflare's injected bot-detection script
+     blocked by `script-src` (decision 218; switched off in the Cloudflare dashboard, never
+     allowed in the CSP), a Chrome extension's own `content.js` error, and „Banner not shown",
+     which is `pwa.svelte.ts` deferring the install prompt to Settings on purpose.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1029/1029. `npm run build`
+  carries both tags into `dist/index.html`. No script, style or source added, so the CSP is
+  untouched.
+
+### 2026-09-17 — a swap in one imported recipe leaked into every later import
+
+437. **Only filling a row the import left empty is remembered; swapping a matched row changes
+     that recipe alone** (a narrowing of decision 116 and a deviation from PLAN.md Phase 7 task 5,
+     whose „correcting a mismatch" read as covering a wrong model match too). Reported: import a
+     salad, save it as v1; import it again as v2 and swap „Sok z cytryny" for Ketchup; a third
+     import arrived with Ketchup. Since Phase 7 (`4c3bfc4`, 2026-09-01, first shipped in v1.0.0)
+     `pick()` stored *every* pick on an imported row as `normalizeKey(sourceName) → id`, and
+     `classifyName` consulted corrections before the exact name hit — so a per-recipe
+     preference became what the name means everywhere, even overriding a database row whose
+     name is literally „Sok z cytryny". The user's rule: a substitution can be trivial in one
+     recipe and essential in another, and an imported recipe is often a base to adapt, so no
+     swap may carry over. Two changes:
+     - `toDraftItems` sets `sourceName` only on rows the import could not fill (an id that no
+       longer resolves counts as unfilled). A matched row carries `null`, so swapping it records
+       nothing. The cost, accepted: a wrong model match fixed by hand is not learned, and the
+       next import of that name asks the model again.
+     - `classifyName` takes the exact name hit before a correction. Under the new rule no
+       correction can be recorded for an exact-hit name, so this changes nothing going forward
+       and heals the corrections the old editor stored for such names. A stale correction for a
+       name that is *not* an exact hit (a swapped model match) still wins; stored corrections
+       carry no record of how they were made, so there is nothing to tell them apart by.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1030/1030 (a new
+  `classifyName` case: an exact hit beats a correction). A new e2e spec in `import.spec.ts`
+  swaps an exact-hit row and a model-matched row, saves, re-imports and expects the source's
+  ingredients and a fresh model question; it failed on the old code with Ketchup and Oliwa z
+  oliwek in the third draft. The reported scenario was also run once, outside the suite, against
+  the real Gemini API with the user's test key: Ketchup in v3 before the change, „Sok z
+  cytryny" after.
+
+### 2026-09-17 — portions eaten, one tap from the day
+
+438. **„Porcje" joins a meal card's actions, and the portions stepper lands on whole and half
+     portions** (an addition to PLAN.md Phase 5's card actions and a change to the Phase 6
+     stepper). Reported with an Android screenshot: the planner left a toast at 1,75 portions,
+     and the user wanted to eat one and spend the rest on an apple. „Ile zjadam" could already
+     do it, but it was two screens away, and its −/+ added 0,5 to whatever was there, so from
+     1,75 they reached 1,25 and 0,75 and never 1. Three changes:
+     - `stepPortions` in `day.ts` moves to the next whole or half portion in that direction
+       (1,75 → 1,5 or 2; a whole or half count still moves by 0,5; never below 0). Both the meal
+       screen and the new sheet use it. Typing any count still works in both places.
+     - `PortionsSheet` opens from a card's „Porcje" (swipe or „⋮"): −, a field (Enter or blur
+       commits), + and the meal's kcal. Every change is written at once, as on the meal screen.
+       A cleared or negative entry writes nothing and shows the stored count again. The cooking
+       scale stays on the meal screen only, since it changes ingredient amounts and not the day.
+       With four buttons the card slides 18rem instead of 14rem, and they fit at 360 px.
+     - **`BottomSheet` titles get a per-instance id** (`$props.id()`, as `ConfirmDialog` already
+       does). The fixed `bottom-sheet-title` meant every sheet on the day screen took its
+       accessible name from the first one in the DOM, so a screen reader announced „Porcje"
+       as „Dodaj posiłek". The new e2e test's `getByRole('dialog', { name: 'Porcje' })` found
+       this.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1035/1035 (`stepPortions`
+  and `parsePortions` cases). `npx playwright test` 156/156 on Chromium, with a new
+  `library.spec.ts` test covering the sheet (typed 1,75, − twice to 1, a cleared entry) and the
+  meal screen's + from 1,75 to 2. `npm run build` passes. No script, style or outbound request
+  was added, so the CSP is untouched. WebKit was not run locally; CI runs it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
