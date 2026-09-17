@@ -11,6 +11,19 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Bug Fixes
 
 - **pwa:** Add the standard mobile-web-app-capable meta tag
+- **import:** Keep an ingredient swap in the recipe it was made in
+
+### Documentation
+
+- **state:** Separate decision 436 from the entry above it
+
+### Features
+
+- **kalendarz:** Set portions eaten from a meal card, stepper lands on halves
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [1.14.3] - 2026-09-16
 
