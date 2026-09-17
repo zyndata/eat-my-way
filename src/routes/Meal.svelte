@@ -22,8 +22,8 @@
     type AdjustedRow,
     type MealAdjustment
   } from '../lib/adjustments';
-  import { findMeal, stepPortions } from '../lib/day';
-  import { measureWord, portionWord, sourceHost } from '../lib/text';
+  import { findMeal, portionsChange, stepPortions } from '../lib/day';
+  import { formatPortions, measureWord, portionWord, sourceHost } from '../lib/text';
   import {
     addDays,
     formatDayLong,
@@ -85,6 +85,14 @@
 
   let scale = $state(1);
   let portions = $state(1);
+  /**
+   * „Do ugotowania: 0,5 → 1 porcja" after „Ile zjadam" moved the cooking scale (decision 439),
+   * kept with the id of its meal so another meal's screen does not inherit it.
+   */
+  let portionsNote = $state<{ mealId: string; text: string } | undefined>(undefined);
+  const portionsNoteText = $derived(
+    portionsNote !== undefined && portionsNote.mealId === mealId ? portionsNote.text : ''
+  );
 
   const lookup = $derived(ingredientLookup(ingredients));
   /** What the meal contributes to the day: the frozen snapshot times the portions eaten. */
@@ -188,10 +196,26 @@
     scheduleSync();
   }
 
+  /**
+   * The cooking scale follows the plate so the leftovers stay put (`portionsChange`), and the
+   * screen says when it moved rather than changing „Ile gotuję" out of sight.
+   */
   async function setPortions(value: number): Promise<void> {
-    portions = clampPortions(value);
     if (meal === undefined) return;
-    await repository.updateMeal(date, mealId, { portionsEaten: portions });
+    const changes = portionsChange(
+      { ...meal, cookingScale: scale, portionsEaten: portions },
+      clampPortions(value)
+    );
+    portionsNote =
+      changes.cookingScale === scale
+        ? undefined
+        : {
+            mealId,
+            text: `Do ugotowania: ${formatPortions(scale)} → ${formatPortions(changes.cookingScale)}`
+          };
+    portions = changes.portionsEaten;
+    scale = changes.cookingScale;
+    await repository.updateMeal(date, mealId, changes);
     scheduleSync();
   }
 
@@ -574,7 +598,8 @@
     <section class="mt-4 rounded-xl border border-(--color-border) bg-(--color-surface-raised) p-3">
       <h2 class="text-sm font-semibold">Ile zjadam</h2>
       <p class="pt-1 text-xs text-(--color-ink-muted)">
-        To jedyna liczba, która wpływa na podsumowanie dnia.
+        To jedyna liczba, która wpływa na podsumowanie dnia. Gdy zjadasz więcej, porcje do
+        ugotowania rosną o tyle samo, więc resztki na kolejne dni zostają.
       </p>
 
       <div class="flex items-center gap-2 pt-3">
@@ -610,6 +635,10 @@
           {portionWord(portions)}
         </span>
       </div>
+
+      {#if portionsNoteText !== ''}
+        <p class="pt-2 text-sm text-(--color-warn)" role="status">{portionsNoteText}</p>
+      {/if}
 
       <dl class="grid grid-cols-2 gap-x-4 gap-y-1 pt-4 text-sm sm:grid-cols-4">
         <dt class="text-(--color-ink-muted)">Kalorie</dt>

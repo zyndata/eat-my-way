@@ -3,7 +3,7 @@
   import type { DaySummary } from '../calendar';
   import { isOverGoal, monthWeeks, summarizeDates, weekDates } from '../calendar';
   import { formatDayLong, formatDayMonth, isDateKey, relativeDayLabel } from '../dates';
-  import { emptyDay } from '../day';
+  import { emptyDay, type MealChanges } from '../day';
   import { dayTotals } from '../macros';
   import { plannerWeek } from '../planner';
   import { repository } from '../repository';
@@ -177,8 +177,8 @@
     await refresh();
   }
 
-  async function setPortions(mealId: string, portions: number): Promise<void> {
-    await repository.updateMeal(date, mealId, { portionsEaten: portions });
+  async function setPortions(mealId: string, changes: MealChanges): Promise<void> {
+    await repository.updateMeal(date, mealId, changes);
     await refresh();
   }
 
@@ -504,8 +504,8 @@
   <PortionsSheet
     meal={portionsMeal}
     name={portionsMeal === undefined ? '' : nameOf(portionsMeal).name}
-    onchange={(portions) => {
-      if (portionsMealId !== null) void setPortions(portionsMealId, portions);
+    onchange={(changes) => {
+      if (portionsMealId !== null) void setPortions(portionsMealId, changes);
     }}
     onclose={() => (portionsMealId = null)}
   />

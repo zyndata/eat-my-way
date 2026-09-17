@@ -13,6 +13,7 @@ import {
   planMeal,
   orderMeals,
   parsePortions,
+  portionsChange,
   removeMeal,
   reorderMeals,
   resnapshotMeals,
@@ -456,5 +457,33 @@ describe('parsePortions', () => {
   it('rejects what is not a count', () => {
     expect(parsePortions(Number.NaN)).toBeUndefined();
     expect(parsePortions(-1)).toBeUndefined();
+  });
+});
+
+describe('portionsChange', () => {
+  const planned = (cookingScale: number, portionsEaten: number): PlannedMeal => ({
+    ...mealOf('a', 400),
+    cookingScale,
+    portionsEaten
+  });
+
+  it('cooks what a bigger plate needs on a one-day cook', () => {
+    expect(portionsChange(planned(0.5, 0.5), 1)).toEqual({ portionsEaten: 1, cookingScale: 1 });
+    expect(portionsChange(planned(1, 1), 2.25)).toEqual({ portionsEaten: 2.25, cookingScale: 2.25 });
+  });
+
+  it('keeps the leftovers of a multi-day cook in the pot', () => {
+    expect(portionsChange(planned(1, 0.5), 1)).toEqual({ portionsEaten: 1, cookingScale: 1.5 });
+    expect(portionsChange(planned(3, 1), 1.5)).toEqual({ portionsEaten: 1.5, cookingScale: 3.5 });
+  });
+
+  it('leaves a batch alone when the plate gets smaller', () => {
+    expect(portionsChange(planned(1.75, 1.75), 1)).toEqual({ portionsEaten: 1, cookingScale: 1.75 });
+    expect(portionsChange(planned(3, 1), 0.25)).toEqual({ portionsEaten: 0.25, cookingScale: 3 });
+    expect(portionsChange(planned(0.5, 0.5), 0)).toEqual({ portionsEaten: 0, cookingScale: 0.5 });
+  });
+
+  it('rounds away float noise to the two decimals the meal screen stores', () => {
+    expect(portionsChange(planned(0.7, 0.1), 0.3).cookingScale).toBe(0.9);
   });
 });

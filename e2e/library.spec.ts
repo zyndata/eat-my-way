@@ -336,3 +336,42 @@ test('„Porcje" on a meal card sets portions eaten by step or by hand', async (
   await device.getByRole('button', { name: 'Więcej zjedzonych porcji' }).click();
   await expect(device.getByLabel('Zjedzone porcje')).toHaveValue('2');
 });
+
+test('eating more than was cooked raises the cooked portions, and says so', async ({ device }) => {
+  await writeRecipe(device, 'Jajecznica', { ingredient: 'jajko', amount: '100' });
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
+  await device.getByRole('dialog').getByRole('button', { name: /Jajecznica/ }).click();
+  const card = device.getByRole('link', { name: /Jajecznica/ });
+
+  // What the planner wrote in the report: half a portion cooked, half a portion eaten.
+  await card.click();
+  await device.getByLabel('Porcje do ugotowania').fill('0.5');
+  await device.getByLabel('Porcje do ugotowania').blur();
+  await device.getByLabel('Zjedzone porcje').fill('0.5');
+  await device.getByLabel('Zjedzone porcje').blur();
+  // A smaller plate never touches what was cooked.
+  await expect(device.getByLabel('Porcje do ugotowania')).toHaveValue('0.5');
+  await device.goto('#/');
+  await expect(card).toContainText('gotowane ×0.5');
+
+  // One whole portion off the card: the pot grows with it, and the sheet says so.
+  await device.getByRole('button', { name: 'Akcje posiłku: Jajecznica' }).click();
+  await device.getByRole('button', { name: 'Porcje', exact: true }).click();
+  const sheet = device.getByRole('dialog', { name: 'Porcje' });
+  await sheet.getByLabel('Zjedzone porcje').fill('1');
+  await sheet.getByLabel('Zjedzone porcje').press('Enter');
+  await expect(sheet.getByRole('status')).toHaveText('Do ugotowania: 0,5 porcji → 1 porcja');
+  await expect(card).toContainText('1 porcja');
+  await expect(card).not.toContainText('gotowane');
+  await sheet.getByRole('button', { name: 'Zamknij' }).click();
+
+  // The meal screen does the same, and keeps a pot bigger than the plate as big as it was.
+  await card.click();
+  await expect(device.getByLabel('Porcje do ugotowania')).toHaveValue('1');
+  await device.getByRole('button', { name: 'Więcej zjedzonych porcji' }).click();
+  await expect(device.getByLabel('Porcje do ugotowania')).toHaveValue('1.5');
+  await expect(device.getByRole('status').filter({ hasText: 'Do ugotowania' })).toHaveText(
+    'Do ugotowania: 1 porcja → 1,5 porcji'
+  );
+});

@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { PlannedMeal } from '../types';
-  import { parsePortions, stepPortions } from '../day';
+  import { parsePortions, portionsChange, stepPortions, type MealChanges } from '../day';
   import { mealMacros } from '../macros';
-  import { portionWord } from '../text';
+  import { formatPortions, portionWord } from '../text';
   import BottomSheet from './BottomSheet.svelte';
   import NavIcon from './NavIcon.svelte';
 
@@ -12,8 +12,9 @@
    * nearest whole or half portion, and a field for any other count — and the same rule: every
    * change is written at once, so there is nothing to confirm or lose on „Zamknij".
    *
-   * The cooking scale is not offered here. It changes the ingredient amounts and not the day,
-   * and it stays on the meal screen next to the ingredients it scales.
+   * The cooking scale is not offered here: it stays on the meal screen next to the ingredients
+   * it scales. It does follow the plate, by `portionsChange`, and when it moves the sheet says
+   * so — a number the user may have set is never changed out of sight (decision 439).
    */
 
   const MINUS = 'M5 12h14';
@@ -28,11 +29,17 @@
     /** The meal being changed; the sheet is open while there is one. */
     meal: PlannedMeal | undefined;
     name: string;
-    onchange: (portions: number) => void;
+    onchange: (changes: Required<MealChanges>) => void;
     onclose: () => void;
   } = $props();
 
   let field = $state<HTMLInputElement>();
+  /**
+   * „Do ugotowania: 0,5 → 1 porcja" after a change moved the cooking scale. Kept with the id
+   * of its meal: the meal object is re-read after every write, the id is what stays the same.
+   */
+  let note = $state<{ mealId: string; text: string } | undefined>(undefined);
+  const noteText = $derived(note !== undefined && note.mealId === meal?.id ? note.text : '');
 
   const portions = $derived(meal?.portionsEaten ?? 1);
   const kcal = $derived(meal === undefined ? 0 : mealMacros(meal).kcal);
@@ -45,14 +52,24 @@
       if (field !== undefined) field.value = String(portions);
       return;
     }
-    onchange(parsed);
+    if (meal === undefined) return;
+    const changes = portionsChange(meal, parsed);
+    note =
+      changes.cookingScale === meal.cookingScale
+        ? undefined
+        : {
+            mealId: meal.id,
+            text: `Do ugotowania: ${formatPortions(meal.cookingScale)} → ${formatPortions(changes.cookingScale)}`
+          };
+    onchange(changes);
   }
 </script>
 
 <BottomSheet open={meal !== undefined} title="Porcje" {onclose}>
   <p class="emw-recipe-name text-sm font-medium">{name}</p>
   <p class="pt-1 text-xs text-(--color-ink-muted)">
-    Ile porcji zjadasz. Zmienia podsumowanie dnia; ilości do ugotowania zostają bez zmian.
+    Ile porcji zjadasz. Zmienia podsumowanie dnia. Gdy zjadasz więcej, porcje do ugotowania
+    rosną o tyle samo, więc resztki na kolejne dni zostają.
   </p>
 
   <div class="flex items-center gap-2 pt-4">
@@ -90,6 +107,10 @@
     </button>
     <span class="text-sm text-(--color-ink-muted)">{portionWord(portions)}</span>
   </div>
+
+  {#if noteText !== ''}
+    <p class="pt-2 text-sm text-(--color-warn)" role="status">{noteText}</p>
+  {/if}
 
   <p class="pt-4 text-sm">
     <span class="font-medium tabular-nums">{Math.round(kcal)} kcal</span>
