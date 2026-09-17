@@ -5753,6 +5753,35 @@ Android and one whole week's shopping list pasted in.
   meal screen's + from 1,75 to 2. `npm run build` passes. No script, style or outbound request
   was added, so the CSP is untouched. WebKit was not run locally; CI runs it.
 
+### 2026-09-17 — eating more than was cooked
+
+439. **A bigger plate raises the cooking scale by as much as the plate grew; a smaller plate
+     leaves it alone** (a change to decision 438 and to PLAN.md's rule that the two numbers never
+     move each other). Reported on v1.15.0: the planner wrote 0,5 cooked and 0,5 eaten, the user
+     set eaten to 1, and cooked stayed at 0,5, which means eating a portion out of half a pot.
+     `portionsChange` in `day.ts` returns both numbers, and the sheet and the meal screen write
+     them together.
+     - **Raise by the growth, not „cooked = eaten".** The planner writes a multi-day cook as
+       `n × eaten` on the cooking day and a `cookingScale: 1` copy on each later day (decision
+       265). On a two-day cooking day at 1/0,5, eating 1 gives 1,5, so tomorrow's 0,5 is still
+       there. „Cooked = eaten" would give 1 and empty tomorrow's pot. A meal record cannot tell
+       a cooking day from a leftovers day, and this rule doesn't need to: on a leftovers day the
+       shopping ledger (`cookedScales`) buys nothing while the pot covers the plate, so a raised
+       scale there changes nothing on the list.
+     - **Never lowered.** Cooking more than is eaten is a normal state (a typed batch,
+       leftovers), and lowering it would rewrite the user's own number („nie decydujemy za
+       usera"). The cost, accepted: after first lowering the plate under a typed batch, raising
+       it again grows the batch too (3/0,25 → eat 1 → 3,75).
+     - **Said out loud.** When the scale moves, the sheet and „Ile zjadam" show „Do ugotowania:
+       0,5 porcji → 1 porcja" (`role="status"`), kept with the meal's id so it survives the
+       re-read after the write. Both helper lines now say the cooked portions grow with the plate.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1039/1039 (`portionsChange`:
+  a one-day cook, a two-day cooking day, a smaller plate, float rounding). `npx playwright test`
+  157/157 on Chromium. A new `library.spec.ts` test replays the report (0,5/0,5 → eat 1 off the
+  card → cooked 1 and the note, then + on the meal screen → 1,5). It fails with the rule
+  switched off. `npm run build` passes. No new source of any kind, so the CSP is untouched.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed

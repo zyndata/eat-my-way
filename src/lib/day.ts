@@ -192,6 +192,32 @@ export function parsePortions(value: number): number | undefined {
 }
 
 /**
+ * The write for a new count of portions eaten. A bigger plate raises the cooking scale by as
+ * much as the plate grew, so what was left over stays left over (STATE.md decision 439):
+ *
+ * - a one-day cook, 0,5 cooked and 0,5 eaten, eaten raised to 1 → cooked 1. Leaving it at 0,5
+ *   read as eating a portion out of half a portion's pot;
+ * - the cooking day of a two-day run, 1 cooked and 0,5 eaten, eaten raised to 1 → cooked 1,5,
+ *   so tomorrow's 0,5 is still in the pot. „Cooked = eaten" would have emptied it.
+ *
+ * A smaller plate leaves the scale alone. Cooking more than is eaten is a normal state — a
+ * batch the user typed, leftovers for tomorrow — and lowering it would rewrite a number the
+ * user set, which this app does not do on their behalf.
+ *
+ * A meal record cannot tell a cooking day from a leftovers day (`shopping.ts` has to walk a
+ * ledger to find out), and this rule needs neither: on a leftovers day the scale is not what
+ * gets bought, so raising it with the plate changes nothing the list prints.
+ */
+export function portionsChange(meal: PlannedMeal, portionsEaten: number): Required<MealChanges> {
+  const growth = portionsEaten - meal.portionsEaten;
+  return {
+    portionsEaten,
+    cookingScale:
+      growth > 0 ? Math.round((meal.cookingScale + growth) * 100) / 100 : meal.cookingScale
+  };
+}
+
+/**
  * `duplicateMeal` — a copy of one meal, inserted directly after the original so the
  * duplicate appears next to what it was copied from.
  */
