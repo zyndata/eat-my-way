@@ -28,6 +28,7 @@
     date,
     name,
     missing = false,
+    onportions,
     onduplicate,
     oncopy,
     onremove
@@ -38,6 +39,8 @@
     name: string;
     /** The recipe this meal came from no longer exists. */
     missing?: boolean;
+    /** „Porcje" — portions eaten, in a sheet (decision 438). */
+    onportions: () => void;
     onduplicate: () => void;
     oncopy: () => void;
     onremove: () => void;
@@ -84,6 +87,13 @@
     <button
       type="button"
       class="emw-press emw-btn-link-muted px-3 text-xs font-medium no-underline"
+      onclick={() => act(onportions)}
+    >
+      Porcje
+    </button>
+    <button
+      type="button"
+      class="emw-press emw-btn-link-muted px-3 text-xs font-medium no-underline"
       onclick={() => act(onduplicate)}
     >
       Powiel
@@ -108,7 +118,7 @@
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div
     class="relative flex items-center gap-1 bg-(--color-surface-raised) p-2 transition-transform duration-200 {actionsOpen
-      ? '-translate-x-56'
+      ? '-translate-x-72'
       : 'translate-x-0'}"
     ontouchstart={onTouchStart}
     ontouchend={onTouchEnd}

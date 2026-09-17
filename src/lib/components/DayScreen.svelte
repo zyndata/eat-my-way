@@ -17,6 +17,7 @@
   import MonthGrid from './MonthGrid.svelte';
   import NavIcon from './NavIcon.svelte';
   import PlannerSheet from './PlannerSheet.svelte';
+  import PortionsSheet from './PortionsSheet.svelte';
   import RecipePicker from './RecipePicker.svelte';
   import ShoppingListSheet from './ShoppingListSheet.svelte';
   import WeekStrip from './WeekStrip.svelte';
@@ -58,6 +59,8 @@
   let copyFromOpen = $state(false);
   let clearOpen = $state(false);
   let removeMealId = $state<string | null>(null);
+  /** Meal whose „Porcje" sheet is open; `null` when it is closed. */
+  let portionsMealId = $state<string | null>(null);
   /** Targets of a day copy that already have meals — the replace/append question. */
   let conflictDates = $state<string[]>([]);
   /** Days the shopping list covers; empty while the sheet is closed (STATE.md decision 158). */
@@ -72,6 +75,8 @@
   let dayMenu = $state<HTMLDetailsElement>();
 
   const valid = $derived(isDateKey(date));
+  // Read from the day itself, so the sheet shows what was just written once `refresh` lands.
+  const portionsMeal = $derived(day.meals.find((meal) => meal.id === portionsMealId));
   const totals = $derived(dayTotals(day));
   const week = $derived<DaySummary[]>(summarizeDates(weekDates(date), rangeDays, goals));
   const headerGoals = $derived(day.goalSnapshot ?? goals);
@@ -169,6 +174,11 @@
 
   async function reorder(mealIds: string[]): Promise<void> {
     await repository.setMealOrder(date, mealIds);
+    await refresh();
+  }
+
+  async function setPortions(mealId: string, portions: number): Promise<void> {
+    await repository.updateMeal(date, mealId, { portionsEaten: portions });
     await refresh();
   }
 
@@ -434,6 +444,7 @@
         {date}
         {nameOf}
         onreorder={(ids) => void reorder(ids)}
+        onportions={(id) => (portionsMealId = id)}
         onduplicate={(id) => void duplicate(id)}
         oncopy={(id) => (copyMealId = id)}
         onremove={(id) => (removeMealId = id)}
@@ -488,6 +499,15 @@
     title={menuTitle}
     dates={menuDates}
     onclose={() => (menuDates = [])}
+  />
+
+  <PortionsSheet
+    meal={portionsMeal}
+    name={portionsMeal === undefined ? '' : nameOf(portionsMeal).name}
+    onchange={(portions) => {
+      if (portionsMealId !== null) void setPortions(portionsMealId, portions);
+    }}
+    onclose={() => (portionsMealId = null)}
   />
 
   <DateMultiSelect

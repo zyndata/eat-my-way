@@ -22,7 +22,7 @@
     type AdjustedRow,
     type MealAdjustment
   } from '../lib/adjustments';
-  import { findMeal } from '../lib/day';
+  import { findMeal, stepPortions } from '../lib/day';
   import { measureWord, portionWord, sourceHost } from '../lib/text';
   import {
     addDays,
@@ -582,7 +582,7 @@
           type="button"
           class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Mniej zjedzonych porcji"
-          onclick={() => void setPortions(Math.max(0, portions - 0.5))}
+          onclick={() => void setPortions(stepPortions(portions, -1))}
         >
           <NavIcon path={MINUS} class="size-4" />
         </button>
@@ -602,7 +602,7 @@
           type="button"
           class="emw-press emw-btn-icon border border-(--color-border)"
           aria-label="Więcej zjedzonych porcji"
-          onclick={() => void setPortions(portions + 0.5)}
+          onclick={() => void setPortions(stepPortions(portions, 1))}
         >
           <NavIcon path={PLUS} class="size-4" />
         </button>

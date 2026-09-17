@@ -165,6 +165,32 @@ export function updateMeal(day: Day, mealId: string, changes: MealChanges): Day 
   return makeDay(day.date, meals, day.goalSnapshot);
 }
 
+/** One press of a portions stepper: half a portion. */
+const PORTION_STEP = 0.5;
+
+/**
+ * One press of „−" or „+" on portions eaten. It lands on the next whole or half portion in
+ * that direction rather than adding 0.5 to whatever is there: the planner leaves counts like
+ * 1,75, and from there the number people aim for — a whole portion — has to be reachable
+ * without typing (STATE.md decision 438). Never below zero.
+ */
+export function stepPortions(value: number, direction: -1 | 1): number {
+  const current = Number.isFinite(value) && value > 0 ? value : 0;
+  // The slack keeps an exact half from reading as just off itself after float arithmetic.
+  const halves = current / PORTION_STEP;
+  const next = direction === 1 ? Math.floor(halves + 1e-9) + 1 : Math.ceil(halves - 1e-9) - 1;
+  return Math.max(0, next * PORTION_STEP);
+}
+
+/**
+ * A typed portions count, or `undefined` when it is not one (not a number, or negative).
+ * Rounded to two decimals, the precision the meal screen has always stored.
+ */
+export function parsePortions(value: number): number | undefined {
+  if (!Number.isFinite(value) || value < 0) return undefined;
+  return Math.round(value * 100) / 100;
+}
+
 /**
  * `duplicateMeal` — a copy of one meal, inserted directly after the original so the
  * duplicate appears next to what it was copied from.

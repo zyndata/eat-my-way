@@ -295,3 +295,44 @@ test('pressing the suggestion list itself does not close it', async ({ device })
   await expect(listbox).toBeVisible();
   await expect(input).toHaveValue('jajk');
 });
+
+test('„Porcje" on a meal card sets portions eaten by step or by hand', async ({ device }) => {
+  await writeRecipe(device, 'Jajecznica', { ingredient: 'jajko', amount: '100' });
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
+  await device.getByRole('dialog').getByRole('button', { name: /Jajecznica/ }).click();
+
+  const card = device.getByRole('link', { name: /Jajecznica/ });
+  await device.getByRole('button', { name: 'Akcje posiłku: Jajecznica' }).click();
+  await device.getByRole('button', { name: 'Porcje', exact: true }).click();
+
+  const sheet = device.getByRole('dialog', { name: 'Porcje' });
+  const field = sheet.getByLabel('Zjedzone porcje');
+
+  // A count the planner could leave behind, typed by hand and confirmed with Enter.
+  await field.fill('1.75');
+  await field.press('Enter');
+  await expect(card).toContainText('1,75 porcji');
+
+  // From there the stepper lands on halves, so one press reaches a whole portion's neighbour.
+  await sheet.getByRole('button', { name: 'Mniej zjedzonych porcji' }).click();
+  await expect(card).toContainText('1,5 porcji');
+  await expect(field).toHaveValue('1.5');
+  await sheet.getByRole('button', { name: 'Mniej zjedzonych porcji' }).click();
+  await expect(card).toContainText('1 porcja');
+
+  // A broken entry writes nothing and puts the stored count back.
+  await field.fill('');
+  await field.press('Enter');
+  await expect(field).toHaveValue('1');
+
+  await sheet.getByRole('button', { name: 'Zamknij' }).click();
+  await expect(sheet).toBeHidden();
+
+  // The meal screen's own stepper follows the same rule.
+  await card.click();
+  await device.getByLabel('Zjedzone porcje').fill('1.75');
+  await device.getByLabel('Zjedzone porcje').blur();
+  await device.getByRole('button', { name: 'Więcej zjedzonych porcji' }).click();
+  await expect(device.getByLabel('Zjedzone porcje')).toHaveValue('2');
+});

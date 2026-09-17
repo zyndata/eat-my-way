@@ -5725,6 +5725,34 @@ Android and one whole week's shopping list pasted in.
   the real Gemini API with the user's test key: Ketchup in v3 before the change, „Sok z
   cytryny" after.
 
+### 2026-09-17 — portions eaten, one tap from the day
+
+438. **„Porcje" joins a meal card's actions, and the portions stepper lands on whole and half
+     portions** (an addition to PLAN.md Phase 5's card actions and a change to the Phase 6
+     stepper). Reported with an Android screenshot: the planner left a toast at 1,75 portions,
+     and the user wanted to eat one and spend the rest on an apple. „Ile zjadam" could already
+     do it, but it was two screens away, and its −/+ added 0,5 to whatever was there, so from
+     1,75 they reached 1,25 and 0,75 and never 1. Three changes:
+     - `stepPortions` in `day.ts` moves to the next whole or half portion in that direction
+       (1,75 → 1,5 or 2; a whole or half count still moves by 0,5; never below 0). Both the meal
+       screen and the new sheet use it. Typing any count still works in both places.
+     - `PortionsSheet` opens from a card's „Porcje" (swipe or „⋮"): −, a field (Enter or blur
+       commits), + and the meal's kcal. Every change is written at once, as on the meal screen.
+       A cleared or negative entry writes nothing and shows the stored count again. The cooking
+       scale stays on the meal screen only, since it changes ingredient amounts and not the day.
+       With four buttons the card slides 18rem instead of 14rem, and they fit at 360 px.
+     - **`BottomSheet` titles get a per-instance id** (`$props.id()`, as `ConfirmDialog` already
+       does). The fixed `bottom-sheet-title` meant every sheet on the day screen took its
+       accessible name from the first one in the DOM, so a screen reader announced „Porcje"
+       as „Dodaj posiłek". The new e2e test's `getByRole('dialog', { name: 'Porcje' })` found
+       this.
+
+- **Suites.** `npm run check` 0 errors, 0 warnings. `npx vitest run` 1035/1035 (`stepPortions`
+  and `parsePortions` cases). `npx playwright test` 156/156 on Chromium, with a new
+  `library.spec.ts` test covering the sheet (typed 1,75, − twice to 1, a cleared entry) and the
+  meal screen's + from 1,75 to 2. `npm run build` passes. No script, style or outbound request
+  was added, so the CSP is untouched. WebKit was not run locally; CI runs it.
+
 ## Open questions
 
 > **A review pass over these is in progress** (started 2026-09-01, after Phase 8; resumed
