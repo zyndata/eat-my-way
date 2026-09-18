@@ -708,12 +708,25 @@ test('a kcal typed on a category is what that category is solved against', async
   const breakfast = sheet.getByLabel('Kalorie na Śniadanie');
   const before = Number(await breakfast.inputValue());
 
-  await sheet.getByLabel('Kalorie na Obiad').fill('900');
-  await sheet.getByLabel('Kalorie na Obiad').blur();
+  const lunch = sheet.getByLabel('Kalorie na Obiad');
+  await lunch.fill('900');
+  await lunch.blur();
 
   // The typed number stands, and the rest split what is left of the day (decision 448).
-  await expect(sheet.getByLabel('Kalorie na Obiad')).toHaveValue('900');
+  await expect(lunch).toHaveValue('900');
   expect(Number(await breakfast.inputValue())).toBeLessThan(before);
+
+  /*
+   * And any number is typeable, not only a round one. A `step` the value misses makes the
+   * browser refuse the field with a validation bubble written in the browser's own language —
+   * „The two nearest valid values are 900 and 910." — which is the one string in this app no
+   * amount of Polish copy can reach (decision 456).
+   */
+  await lunch.fill('901');
+  await lunch.blur();
+  await expect(lunch).toHaveValue('901');
+  expect(await lunch.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
+  expect(await lunch.evaluate((input: HTMLInputElement) => input.validationMessage)).toBe('');
 });
 
 test('a category that already holds a meal is left alone until „Dołóż tu coś"', async ({

@@ -678,14 +678,20 @@
                       {#if !off && target !== undefined}
                         <!-- The number the solver aims at, from `slotTargetKcal` — the same call
                              `blockTarget` makes, so what is shown cannot drift from what is
-                             solved against. Typing one turns it into an override. -->
+                             solved against. Typing one turns it into an override.
+
+                             `step="any"`, never a round number: a `step` the typed value misses
+                             makes the browser refuse it with a bubble in the *browser's*
+                             language — „Please enter a valid value. The two nearest valid
+                             values are 900 and 910." for a perfectly sensible 901 — and this
+                             app speaks Polish (STATE.md decision 456). -->
                         <label class="flex items-center gap-1 text-xs text-(--color-ink-muted)">
                           <input
                             class="w-16 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-1.5 py-0.5 text-right text-xs tabular-nums"
                             type="number"
                             inputmode="numeric"
                             min="0"
-                            step="10"
+                            step="any"
                             aria-label="Kalorie na {slot.label}"
                             value={Math.round(target)}
                             onchange={(event) =>
