@@ -8,6 +8,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Bug Fixes
+
+- **planer:** Let any kcal be typed on a category, not only a multiple of ten
+
 ### Documentation
 
 - Plan phase 24 — kategorie posiłków w dniu
@@ -15,6 +19,10 @@ project adheres to [Semantic Versioning](https://semver.org).
 ### Features
 
 - **kalendarz:** Phase 24 — kategorie posiłków w dniu
+
+### Miscellaneous
+
+- Update CHANGELOG
 
 ## [1.15.1] - 2026-09-17
 
