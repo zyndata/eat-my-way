@@ -6,6 +6,16 @@ This file is generated from Conventional Commit messages by
 The format follows [Keep a Changelog](https://keepachangelog.com) and the
 project adheres to [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Documentation
+
+- Plan phase 24 — kategorie posiłków w dniu
+
+### Features
+
+- **kalendarz:** Phase 24 — kategorie posiłków w dniu
+
 ## [1.15.1] - 2026-09-17
 
 ### Bug Fixes
