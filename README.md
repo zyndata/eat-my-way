@@ -8,7 +8,7 @@ goals. Installable as a PWA on Android and desktop, and usable offline.
 
 The interface is in **Polish**. The code, comments and documentation are in English.
 
-> **Status: released, and in daily use.** Phases 1–23 of [PLAN.md](PLAN.md) are done — the
+> **Status: released, and in daily use.** Phases 1–24 of [PLAN.md](PLAN.md) are done — the
 > calendar, the recipe library, the nutrition database, Drive sync, the vault, the Gemini import
 > and the installable offline PWA for 1.0, then fifteen phases that daily use asked for after it:
 > the comfort features (9), an ingredient library and a backup that finally holds everything
@@ -27,7 +27,9 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
 > app is writing its ingredient database and used to lose a Drive sync started inside it (21),
 > and a recipe you can send to whoever is cooking it, at the number of portions they are
 > cooking (22), and a goals calculator that works out a reduction or a gain, not only the
-> energy that keeps your weight where it is (23).
+> energy that keeps your weight where it is (23), and a day that knows which meal of the day
+> each thing is, so the screen groups it under „Śniadanie" and „Kolacja" and the planner stops
+> guessing (24).
 > The live app is
 > https://eatmyway.gorny.dev; the [releases](https://github.com/zyndata/eat-my-way/releases) and
 > [CHANGELOG.md](CHANGELOG.md) say what is in the current build, and [STATE.md](STATE.md) is the
@@ -60,7 +62,18 @@ The interface is in **Polish**. The code, comments and documentation are in Engl
   Nothing is written until you do, and no AI is involved — it is arithmetic, done in your
   browser, offline. Both buttons are on the calendar screen whether or not the day already has
   meals, and under the week strip a card totals all seven days against all seven days' goals —
-  what the week costs, and how much of it is still open.
+  what the week costs, and how much of it is still open. Each day card lists your categories:
+  turn one off for today and its calories move to the rest, so „dziś bez przekąski" makes the
+  main course bigger; type a number on one to solve it against that; and ask for one more meal
+  in a category that already holds something. None of it changes your template — it is a
+  sentence about today, and Settings is where the plan is changed for good.
+- **A day knows which meal of the day each thing is.** Meals sit under the categories from your
+  template — „Śniadanie", „Obiad", „Kolacja" — each with its own total and its own „+ Dodaj",
+  and three things can sit under breakfast. Drag a card into another group, or use „Posiłek
+  dnia" on the meal screen, and it is filed there for good. The assignment belongs to the day,
+  not to the recipe: jajecznica is breakfast on Monday and supper on Wednesday. Nothing is ever
+  guessed — a meal you have not filed sits under „Pozostałe", counts in the day's calories and
+  takes no category, and the planner says so out loud rather than quietly assuming.
 - **History is frozen.** Each planned meal stores a snapshot of its macros, so editing a recipe
   today never rewrites what you ate last month.
 - **It is shaped around cooking, not logging.** A recipe is written once, per portion; the day

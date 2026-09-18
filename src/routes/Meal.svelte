@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Ingredient, PlannedMeal, Recipe, RecipeItem } from '../lib/types';
+  import type { Ingredient, MealSlot, PlannedMeal, Recipe, RecipeItem } from '../lib/types';
   import {
     displayedAmount,
     displayedGrams,
@@ -22,7 +22,8 @@
     type AdjustedRow,
     type MealAdjustment
   } from '../lib/adjustments';
-  import { findMeal, portionsChange, stepPortions } from '../lib/day';
+  import { UNFILED_LABEL, findMeal, portionsChange, stepPortions } from '../lib/day';
+  import { templateOf } from '../lib/planner';
   import { formatPortions, measureWord, portionWord, sourceHost } from '../lib/text';
   import {
     addDays,
@@ -72,6 +73,8 @@
   let meal = $state<PlannedMeal | undefined>(undefined);
   let recipe = $state<Recipe | undefined>(undefined);
   let ingredients = $state<Ingredient[]>([]);
+  /** The template's categories, for „Posiłek dnia". Empty only before the first load. */
+  let slots = $state<readonly MealSlot[]>([]);
   /** Ids of tomorrow's meals from this same recipe — what „Dodaj też jutro" reflects. */
   let tomorrowMeals = $state<string[]>([]);
   let uncheckOpen = $state(false);
@@ -152,6 +155,8 @@
     meal = found;
     scale = found.cookingScale;
     portions = found.portionsEaten;
+
+    slots = templateOf((await repository.getProfile()).mealPlan).slots;
 
     const stored = await repository.getRecipe(found.recipeId);
     recipe = stored;
@@ -276,6 +281,26 @@
     await writeLayer(changeRow(layer, row.key, swapped));
   }
 
+  /**
+   * „Posiłek dnia" — the same write the drag on the day screen makes, by the route that works
+   * when the category is off screen, and the one a keyboard and a screen reader can use
+   * (STATE.md decision 443). The day's order is otherwise left alone: every other meal is
+   * handed back with the category it already has.
+   */
+  async function setSlot(value: string): Promise<void> {
+    if (meal === undefined) return;
+    const day = await repository.getDay(date);
+    await repository.setMealPlacement(
+      date,
+      day.meals.map((other) => {
+        const slotId = other.id === mealId ? (value === '' ? undefined : value) : other.slotId;
+        return { id: other.id, ...(slotId === undefined ? {} : { slotId }) };
+      })
+    );
+    await load(date, mealId);
+    scheduleSync();
+  }
+
   /** „Gotuję na 2 dni": scale to 2 and drop a one-portion copy on tomorrow. */
   async function cookAlsoTomorrow(): Promise<void> {
     if (meal === undefined || alreadyTomorrow) return;
@@ -334,6 +359,21 @@
         {recipe?.name ?? 'Usunięty przepis'}
       </h1>
       <p class="pt-1 text-sm text-(--color-ink-muted)">{formatDayLong(date)}</p>
+      {#if slots.length > 0}
+        <label class="flex items-center gap-2 pt-3 text-sm">
+          Posiłek dnia
+          <select
+            class="min-w-0 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-2 py-1 text-sm"
+            value={meal.slotId ?? ''}
+            onchange={(event) => void setSlot(event.currentTarget.value)}
+          >
+            {#each slots as slot (slot.id)}
+              <option value={slot.id}>{slot.label}</option>
+            {/each}
+            <option value="">{UNFILED_LABEL}</option>
+          </select>
+        </label>
+      {/if}
       {#if recipe === undefined}
         <p class="pt-2 text-sm text-(--color-ink-muted)">
           Przepis został usunięty z biblioteki. Zapisane makroskładniki tego posiłku zostają —
@@ -374,7 +414,7 @@
                   : ''}"
               >
                 <div class="flex items-baseline justify-between gap-3">
-                  <span class="min-w-0 truncate text-sm {skipped ? 'line-through' : ''}">
+                  <span class="emw-recipe-name min-w-0 text-sm {skipped ? 'line-through' : ''}">
                     {ingredient?.name ?? 'Nieznany składnik'}
                   </span>
                   {#if skipped}
@@ -676,7 +716,7 @@
             {@const ingredient = lookup(item.ingredientId)}
             {@const macros = itemMacros(item, ingredient)}
             <li class="flex items-baseline justify-between gap-3 text-xs">
-              <span class="min-w-0 truncate">{ingredient?.name ?? 'Nieznany składnik'}</span>
+              <span class="emw-recipe-name min-w-0">{ingredient?.name ?? 'Nieznany składnik'}</span>
               <span class="shrink-0 tabular-nums text-(--color-ink-muted)">
                 {Math.round(macros.kcal)} kcal · B {macros.protein.toFixed(1)} · W
                 {macros.carbs.toFixed(1)} · T {macros.fat.toFixed(1)}

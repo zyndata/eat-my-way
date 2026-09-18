@@ -82,13 +82,18 @@ await page.goto(`${BASE_URL}/#/`);
 await page.getByRole('button', { name: 'Zaplanuj dzień', exact: true }).click();
 await page.getByRole('button', { name: 'Losuj ponownie' }).waitFor({ state: 'visible' });
 await shot('planner');
-await page.getByRole('button', { name: 'Zamknij' }).click();
 
-await page.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
-await page.getByRole('button', { name: /Owsianka/ }).click();
+// Applying it is what makes the day screenshot show the day screen as it is used: meals
+// grouped under the categories of the template, each with its own total (Phase 24). „Zastosuj
+// mimo różnicy" is the same button when the best plan found missed the band, which a library
+// this small can do.
+await page.getByRole('button', { name: /^Zastosuj/ }).click();
+await page.getByRole('button', { name: 'Uzupełnij dzień' }).waitFor({ state: 'visible' });
 await shot('day');
 
-await page.getByRole('link', { name: /Owsianka/ }).first().click();
+// Scoped to the list: every day of the week strip is a link naming its kcal too, and which
+// recipe the solver put on breakfast is not something to hard-code.
+await page.getByRole('region', { name: 'Posiłki dnia' }).getByRole('link').first().click();
 await shot('meal');
 
 await context.close();

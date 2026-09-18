@@ -7,9 +7,11 @@ import {
   BALANCE_CLAMP,
   DAY_BAND,
   MAX_BATCH_DAYS,
+  NO_BALANCE,
   NO_PLAN_TAG,
   PORTION_STEPS,
   type PlanCandidate,
+  type PlanDayInput,
   type PlanRun,
   type RandomSource,
   batchedShare,
@@ -33,6 +35,7 @@ import {
   runId,
   runsForDates,
   skippedLabel,
+  slotTargetKcal,
   templateOf,
   weekBalance
 } from './planner';
@@ -575,14 +578,16 @@ describe('planning one day', () => {
           recipeId: 'r5',
           cookingScale: 1,
           portionsEaten: 1,
-          macroSnapshot: macros(610, 38, 68, 20)
+          macroSnapshot: macros(610, 38, 68, 20),
+          slotId: 'sniadanie'
         },
         {
           id: 'm2',
           recipeId: 'r6',
           cookingScale: 1,
           portionsEaten: 1,
-          macroSnapshot: macros(680, 42, 76, 23)
+          macroSnapshot: macros(680, 42, 76, 23),
+          slotId: 'obiad'
         }
       ]
     };
@@ -595,7 +600,7 @@ describe('planning one day', () => {
     });
 
     expect(days[0]?.existing.kcal).toBe(1290);
-    // Mapped to slots by position: the first two rows of the template.
+    // Read off the meals themselves — never guessed from their position (decision 445).
     expect(days[0]?.takenSlotIds).toEqual(['sniadanie', 'obiad']);
 
     const result = planRange({
@@ -621,7 +626,26 @@ describe('planning one day', () => {
     expect(result.proposal.days[0]?.outOfBand).toBe(false);
   });
 
-  it('lets the user move an existing meal to another slot before generating', () => {
+  it('reads the category off the meal rather than its position in the array', () => {
+    const existing: Day = {
+      date: MONDAY,
+      meals: [
+        {
+          id: 'm1',
+          recipeId: 'r5',
+          cookingScale: 1,
+          portionsEaten: 1,
+          macroSnapshot: macros(610, 38, 68, 20),
+          // First in the array, and it is supper. Position says nothing.
+          slotId: 'kolacja'
+        }
+      ]
+    };
+    const days = planDayInputs([MONDAY], [existing], GOALS, FOUR_SLOTS, NO_BALANCE);
+    expect(days[0]?.takenSlotIds).toEqual(['kolacja']);
+  });
+
+  it('counts an unfiled meal in the kcal and gives it no category', () => {
     const existing: Day = {
       date: MONDAY,
       meals: [
@@ -634,14 +658,99 @@ describe('planning one day', () => {
         }
       ]
     };
-    const days = planDayInputs([MONDAY], [existing], GOALS, FOUR_SLOTS, {
-      surplus: 0,
-      spreadDays: 0,
-      correction: 0,
-      clamped: false,
-      note: ''
-    }, { m1: 'kolacja' });
-    expect(days[0]?.takenSlotIds).toEqual(['kolacja']);
+    const days = planDayInputs([MONDAY], [existing], GOALS, FOUR_SLOTS, NO_BALANCE);
+    expect(days[0]?.existing.kcal).toBe(610);
+    expect(days[0]?.takenSlotIds).toEqual([]);
+  });
+
+  it('ignores a category the template no longer has — „Pozostałe", not a repair', () => {
+    const existing: Day = {
+      date: MONDAY,
+      meals: [
+        {
+          id: 'm1',
+          recipeId: 'r5',
+          cookingScale: 1,
+          portionsEaten: 1,
+          macroSnapshot: macros(610, 38, 68, 20),
+          slotId: 'druga-kolacja'
+        }
+      ]
+    };
+    const days = planDayInputs([MONDAY], [existing], GOALS, FOUR_SLOTS, NO_BALANCE);
+    expect(days[0]?.takenSlotIds).toEqual([]);
+  });
+
+  it('„Pomiń" takes a category out and moves its share onto the others', () => {
+    const [plain] = planDayInputs([MONDAY], [], GOALS, FOUR_SLOTS, NO_BALANCE);
+    const [skipped] = planDayInputs([MONDAY], [], GOALS, FOUR_SLOTS, NO_BALANCE, {
+      [MONDAY]: { skipSlotIds: ['podwieczorek'] }
+    });
+    expect(skipped?.takenSlotIds).toEqual(['podwieczorek']);
+
+    const before = slotTargetKcal(plain as PlanDayInput, FOUR_SLOTS);
+    const after = slotTargetKcal(skipped as PlanDayInput, FOUR_SLOTS);
+    expect(after.has('podwieczorek')).toBe(false);
+    // The 10% the snack gave up is spread over the three that are left.
+    expect(after.get('obiad') as number).toBeGreaterThan(before.get('obiad') as number);
+    expect([...after.values()].reduce((sum, value) => sum + value, 0)).toBeCloseTo(GOALS.kcal);
+  });
+
+  it('a kcal typed on a category beats its share; the rest split the remainder', () => {
+    const [day] = planDayInputs([MONDAY], [], GOALS, FOUR_SLOTS, NO_BALANCE, {
+      [MONDAY]: { slotKcal: { obiad: 900 } }
+    });
+    const targets = slotTargetKcal(day as PlanDayInput, FOUR_SLOTS);
+
+    expect(targets.get('obiad')).toBe(900);
+    const rest = GOALS.kcal - 900;
+    // 25/10/25 of the template, renormalized over the three that were not typed on.
+    expect(targets.get('sniadanie') as number).toBeCloseTo(rest * (0.25 / 0.6));
+    expect(targets.get('podwieczorek') as number).toBeCloseTo(rest * (0.1 / 0.6));
+    expect(targets.get('kolacja') as number).toBeCloseTo(rest * (0.25 / 0.6));
+  });
+
+  it('a typed kcal over the whole day leaves the others nothing rather than a negative', () => {
+    const [day] = planDayInputs([MONDAY], [], GOALS, FOUR_SLOTS, NO_BALANCE, {
+      [MONDAY]: { slotKcal: { obiad: GOALS.kcal + 500 } }
+    });
+    const targets = slotTargetKcal(day as PlanDayInput, FOUR_SLOTS);
+    expect(targets.get('obiad')).toBe(GOALS.kcal + 500);
+    expect(targets.get('sniadanie')).toBe(0);
+  });
+
+  it('„Dołóż tu coś" leaves a filled category free, so a block is solved for it', () => {
+    const existing: Day = {
+      date: MONDAY,
+      meals: [
+        {
+          id: 'm1',
+          recipeId: 'r5',
+          cookingScale: 1,
+          portionsEaten: 1,
+          macroSnapshot: macros(300, 20, 30, 10),
+          slotId: 'obiad'
+        }
+      ]
+    };
+    const days = planDayInputs([MONDAY], [existing], GOALS, FOUR_SLOTS, NO_BALANCE, {
+      [MONDAY]: { topUpSlotIds: ['obiad'] }
+    });
+    expect(days[0]?.takenSlotIds).toEqual([]);
+
+    const result = planRange({
+      days,
+      template: FOUR_SLOTS,
+      candidates: library(),
+      random: seededRandom(7)
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const lunch = result.proposal.runs.filter((run) => run.slotId === 'obiad');
+    expect(lunch).toHaveLength(1);
+    // Never the recipe already there: `existingRecipeIds` bars it.
+    expect(lunch[0]?.recipeId).not.toBe('r5');
   });
 });
 
@@ -778,6 +887,9 @@ describe('cooking ahead', () => {
     // And the snapshot is copied by value onto each day, never shared.
     expect(writes[1]?.meals[0]?.macroSnapshot).toEqual(run.macroSnapshot);
     expect(writes[1]?.meals[0]?.macroSnapshot).not.toBe(run.macroSnapshot);
+    // Every day of the run lands in the category it was solved for (decision 441), so the
+    // day screen is grouped the moment „Zastosuj" returns.
+    expect(writes.map((write) => write.meals[0]?.slotId)).toEqual(['obiad', 'obiad', 'obiad']);
   });
 
   it('counts a run as one use, dated on the cooking day', () => {

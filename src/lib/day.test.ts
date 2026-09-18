@@ -10,6 +10,9 @@ import {
   duplicateMealInDay,
   emptyDay,
   findMeal,
+  groupMeals,
+  normalizeDay,
+  placeMeals,
   planMeal,
   orderMeals,
   parsePortions,
@@ -22,7 +25,7 @@ import {
   withGoals
 } from './day';
 import { dayTotals, ingredientLookup, mealMacros } from './macros';
-import type { Day, PlannedMeal } from './types';
+import type { Day, MealPlanTemplate, PlannedMeal } from './types';
 import {
   chicken,
   ingredients,
@@ -122,6 +125,150 @@ describe('goalSnapshot', () => {
     const day = addMeals(emptyDay('2026-09-03'), [mealOf('a', 500)], goals);
     expect(removeMeal(day, 'a').goalSnapshot).toBeUndefined();
     expect(clearDay(day)).toEqual(emptyDay('2026-09-03'));
+  });
+});
+
+/** „Śniadanie / Obiad / Kolacja" — the shape a day screen is grouped into. */
+const TEMPLATE: MealPlanTemplate = {
+  slots: [
+    { id: 'sniadanie', label: 'Śniadanie', tagKeys: [], share: 0.3, batchDays: 1 },
+    { id: 'obiad', label: 'Obiad', tagKeys: [], share: 0.4, batchDays: 1 },
+    { id: 'kolacja', label: 'Kolacja', tagKeys: [], share: 0.3, batchDays: 1 }
+  ]
+};
+
+/** A meal already filed under a category. */
+function filed(id: string, kcal: number, slotId: string): PlannedMeal {
+  return { ...mealOf(id, kcal), slotId };
+}
+
+describe('placeMeals', () => {
+  const day: Day = addMeals(
+    emptyDay('2026-09-03'),
+    [filed('a', 100, 'sniadanie'), filed('b', 200, 'sniadanie'), filed('c', 300, 'obiad')],
+    goals
+  );
+
+  it('moves a meal between categories, in one write', () => {
+    const result = placeMeals(day, [
+      { id: 'a', slotId: 'sniadanie' },
+      { id: 'c', slotId: 'obiad' },
+      { id: 'b', slotId: 'kolacja' }
+    ]);
+
+    expect(result.meals.map((meal) => meal.id)).toEqual(['a', 'c', 'b']);
+    expect(findMeal(result, 'b')?.slotId).toBe('kolacja');
+    // Nothing else about the meal moved.
+    expect(findMeal(result, 'b')?.macroSnapshot).toEqual(macros(200, 10, 20, 5));
+    expect(dayTotals(result)).toEqual(dayTotals(day));
+  });
+
+  it('reorders inside one category without touching any category', () => {
+    const result = placeMeals(day, [
+      { id: 'b', slotId: 'sniadanie' },
+      { id: 'a', slotId: 'sniadanie' },
+      { id: 'c', slotId: 'obiad' }
+    ]);
+    expect(result.meals.map((meal) => meal.id)).toEqual(['b', 'a', 'c']);
+    expect(result.meals.map((meal) => meal.slotId)).toEqual(['sniadanie', 'sniadanie', 'obiad']);
+  });
+
+  it('takes the field away again for a meal put back in „Pozostałe"', () => {
+    const result = placeMeals(day, [{ id: 'a' }, { id: 'b' }, { id: 'c' }]);
+    expect(result.meals.every((meal) => !('slotId' in meal))).toBe(true);
+  });
+
+  it('ignores an id this day does not have', () => {
+    const result = placeMeals(day, [
+      { id: 'nope', slotId: 'obiad' },
+      { id: 'c', slotId: 'kolacja' }
+    ]);
+    expect(result.meals.map((meal) => meal.id)).toEqual(['c', 'a', 'b']);
+    expect(result.meals).toHaveLength(3);
+  });
+
+  it('keeps a meal no placement names, with the category it had — a drag that raced a sync', () => {
+    const result = placeMeals(day, [{ id: 'c', slotId: 'kolacja' }]);
+    expect(result.meals.map((meal) => meal.id)).toEqual(['c', 'a', 'b']);
+    expect(findMeal(result, 'a')?.slotId).toBe('sniadanie');
+    expect(findMeal(result, 'b')?.slotId).toBe('sniadanie');
+  });
+
+  it('does not mutate the day it was given', () => {
+    placeMeals(day, [{ id: 'a', slotId: 'kolacja' }]);
+    expect(day.meals.map((meal) => meal.slotId)).toEqual(['sniadanie', 'sniadanie', 'obiad']);
+  });
+});
+
+describe('groupMeals', () => {
+  it('draws every category in template order, with its meals', () => {
+    const day: Day = addMeals(
+      emptyDay('2026-09-03'),
+      [filed('a', 100, 'kolacja'), filed('b', 200, 'sniadanie'), filed('c', 300, 'sniadanie')],
+      goals
+    );
+    const groups = groupMeals(day, TEMPLATE);
+
+    expect(groups.map((group) => group.label)).toEqual(['Śniadanie', 'Obiad', 'Kolacja']);
+    // Three meals can sit under one heading.
+    expect(groups[0]?.meals.map((meal) => meal.id)).toEqual(['b', 'c']);
+    // An empty category is returned too — the day screen draws it.
+    expect(groups[1]?.meals).toEqual([]);
+    expect(groups[2]?.meals.map((meal) => meal.id)).toEqual(['a']);
+  });
+
+  it('puts an unfiled meal, and one whose category is gone, under „Pozostałe" last', () => {
+    const day: Day = addMeals(
+      emptyDay('2026-09-03'),
+      [mealOf('a', 100), filed('b', 200, 'druga-kolacja'), filed('c', 300, 'obiad')],
+      goals
+    );
+    const groups = groupMeals(day, TEMPLATE);
+
+    expect(groups.map((group) => group.label)).toEqual([
+      'Śniadanie',
+      'Obiad',
+      'Kolacja',
+      'Pozostałe'
+    ]);
+    expect(groups[3]?.meals.map((meal) => meal.id)).toEqual(['a', 'b']);
+    // The orphan keeps its id: re-creating the category in Settings puts it back.
+    expect(findMeal(day, 'b')?.slotId).toBe('druga-kolacja');
+  });
+
+  it('has no „Pozostałe" when every meal is filed', () => {
+    const day: Day = addMeals(emptyDay('2026-09-03'), [filed('a', 100, 'obiad')], goals);
+    expect(groupMeals(day, TEMPLATE)).toHaveLength(3);
+  });
+
+  it('is a rendering of the array: order inside a group is array order', () => {
+    const day: Day = addMeals(
+      emptyDay('2026-09-03'),
+      [filed('c', 300, 'obiad'), filed('a', 100, 'obiad')],
+      goals
+    );
+    expect(groupMeals(day, TEMPLATE)[1]?.meals.map((meal) => meal.id)).toEqual(['c', 'a']);
+  });
+});
+
+describe('normalizeDay', () => {
+  it('rewrites the array into the order the screen draws', () => {
+    const day: Day = addMeals(
+      emptyDay('2026-09-03'),
+      [filed('a', 100, 'kolacja'), mealOf('b', 200), filed('c', 300, 'sniadanie')],
+      goals
+    );
+    // Breakfast first, supper after it, and the unfiled meal last.
+    expect(normalizeDay(day, TEMPLATE).meals.map((meal) => meal.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('leaves a day written before the categories existed exactly as it is', () => {
+    const day: Day = addMeals(
+      emptyDay('2026-09-03'),
+      [mealOf('a', 100), mealOf('b', 200)],
+      goals
+    );
+    expect(normalizeDay(day, TEMPLATE)).toBe(day);
   });
 });
 

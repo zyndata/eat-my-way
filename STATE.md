@@ -30,18 +30,29 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 21    | Pierwsze 24 sekundy         | done    | 2026-09-12 |
 | 22    | Przepis dla kogoś           | done    | 2026-09-13 |
 | 23    | Redukcja i masa             | done    | 2026-09-13 |
-| 24    | Kategorie posiłków w dniu   | pending |            |
+| 24    | Kategorie posiłków w dniu   | done    | 2026-09-18 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
 
-Phase 24 is **planned, not built** (2026-09-18, decisions 440–451). A meal gains the category it
-belongs to — an optional `slotId` on `PlannedMeal` — which, because a meal lives on its day, is
-per-day by construction: the same recipe is breakfast on Monday and supper on Wednesday. The day
-screen groups by it, with a „+ Dodaj" under each heading and a drag between groups to refile a
-meal; the planner stops guessing the category from the meal's position in the array, and the
-planner sheet gains a planuj/pomiń toggle, an editable kcal and a „Dołóż tu coś" per category —
-all three sheet-local, none of them touching Settings. Phase 24 in PLAN.md holds the tasks and
-the acceptance criteria. No schema version, no migration, no dependency, no CSP change.
+Phase 24 is **built** (2026-09-18, decisions 440–455), in the shape it was planned. A meal
+carries the category it belongs to — one optional `PlannedMeal.slotId`, the id of a `MealSlot`
+in `profile.mealPlan` — and because a meal is stored inside its day, the assignment is per day
+by construction: jajecznica is śniadanie on Monday and kolacja on Wednesday, and neither day
+knows about the other. The day screen groups by it: every category of the template in its own
+order, each with its total and its own „+ Dodaj", „Pozostałe" last, and a drag between two
+groups is what refiles a meal — with „Posiłek dnia" on the meal screen and in the picker as the
+same write by the routes a keyboard, a screen reader and an off-screen category need. The
+planner stops guessing the category from a meal's position in the array (`slotOverrides` and
+the sheet's per-meal select are gone), and each day card of the sheet now lists the template's
+categories: a planuj/pomiń toggle whose skipped share lands on the others by itself, an
+editable kcal that beats that share through one exported `slotTargetKcal` the solver and the
+sheet both call, and „Dołóż tu coś" for a category that already holds a meal. All three are
+sheet-local and cleared by `load`; Settings is untouched. A meal nobody filed is named on the
+card under „wliczone w kalorie, ale nie zajmują żadnej kategorii" rather than refiled behind the
+user's back. `truncate` gave way to `.emw-recipe-name` in the five places decision 433 missed.
+Five deviations, all recorded below as decisions 452–455 and none of them to the data model. No
+schema version, no migration, no dependency, no CSP or `Caddyfile` change — the whole suite is
+green under `npm run docker:up`.
 
 Phase 23 is **built** (2026-09-13, decisions 416–424). The goals calculator no longer stops at
 the energy that keeps a weight where it is. A „Cel" select — „Utrzymanie wagi", „Redukcja",
@@ -5898,6 +5909,53 @@ the day it is, so the planner guesses and the day screen cannot group.
 **Not in this phase**: a category on the recipe; a per-day template differing from Settings;
 times of day or reminders; category headings in „Jadłospis" or the shopping list; remembering a
 skip between solves; dragging a meal onto another day.
+
+### 2026-09-18 — Phase 24 built
+
+Five calls the plan did not make, taken while building it. None of them touches the data model.
+
+452. **A day with no meals at all keeps the empty-day hint; the headings appear with the first
+     meal.** Decision 299's card — „Nic jeszcze nie zaplanowano", „Zaplanuj dzień", „Zaplanuj
+     tydzień" — is what an empty day is *for*, and five headings over five dashed boxes says
+     nothing and offers nothing that the floating button and „Zaplanuj dzień" do not. Empty
+     categories are drawn on a day that has meals, which is the case PLAN.md's rule is about: a
+     day with three categories planned still shows the two that are not.
+     - Consequence, and the reason it is written down: the **first** meal of a day cannot be
+       added through „+ Dodaj" under a heading, because there are no headings yet. It is added
+       from the floating button, where the picker's „Posiłek dnia" select files it in the same
+       tap (decision 450) — so nothing is unreachable, it is simply one control rather than two.
+
+453. **One write per drag, flushed after both zones have spoken.** A drag between two groups
+     finalizes both of them — the zone the card left, then the zone it landed in — one after the
+     other in the same task. Writing on each would be two writes and two renders for one move,
+     and the first of them would describe a day the card has left and not yet arrived on. So
+     `MealList` updates its zones as the events come and flushes `onplace` once, on a zero
+     timeout, which is what makes „one write for a drag that both reorders and recategorises"
+     (decision 443) true of a library that has no single event for it.
+
+454. **Every write that places a meal normalises the day, in one place.** Decision 442 says the
+     array is rewritten to what the screen draws; the repository does it in `storePlaced`, a
+     one-line wrapper over `storeDay` that every write putting a meal on a day goes through —
+     added to, duplicated, copied onto, planned. The pure half is `normalizeDay(day, template)`
+     in `day.ts`, which **returns the day it was given** when no meal names a category, so
+     nothing written before this phase is reordered by it and no test of the old order had to
+     change. One function rather than a rule each caller has to remember, and it is the reason
+     „Jadłospis" prints breakfast first without either it or the shopping list being touched.
+
+455. **The category suite drives the drag from the keyboard, and says so.** `e2e/kategorie.spec.ts`
+     moves a card between two groups with space-on-the-handle, a focus on the target zone and
+     space again — `svelte-dnd-action`'s own keyboard path, which dispatches the same two
+     finalize events a pointer drop does and therefore exercises decision 453's coalescing. A
+     synthesized pointer drag across two zones is the thing `e2e/swipe.spec.ts` already records
+     as unreliable enough to be worth a paragraph, and a test that cannot fail is worse than
+     none. The pointer path itself is unchanged from Phase 5 and stays covered by nothing but
+     the handle rule (decision 69) — noted here rather than implied.
+     - The same suite found the one visible cost of drawing empty categories: on a phone an
+       unfiled meal now sits below them, so `e2e/swipe.spec.ts` scrolls the card into view
+       before dispatching its touch, which used to land on an element that was always at the top.
+     - `scripts/screenshots.mjs` now **applies** the proposal before shooting the day, because a
+       day screen whose one meal is under „Pozostałe", below four empty headings, is a screenshot
+       of the feature failing to show.
 
 ## Open questions
 

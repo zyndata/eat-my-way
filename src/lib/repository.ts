@@ -40,13 +40,15 @@ import {
   duplicateMealInDay,
   emptyDay,
   findMeal,
-  orderMeals,
+  normalizeDay,
+  placeMeals,
   planMeal,
   removeMeal,
   resnapshotMeals,
   updateMeal,
   type CopyMode,
-  type MealChanges
+  type MealChanges,
+  type MealPlacement
 } from './day';
 import type { MealAdjustment } from './adjustments';
 import { newId, type IdFactory } from './ids';
@@ -59,6 +61,7 @@ import {
   type RecipeUsage
 } from './recipes';
 import type { PlanWrite } from './planner';
+import { templateOf } from './planner';
 import type { SearchCandidate } from './search';
 import {
   IngredientInUseError,
@@ -151,6 +154,23 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
   async function currentGoals(): Promise<Macros> {
     const profile = await database.profile.get(PROFILE_KEY);
     return profile?.goals ?? DEFAULT_PROFILE.goals;
+  }
+
+  /** The meal-plan template in force — the profile's own, or the built-in default. */
+  async function currentTemplate(): Promise<MealPlanTemplate> {
+    const profile = await database.profile.get(PROFILE_KEY);
+    return templateOf(profile?.mealPlan);
+  }
+
+  /**
+   * Store a day that has just had a meal placed on it, in the order the day screen draws it
+   * (STATE.md decision 442). Every write that puts a meal on a day goes through this rather
+   * than `storeDay` — a day added to, duplicated, copied onto or planned — so the stored array
+   * is the order the day is eaten in, and „Jadłospis" prints breakfast first without knowing
+   * anything about categories. A day whose meals name none is left exactly as it was.
+   */
+  async function storePlaced(day: Day): Promise<Day> {
+    return storeDay(normalizeDay(day, await currentTemplate()));
   }
 
   /** Ingredient lookup covering exactly the ids asked for. */
@@ -724,7 +744,13 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     async addRecipeToDay(
       date: string,
       recipeId: string,
-      options: { id?: string; cookingScale?: number; portionsEaten?: number } = {}
+      options: {
+        id?: string;
+        cookingScale?: number;
+        portionsEaten?: number;
+        /** Which meal of the day it is — „+ Dodaj" under a heading, or the picker's select. */
+        slotId?: string;
+      } = {}
     ): Promise<PlannedMeal> {
       return database.transaction(
         'rw',
@@ -737,15 +763,17 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
           if (recipe === undefined) throw new Error(`Unknown recipe: ${recipeId}`);
 
           const meal = planMeal(recipe, await lookupForRecipe(recipe), options);
-          await storeDay(addMeals(await loadDay(date), [meal], await currentGoals()));
+          await storePlaced(addMeals(await loadDay(date), [meal], await currentGoals()));
           return meal;
         }
       );
     },
 
-    async addMealToDay(date: string, meal: PlannedMeal): Promise<Day> {
+    async addMealToDay(date: string, meal: PlannedMeal, slotId?: string): Promise<Day> {
+      const placed =
+        slotId === undefined || slotId === '' ? meal : { ...plain(meal), slotId };
       return database.transaction('rw', database.days, database.profile, async () =>
-        storeDay(addMeals(await loadDay(date), [meal], await currentGoals()))
+        storePlaced(addMeals(await loadDay(date), [placed], await currentGoals()))
       );
     },
 
@@ -761,12 +789,17 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
     },
 
     /**
-     * Persist a new meal order. Takes ids rather than meals so nothing that has been through
-     * a Svelte `$state` proxy can reach IndexedDB - see STATE.md decisions 56 and 77.
+     * Persist where the day's meals now sit: their order **and** their categories, in one
+     * write. A drag from „Śniadanie" to „Kolacja" does both at once, and two writes would be
+     * two renders and one visible jump (STATE.md decision 443).
+     *
+     * Takes ids and strings rather than meals so nothing that has been through a Svelte
+     * `$state` proxy can reach IndexedDB — see decisions 56 and 77.
      */
-    async setMealOrder(date: string, mealIds: readonly string[]): Promise<Day> {
+    async setMealPlacement(date: string, placements: readonly MealPlacement[]): Promise<Day> {
+      const rows = plain([...placements]);
       return database.transaction('rw', database.days, async () =>
-        storeDay(orderMeals(await loadDay(date), mealIds))
+        storeDay(placeMeals(await loadDay(date), rows))
       );
     },
 
@@ -821,8 +854,8 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
 
     /** Copy one meal within its own day, inserted right after the original. */
     async duplicateMeal(dayDate: string, mealId: string, nextId: IdFactory = newId): Promise<Day> {
-      return database.transaction('rw', database.days, async () =>
-        storeDay(duplicateMealInDay(await loadDay(dayDate), mealId, nextId()))
+      return database.transaction('rw', database.days, database.profile, async () =>
+        storePlaced(duplicateMealInDay(await loadDay(dayDate), mealId, nextId()))
       );
     },
 
@@ -846,7 +879,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         for (const date of targetDates) {
           if (date === sourceDate) continue;
           const day = copyMealsInto(await loadDay(date), [meal], 'append', { nextId, goals });
-          written.push(await storeDay(day));
+          written.push(await storePlaced(day));
         }
         return written;
       });
@@ -869,7 +902,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         for (const date of targetDates) {
           if (date === sourceDate) continue;
           const day = copyMealsInto(await loadDay(date), source.meals, mode, { nextId, goals });
-          written.push(await storeDay(day));
+          written.push(await storePlaced(day));
         }
         return written;
       });
@@ -898,7 +931,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         await storeDay(scaled);
 
         const copy = { ...clonePlannedMeal(source, nextId()), cookingScale: 1, portionsEaten: 1 };
-        return storeDay(addMeals(await loadDay(targetDate), [copy], await currentGoals()));
+        return storePlaced(addMeals(await loadDay(targetDate), [copy], await currentGoals()));
       });
     },
 
@@ -923,7 +956,7 @@ export function createRepository(database: EatMyWayDb = defaultDb) {
         const written: Day[] = [];
         for (const write of writes) {
           const day = copyMealsInto(await loadDay(write.date), write.meals, mode, { nextId, goals });
-          written.push(await storeDay(day));
+          written.push(await storePlaced(day));
         }
         return written;
       });

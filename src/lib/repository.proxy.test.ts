@@ -91,11 +91,13 @@ describe('a $state proxy reaches every write path the UI uses', () => {
     expect((await repository.getDay('2026-09-02'))?.meals).toHaveLength(1);
   });
 
-  it('setMealOrder — drag and drop', async () => {
+  it('setMealPlacement — drag and drop', async () => {
     const repository = repo();
     await repository.saveDay(DAY);
-    await repository.setMealOrder('2026-09-02', proxied(['meal-1']));
-    expect((await repository.getDay('2026-09-02'))?.meals[0]?.id).toBe('meal-1');
+    await repository.setMealPlacement('2026-09-02', proxied([{ id: 'meal-1', slotId: 'obiad' }]));
+    const day = await repository.getDay('2026-09-02');
+    expect(day?.meals[0]?.id).toBe('meal-1');
+    expect(day?.meals[0]?.slotId).toBe('obiad');
   });
 
   it('updateMeal — the portion and scale steppers', async () => {

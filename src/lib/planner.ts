@@ -304,10 +304,73 @@ export interface PlanDayInput {
   target: Macros;
   /** Macros of the meals already on the day. Fixed input, never touched. */
   existing: Macros;
-  /** Slot ids already taken by those meals, mapped by position in the sheet. */
+  /**
+   * Categories this day has no block for: the ones its meals already name, plus the ones the
+   * sheet's „Pomiń" turned off for this solve. A skipped category's share lands on the others
+   * with no further code, because `shares` renormalises over the ones a day still has free
+   * (STATE.md decision 447).
+   */
   takenSlotIds: readonly string[];
   /** Recipes already on this day — a proposal never repeats one of them. */
   existingRecipeIds: readonly string[];
+  /**
+   * kcal typed on a category for this solve, beating its share (decision 448). Read through
+   * `slotTargetKcal`, which the solver and the sheet both call, so the number on screen cannot
+   * drift from the number solved against.
+   */
+  slotKcal?: Readonly<Record<string, number>>;
+}
+
+/**
+ * What the planner sheet has been told about one day, for this solve only.
+ *
+ * None of it is remembered: skips, typed kcal and top-ups are sheet state like `locks` and
+ * `runLengths`, cleared when the sheet loads and never written to `profile.mealPlan` — „dziś
+ * bez przekąski" is a sentence about today, and a template that changed itself every time a
+ * day was planned would be a template nobody could trust (STATE.md decision 449).
+ */
+export interface DayPlanOptions {
+  /** Categories turned off for this day: no block, and their share moves to the others. */
+  skipSlotIds?: readonly string[];
+  /** Categories holding a meal that were asked for another one anyway („Dołóż tu coś"). */
+  topUpSlotIds?: readonly string[];
+  /** kcal typed on a category, beating its share. */
+  slotKcal?: Readonly<Record<string, number>>;
+}
+
+/**
+ * What each free category of one day is solved against: a typed kcal where there is one, and
+ * otherwise a share of what is left after the typed ones are taken out.
+ *
+ * The one place this arithmetic lives. `blockTarget` calls it and the planner sheet shows it,
+ * which is the rule the goals derivation already follows — a number the user is shown and a
+ * number the solver aims at that are computed twice are two numbers that will disagree.
+ *
+ * Taken categories are absent: they get no block, and their share belongs to the others.
+ */
+export function slotTargetKcal(
+  day: PlanDayInput,
+  template: MealPlanTemplate
+): Map<string, number> {
+  const free = template.slots.filter((slot) => !day.takenSlotIds.includes(slot.id));
+  const remaining = Math.max(0, day.target.kcal - day.existing.kcal);
+  const typed = day.slotKcal ?? {};
+
+  const isTyped = (slot: MealSlot): boolean => {
+    const value = typed[slot.id];
+    return value !== undefined && Number.isFinite(value) && value >= 0;
+  };
+
+  const overrides = free.filter(isTyped);
+  const rest = free.filter((slot) => !isTyped(slot));
+  const spent = overrides.reduce((sum, slot) => sum + (typed[slot.id] as number), 0);
+  const left = Math.max(0, remaining - spent);
+  const shares = normalizedShares(rest);
+
+  const targets = new Map<string, number>();
+  for (const slot of overrides) targets.set(slot.id, typed[slot.id] as number);
+  for (const [index, slot] of rest.entries()) targets.set(slot.id, left * (shares[index] as number));
+  return targets;
 }
 
 /** One cook: a recipe and a portion count shared by consecutive days of one slot. */
@@ -610,8 +673,8 @@ class Solver {
   private readonly byDate: Map<string, PlanDayInput>;
   private readonly dayIndex: Map<string, number>;
   private readonly slots: readonly MealSlot[];
-  /** date -> slot id -> that slot's share of what the day still has to be filled with. */
-  private readonly shares: Map<string, Map<string, number>>;
+  /** date -> slot id -> the kcal that slot is solved against on that day. */
+  private readonly targets: Map<string, Map<string, number>>;
   private readonly pools: Map<string, PlanCandidate[]>;
   private readonly random: RandomSource;
 
@@ -623,12 +686,8 @@ class Solver {
     this.random = request.random;
     // Renormalized per day over the slots that day still has free, once rather than per
     // candidate: the cost function asks for this on every draw of every restart.
-    this.shares = new Map(
-      request.days.map((day) => {
-        const free = this.slots.filter((slot) => !day.takenSlotIds.includes(slot.id));
-        const shares = normalizedShares(free);
-        return [day.date, new Map(free.map((slot, index) => [slot.id, shares[index] as number]))];
-      })
+    this.targets = new Map(
+      request.days.map((day) => [day.date, slotTargetKcal(day, request.template)])
     );
     const avoided = new Set(request.avoid ?? []);
     this.pools = new Map(
@@ -645,33 +704,27 @@ class Solver {
     return this.pools.get(slotId) ?? [];
   }
 
-  /** kcal this block should aim to supply per day: its share of what the day still needs. */
+  /** kcal this block should aim to supply per day — `slotTargetKcal`, averaged over its days. */
   private blockTarget(block: PlanBlock): number {
     let total = 0;
     for (const date of block.dates) {
-      const day = this.byDate.get(date);
-      if (day === undefined) continue;
-      const remaining = Math.max(0, day.target.kcal - day.existing.kcal);
-      total += remaining * this.shareOf(block.slotId, day);
+      total += this.targetOf(block.slotId, date);
     }
     return block.dates.length > 0 ? total / block.dates.length : 0;
   }
 
-  /** The slot's share, renormalized over the slots this day still has free. */
-  private shareOf(slotId: string, day: PlanDayInput): number {
-    return this.shares.get(day.date)?.get(slotId) ?? 0;
+  /** What this slot is solved against on this day: a typed kcal, or its renormalized share. */
+  private targetOf(slotId: string, date: string): number {
+    return this.targets.get(date)?.get(slotId) ?? 0;
   }
 
   /** The constant half of a fill: where its days are, and what its slot is entitled to. */
   private frame(block: PlanBlock): Pick<Fill, 'dayIndexes' | 'share' | 'dayGoal'> {
-    const cookDay = this.byDate.get(block.dates[0] as string);
+    const cookDate = block.dates[0] as string;
     return {
       dayIndexes: block.dates.map((date) => this.dayIndex.get(date) ?? 0),
-      share:
-        cookDay === undefined
-          ? 0
-          : this.shareOf(block.slotId, cookDay) * Math.max(0, cookDay.target.kcal - cookDay.existing.kcal),
-      dayGoal: cookDay?.target.kcal ?? 0
+      share: this.targetOf(block.slotId, cookDate),
+      dayGoal: this.byDate.get(cookDate)?.target.kcal ?? 0
     };
   }
 
@@ -1140,7 +1193,10 @@ export function planWrites(
         recipeId: run.recipeId,
         cookingScale: index === 0 ? run.cookingScale : 1,
         portionsEaten: run.portionsEaten,
-        macroSnapshot: { ...run.macroSnapshot }
+        macroSnapshot: { ...run.macroSnapshot },
+        // The category the run was solved for travels with the meal, so a plan lands grouped
+        // and the day screen shows it that way the moment „Zastosuj" returns (decision 441).
+        slotId: run.slotId
       });
     }
   }
@@ -1237,9 +1293,14 @@ export function failureMessage(failure: PlanFailure): FailureMessage {
  * dzień" turn out to be the same code (PLAN.md task 4): a day with meals simply arrives with
  * `existing` and `takenSlotIds` filled in.
  *
- * Existing meals are mapped to slots **by position** (decision 261): `PlannedMeal` learns
- * nothing about slots, and the mapping lives and dies inside the sheet. `slotOverrides` is
- * the user having moved one before generating.
+ * Existing meals name their own category (`PlannedMeal.slotId`, decision 445). The guess by
+ * array position that stood here — and the per-meal select in the sheet that existed to correct
+ * it for one solve and then forget it — are both gone: the assignment has a home now, and
+ * correcting it in the day view is a correction that lasts.
+ *
+ * A meal in „Pozostałe" — no category, or one the template no longer has — still counts in
+ * `existing`, because its calories are eaten either way, but takes no category. That is exactly
+ * right: it is food the plan must account for, not a slot that is filled (decision 451).
  */
 export function planDayInputs(
   dates: readonly string[],
@@ -1247,21 +1308,31 @@ export function planDayInputs(
   profileGoals: Macros,
   template: MealPlanTemplate,
   balance: WeekBalance,
-  slotOverrides: Readonly<Record<string, string>> = {}
+  options: Readonly<Record<string, DayPlanOptions>> = {}
 ): PlanDayInput[] {
   const byDate = new Map(days.map((day) => [day.date, day]));
+  const slotIds = new Set(template.slots.map((slot) => slot.id));
 
   return dates.map((date) => {
     const day = byDate.get(date);
     const goals = dayGoals(day, profileGoals);
     const meals = day?.meals ?? [];
+    const told = options[date] ?? {};
+    const toppedUp = new Set(told.topUpSlotIds ?? []);
     const taken: string[] = [];
 
-    for (const [index, meal] of meals.entries()) {
-      const override = slotOverrides[meal.id];
-      const slotId = override ?? template.slots[index]?.id;
-      if (slotId !== undefined && !taken.includes(slotId)) taken.push(slotId);
+    const take = (slotId: string): void => {
+      if (slotIds.has(slotId) && !taken.includes(slotId)) taken.push(slotId);
+    };
+
+    for (const meal of meals) {
+      // „Dołóż tu coś": the category keeps its meal but stays free, so a block is solved for
+      // it against what the day still needs — `existing` already counts what is there, and
+      // `existingRecipeIds` keeps the same recipe from being proposed again (decision 446).
+      if (meal.slotId !== undefined && !toppedUp.has(meal.slotId)) take(meal.slotId);
     }
+    // „Pomiń" is `takenSlotIds` by another name (decision 447).
+    for (const slotId of told.skipSlotIds ?? []) take(slotId);
 
     return {
       date,
@@ -1269,7 +1340,8 @@ export function planDayInputs(
       target: correctedGoals(goals, balance.correction),
       existing: day === undefined ? ZERO_MACROS : dayTotals(day),
       takenSlotIds: taken,
-      existingRecipeIds: meals.map((meal) => meal.recipeId)
+      existingRecipeIds: meals.map((meal) => meal.recipeId),
+      ...(told.slotKcal === undefined ? {} : { slotKcal: told.slotKcal })
     };
   });
 }

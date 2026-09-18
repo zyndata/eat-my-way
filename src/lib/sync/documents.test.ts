@@ -132,6 +132,25 @@ describe('readDaysDocument', () => {
     const read = readDaysDocument({ '2026-09-10': { ...day, meals: [meal] } });
     expect(read['2026-09-10']?.meals[0]).not.toHaveProperty('adjustments');
   });
+
+  // The same argument, and the same guarantee, for Phase 24's `slotId`: a field this phase
+  // adds must not be the field the next sync drops.
+  it('round-trips the category a meal was filed under', () => {
+    const filed = {
+      ...day,
+      meals: [{ ...day.meals[0], adjustments: undefined, slotId: 'kolacja' }]
+    };
+    delete (filed.meals[0] as Record<string, unknown>)['adjustments'];
+
+    const read = readDaysDocument(JSON.parse(JSON.stringify({ '2026-09-10': filed })));
+    expect(read['2026-09-10']?.meals[0]?.slotId).toBe('kolacja');
+    expect(read['2026-09-10']).toEqual(filed);
+  });
+
+  it('leaves a meal with no category alone', () => {
+    const read = readDaysDocument(JSON.parse(JSON.stringify({ '2026-09-10': day })));
+    expect(read['2026-09-10']?.meals[0]).not.toHaveProperty('slotId');
+  });
 });
 
 describe('household measures in the Drive documents (Phase 16)', () => {

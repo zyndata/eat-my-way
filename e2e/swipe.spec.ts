@@ -61,6 +61,10 @@ function actionRow(page: Page) {
 /** A horizontal touch drag across the card, `dx` pixels wide. Negative goes left. */
 async function swipe(page: Page, dx: number, dy = 0): Promise<void> {
   const card = page.getByRole('link', { name: /Owsianka/ }).first();
+  // The day is grouped since Phase 24, and „Pozostałe" is last: on a phone an unfiled meal
+  // sits below the empty categories, and a touch dispatched at a point off the viewport
+  // lands on nothing at all.
+  await card.scrollIntoViewIfNeeded();
   const box = await card.boundingBox();
   if (box === null) throw new Error('the meal card has no box to swipe across');
 
