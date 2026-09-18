@@ -140,6 +140,43 @@ describe('a meal changed against its recipe', () => {
   });
 });
 
+describe('the category a meal was filed under (Phase 24)', () => {
+  // `slotId` costs no schema version for the same reason `adjustments` does: `readBackup`
+  // validates meals rather than rebuilding them, so it cannot drop a field it never names.
+  const filed: Day = {
+    date: '2026-09-03',
+    meals: [
+      {
+        id: 'meal-3',
+        recipeId: 'recipe-1',
+        portionsEaten: 1,
+        cookingScale: 1,
+        macroSnapshot: macros,
+        slotId: 'kolacja'
+      }
+    ]
+  };
+
+  it('survives an export and an import unchanged', () => {
+    const written = buildBackup(
+      { ...input, days: [day, filed] },
+      new Date('2026-09-08T10:00:00.000Z')
+    );
+    const read = readBackup(JSON.stringify(written));
+
+    expect(read.days[1]).toEqual(filed);
+    expect(read.days[1]?.meals[0]?.slotId).toBe('kolacja');
+    expect(read.schemaVersion).toBe(input.schemaVersion);
+  });
+
+  it('leaves a meal with no category alone', () => {
+    const written = buildBackup(input, new Date('2026-09-08T10:00:00.000Z'));
+    const read = readBackup(JSON.stringify(written));
+
+    expect(read.days[0]?.meals[0]).not.toHaveProperty('slotId');
+  });
+});
+
 describe('reading a backup', () => {
   it('round-trips what was exported', () => {
     const backup = readBackup(JSON.stringify(buildBackup(input)));

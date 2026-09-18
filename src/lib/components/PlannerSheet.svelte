@@ -1,6 +1,13 @@
 <script lang="ts">
   import type { Day, Macros, MealPlanTemplate, PlannedMeal, Recipe } from '../types';
-  import type { PlanDay, PlanProposal, PlanRun, SkippedRecipes } from '../planner';
+  import type {
+    DayPlanOptions,
+    PlanDay,
+    PlanDayInput,
+    PlanProposal,
+    PlanRun,
+    SkippedRecipes
+  } from '../planner';
   import {
     MAX_BATCH_DAYS,
     NO_SKIPPED,
@@ -16,6 +23,7 @@
     resizeRun,
     runsForDates,
     skippedLabel,
+    slotTargetKcal,
     templateOf,
     weekBalance
   } from '../planner';
@@ -28,6 +36,7 @@
     isDateKey,
     relativeDayLabel
   } from '../dates';
+  import { UNFILED_LABEL } from '../day';
   import { ingredientLookup } from '../macros';
   import { repository } from '../repository';
   import BottomSheet from './BottomSheet.svelte';
@@ -46,6 +55,12 @@
    * Three controls make it a tool rather than a black box: „Losuj ponownie" for everything, a
    * **lock** per proposed cook, and a reroll of one cook that respects every lock. A cook that
    * spans days is one unit here too — one row, one lock, one 1/2/3 control.
+   *
+   * Since Phase 24 a day card lists the **template's categories**, in order, rather than only
+   * the proposal's runs: what is already filed in one, its planuj/pomiń toggle, the kcal it is
+   * solved against (editable) and either the proposed cook or „Dołóż tu coś". None of it is
+   * remembered — skips, typed kcal and top-ups are sheet state like `locks` and `runLengths`,
+   * cleared by `load` and never written to `profile.mealPlan` (STATE.md decision 449).
    */
 
   const CHEVRON_LEFT = 'M15 5l-7 7 7 7';
@@ -113,8 +128,28 @@
   const solveDates = $derived(range.filter((date) => picked.includes(date)));
   /** „Zastąp" — the day is cleared first, so the plan is solved as if it were empty. */
   let replace = $state(false);
-  /** Existing meals moved to another slot before generating (day mode only). */
-  let slotOverrides = $state<Record<string, string>>({});
+  /**
+   * What the sheet has been told about each day, keyed by date: categories turned off, ones
+   * asked for an extra meal, and kcal typed on one. All three are one-off (decision 449).
+   */
+  let skips = $state<Record<string, string[]>>({});
+  let topUps = $state<Record<string, string[]>>({});
+  let typedKcal = $state<Record<string, Record<string, number>>>({});
+  /** The per-day inputs of the last solve — what `slotTargetKcal` is shown from. */
+  let dayInputs = $state<PlanDayInput[]>([]);
+
+  /** The three, as the solver takes them. */
+  const dayOptions = $derived.by<Record<string, DayPlanOptions>>(() => {
+    const options: Record<string, DayPlanOptions> = {};
+    for (const date of new Set([...Object.keys(skips), ...Object.keys(topUps), ...Object.keys(typedKcal)])) {
+      options[date] = {
+        ...(skips[date] === undefined ? {} : { skipSlotIds: skips[date] }),
+        ...(topUps[date] === undefined ? {} : { topUpSlotIds: topUps[date] }),
+        ...(typedKcal[date] === undefined ? {} : { slotKcal: typedKcal[date] })
+      };
+    }
+    return options;
+  });
 
   const candidatesRef: { list: ReturnType<typeof planCandidates>['candidates'] } = { list: [] };
 
@@ -173,7 +208,10 @@
     proposal = null;
     locks = [];
     runLengths = {};
-    slotOverrides = {};
+    skips = {};
+    topUps = {};
+    typedKcal = {};
+    dayInputs = [];
     replace = false;
     picked = [...range];
 
@@ -236,7 +274,8 @@
 
     const rows = replace ? dayRows.filter((row) => !dates.includes(row.date)) : dayRows;
     balance = weekBalance(dates, dayRows, goals);
-    const days = planDayInputs(dates, rows, goals, template, balance, slotOverrides);
+    const days = planDayInputs(dates, rows, goals, template, balance, dayOptions);
+    dayInputs = days;
     const runs = previous?.runs ?? [];
 
     // A whole reroll keeps the locks, trimmed to the days still ticked — a lock whose cooking
@@ -342,10 +381,61 @@
     if (isDateKey(value)) start = value;
   }
 
-  function moveMeal(mealId: string, slotId: string): void {
-    slotOverrides = { ...slotOverrides, [mealId]: slotId };
+  /**
+   * „Pomiń" — this category gets no block for this one solve, and the solver's `shares` map
+   * renormalises over what is left, so its share lands on the others and the main course's
+   * target grows by itself (decision 447). „Planuj" puts it back.
+   */
+  function toggleSkip(date: string, slotId: string): void {
+    const current = skips[date] ?? [];
+    const next = current.includes(slotId)
+      ? current.filter((other) => other !== slotId)
+      : [...current, slotId];
+    skips = { ...skips, [date]: next };
     locks = [];
     solve();
+  }
+
+  /** „Dołóż tu coś" — a category that already holds a meal is asked for one more. */
+  function topUp(date: string, slotId: string): void {
+    const current = topUps[date] ?? [];
+    if (current.includes(slotId)) return;
+    topUps = { ...topUps, [date]: [...current, slotId] };
+    solve();
+  }
+
+  /** A kcal typed on a category beats its share; an empty field gives the share back. */
+  function setSlotKcal(date: string, slotId: string, value: number): void {
+    const day = { ...(typedKcal[date] ?? {}) };
+    if (!Number.isFinite(value) || value < 0) delete day[slotId];
+    else day[slotId] = Math.round(value);
+    typedKcal = { ...typedKcal, [date]: day };
+    locks = [];
+    solve();
+  }
+
+  const isSkipped = (date: string, slotId: string): boolean =>
+    (skips[date] ?? []).includes(slotId);
+
+  /** What this category is solved against on this day — the solver's own number. */
+  function targetKcal(date: string, slotId: string): number | undefined {
+    const input = dayInputs.find((row) => row.date === date);
+    if (input === undefined) return undefined;
+    return slotTargetKcal(input, template).get(slotId);
+  }
+
+  /** Meals of the day filed under one category. */
+  function mealsIn(date: string, slotId: string): PlannedMeal[] {
+    return mealsOn(date).filter((meal) => meal.slotId === slotId);
+  }
+
+  /**
+   * Meals nobody filed: no category, or one the template no longer has. They count in the
+   * day's kcal and occupy no category, which is why the card names them (decision 451).
+   */
+  function unfiledOn(date: string): PlannedMeal[] {
+    const ids = new Set(template.slots.map((slot) => slot.id));
+    return mealsOn(date).filter((meal) => meal.slotId === undefined || !ids.has(meal.slotId));
   }
 
   async function apply(): Promise<void> {
@@ -547,104 +637,178 @@
               <MacroBars totals={day.totals} goals={day.goals} />
             </div>
 
-            {#if mealsOn(day.date).length > 0}
-              <ul class="pt-2">
-                {#each mealsOn(day.date) as meal, index (meal.id)}
-                  <li class="flex items-center justify-between gap-2 py-1 text-sm">
-                    <span class="emw-recipe-name min-w-0 flex-1 text-(--color-ink-muted)">
+            <!-- „Pozostałe" above the categories, and what it costs (STATE.md decision 451).
+                 A meal nobody filed counts in the day's calories but occupies no category, so
+                 the planner will still offer a breakfast next to the eggs already on the day —
+                 correct, since nothing told it those eggs were breakfast, and exactly the
+                 surprise this is here to remove. Seeing it is the fix; nothing is refiled. -->
+            {@const unfiled = unfiledOn(day.date)}
+            {#if unfiled.length > 0}
+              <div class="mt-2 rounded-lg bg-(--color-surface) px-3 py-2">
+                <p class="text-xs font-medium">{UNFILED_LABEL}</p>
+                <ul>
+                  {#each unfiled as meal (meal.id)}
+                    <li class="emw-recipe-name py-0.5 text-sm text-(--color-ink-muted)">
                       {recipeNames.get(meal.recipeId) ?? 'Usunięty przepis'}
-                      <span class="text-xs">· już zaplanowane</span>
-                    </span>
-                    {#if !weekMode}
-                      <select
-                        class="shrink-0 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-2 py-1 text-xs"
-                        aria-label="Posiłek dnia dla „{recipeNames.get(meal.recipeId) ?? ''}"
-                        value={slotOverrides[meal.id] ?? template.slots[index]?.id ?? ''}
-                        onchange={(event) => moveMeal(meal.id, event.currentTarget.value)}
-                      >
-                        {#each template.slots as slot (slot.id)}
-                          <option value={slot.id}>{slot.label}</option>
-                        {/each}
-                      </select>
-                    {/if}
-                  </li>
-                {/each}
-              </ul>
+                    </li>
+                  {/each}
+                </ul>
+                <p class="pt-1 text-xs text-(--color-ink-muted)">
+                  wliczone w kalorie, ale nie zajmują żadnej kategorii
+                </p>
+              </div>
             {/if}
 
+            <!-- Every category of the template, in its order — not only the ones the proposal
+                 filled. A category the user has already filled is left alone (decision 446),
+                 „Pomiń" moves its share to the others (447), and a kcal typed on it beats that
+                 share for this solve (448). -->
             <ul class="pt-1">
-              {#each runs as run (run.id)}
-                {@const cooking = run.dates[0] === day.date}
-                <li class="flex items-start justify-between gap-2 border-t border-(--color-border) py-2 first:border-t-0">
-                  <div class="min-w-0 flex-1">
-                    <p class="text-xs text-(--color-ink-muted)">{slotLabel(run.slotId)}</p>
-                    <!-- Wrapped, never clipped (emw-recipe-name): „Sałatka z chrupiącym…" is the
-                         one thing on this row the user has to read to judge the proposal, and on
-                         a phone the 1/2/3 control and the two buttons leave it about half the width. -->
-                    <p class="emw-recipe-name text-sm font-medium">{run.recipeName}</p>
-                    <p class="text-xs text-(--color-ink-muted)">
-                      {portionLabel(run)}
-                      {#if cooking && run.dates.length > 1}
-                        · {cookingLabel(run.dates.length)}
-                      {:else if !cooking}
-                        · z garnka z {formatDayMonth(run.dates[0] ?? day.date)}
-                      {/if}
+              {#each template.slots as slot (slot.id)}
+                {@const filed = mealsIn(day.date, slot.id)}
+                {@const slotRuns = runs.filter((run) => run.slotId === slot.id)}
+                {@const off = isSkipped(day.date, slot.id)}
+                {@const target = targetKcal(day.date, slot.id)}
+                <li class="border-t border-(--color-border) py-2 first:border-t-0">
+                  <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="min-w-0 text-xs font-medium {off ? 'text-(--color-ink-muted)' : ''}">
+                      {slot.label}
                     </p>
-                  </div>
+                    <div class="flex shrink-0 items-center gap-2">
+                      {#if !off && target !== undefined}
+                        <!-- The number the solver aims at, from `slotTargetKcal` — the same call
+                             `blockTarget` makes, so what is shown cannot drift from what is
+                             solved against. Typing one turns it into an override.
 
-                  {#if cooking}
-                    <div class="flex shrink-0 items-center gap-1">
-                      <!-- A cook never overruns the range, so on a single day it can only ever
-                           last one — the control would be a button that does nothing. -->
-                      {#if weekMode}
-                        <div class="flex overflow-hidden rounded-lg border border-(--color-border)">
-                          {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
-                            <button
-                              type="button"
-                              class="emw-press px-2 py-1 text-xs tabular-nums {run.dates.length === length
-                                ? 'emw-btn-primary'
-                                : 'emw-tint'}"
-                              aria-label="Gotuj na {length} dni"
-                              title="Gotuj na {length} dni"
-                              aria-pressed={run.dates.length === length}
-                              onclick={() => setRunLength(run, length)}
-                            >
-                              {length}
-                            </button>
-                          {/each}
-                        </div>
+                             `step="any"`, never a round number: a `step` the typed value misses
+                             makes the browser refuse it with a bubble in the *browser's*
+                             language — „Please enter a valid value. The two nearest valid
+                             values are 900 and 910." for a perfectly sensible 901 — and this
+                             app speaks Polish (STATE.md decision 456). -->
+                        <label class="flex items-center gap-1 text-xs text-(--color-ink-muted)">
+                          <input
+                            class="w-16 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-1.5 py-0.5 text-right text-xs tabular-nums"
+                            type="number"
+                            inputmode="numeric"
+                            min="0"
+                            step="any"
+                            aria-label="Kalorie na {slot.label}"
+                            value={Math.round(target)}
+                            onchange={(event) =>
+                              setSlotKcal(day.date, slot.id, event.currentTarget.valueAsNumber)}
+                          />
+                          kcal
+                        </label>
                       {/if}
                       <button
                         type="button"
-                        class="emw-press emw-btn-icon border border-(--color-border) {locks.includes(run.id)
-                          ? 'text-(--color-accent)'
-                          : 'text-(--color-ink-muted)'}"
-                        aria-label="{locks.includes(run.id) ? 'Odblokuj' : 'Zablokuj'} {run.recipeName}"
-                        title={locks.includes(run.id)
-                          ? 'Odblokuj — kolejne losowanie może to zmienić'
-                          : 'Zablokuj — kolejne losowanie tego nie ruszy'}
-                        aria-pressed={locks.includes(run.id)}
-                        onclick={() => toggleLock(run.id)}
+                        class="emw-press emw-tint rounded-lg border px-2 py-0.5 text-xs font-medium {off
+                          ? 'border-(--color-accent) text-(--color-accent)'
+                          : 'border-(--color-border) text-(--color-ink-muted)'}"
+                        aria-pressed={off}
+                        aria-label="{off ? 'Planuj' : 'Pomiń'} {slot.label}"
+                        onclick={() => toggleSkip(day.date, slot.id)}
                       >
-                        <NavIcon path={locks.includes(run.id) ? LOCK : UNLOCK} class="size-4" />
-                      </button>
-                      <button
-                        type="button"
-                        class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
-                        aria-label="Przelosuj {slotLabel(run.slotId)}"
-                        title="Przelosuj tylko ten posiłek — reszta zostaje"
-                        onclick={() => solve(run.id)}
-                      >
-                        <NavIcon path={REROLL} class="size-4" />
+                        {off ? 'Planuj' : 'Pomiń'}
                       </button>
                     </div>
-                  {/if}
-                </li>
-              {/each}
+                  </div>
 
-              {#each day.unfilledSlotIds as slotId (slotId)}
-                <li class="border-t border-(--color-border) py-2 text-xs text-(--color-ink-muted)">
-                  {slotLabel(slotId)} — brak pasującego przepisu.
+                  {#each filed as meal (meal.id)}
+                    <p class="emw-recipe-name pt-1 text-sm text-(--color-ink-muted)">
+                      {recipeNames.get(meal.recipeId) ?? 'Usunięty przepis'}
+                      <span class="text-xs">· już zaplanowane</span>
+                    </p>
+                  {/each}
+
+                  {#each slotRuns as run (run.id)}
+                    {@const cooking = run.dates[0] === day.date}
+                    <div class="flex items-start justify-between gap-2 pt-1">
+                      <div class="min-w-0 flex-1">
+                        <!-- Wrapped, never clipped (emw-recipe-name): „Sałatka z chrupiącym…" is
+                             the one thing on this row the user has to read to judge the proposal,
+                             and on a phone the 1/2/3 control and the two buttons leave it about
+                             half the width. -->
+                        <p class="emw-recipe-name text-sm font-medium">{run.recipeName}</p>
+                        <p class="text-xs text-(--color-ink-muted)">
+                          {portionLabel(run)}
+                          {#if cooking && run.dates.length > 1}
+                            · {cookingLabel(run.dates.length)}
+                          {:else if !cooking}
+                            · z garnka z {formatDayMonth(run.dates[0] ?? day.date)}
+                          {/if}
+                        </p>
+                      </div>
+
+                      {#if cooking}
+                        <div class="flex shrink-0 items-center gap-1">
+                          <!-- A cook never overruns the range, so on a single day it can only
+                               ever last one — the control would be a button that does nothing. -->
+                          {#if weekMode}
+                            <div class="flex overflow-hidden rounded-lg border border-(--color-border)">
+                              {#each [1, 2, MAX_BATCH_DAYS] as length (length)}
+                                <button
+                                  type="button"
+                                  class="emw-press px-2 py-1 text-xs tabular-nums {run.dates.length === length
+                                    ? 'emw-btn-primary'
+                                    : 'emw-tint'}"
+                                  aria-label="Gotuj na {length} dni"
+                                  title="Gotuj na {length} dni"
+                                  aria-pressed={run.dates.length === length}
+                                  onclick={() => setRunLength(run, length)}
+                                >
+                                  {length}
+                                </button>
+                              {/each}
+                            </div>
+                          {/if}
+                          <button
+                            type="button"
+                            class="emw-press emw-btn-icon border border-(--color-border) {locks.includes(run.id)
+                              ? 'text-(--color-accent)'
+                              : 'text-(--color-ink-muted)'}"
+                            aria-label="{locks.includes(run.id) ? 'Odblokuj' : 'Zablokuj'} {run.recipeName}"
+                            title={locks.includes(run.id)
+                              ? 'Odblokuj — kolejne losowanie może to zmienić'
+                              : 'Zablokuj — kolejne losowanie tego nie ruszy'}
+                            aria-pressed={locks.includes(run.id)}
+                            onclick={() => toggleLock(run.id)}
+                          >
+                            <NavIcon path={locks.includes(run.id) ? LOCK : UNLOCK} class="size-4" />
+                          </button>
+                          <button
+                            type="button"
+                            class="emw-press emw-btn-icon border border-(--color-border) text-(--color-ink-muted)"
+                            aria-label="Przelosuj {slot.label}"
+                            title="Przelosuj tylko ten posiłek — reszta zostaje"
+                            onclick={() => solve(run.id)}
+                          >
+                            <NavIcon path={REROLL} class="size-4" />
+                          </button>
+                        </div>
+                      {/if}
+                    </div>
+                  {/each}
+
+                  {#if off}
+                    <p class="pt-1 text-xs text-(--color-ink-muted)">
+                      Dziś pomijamy — kalorie tego posiłku rozchodzą się na pozostałe.
+                    </p>
+                  {:else if filed.length > 0 && slotRuns.length === 0}
+                    <!-- A category holding anything is left alone by default; this is how more
+                         is asked for (decision 446). -->
+                    <button
+                      type="button"
+                      class="emw-press emw-btn-link pt-1 text-xs font-medium"
+                      onclick={() => topUp(day.date, slot.id)}
+                    >
+                      Dołóż tu coś
+                    </button>
+                  {:else if slotRuns.length === 0}
+                    <p class="pt-1 text-xs text-(--color-ink-muted)">
+                      Brak pasującego przepisu.
+                    </p>
+                  {/if}
                 </li>
               {/each}
             </ul>

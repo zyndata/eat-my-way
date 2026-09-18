@@ -1,4 +1,4 @@
-import type { Day, Macros, PlannedMeal, Recipe } from './types';
+import type { Day, Macros, MealPlanTemplate, MealSlot, PlannedMeal, Recipe } from './types';
 import type { IdFactory } from './ids';
 import { newId } from './ids';
 import { recipePortionMacros, type IngredientLookup } from './macros';
@@ -44,15 +44,23 @@ export function withGoals(day: Day, goals: Macros | undefined): Day {
 export function planMeal(
   recipe: Recipe,
   lookup: IngredientLookup,
-  options: { id?: string; cookingScale?: number; portionsEaten?: number } = {}
+  options: {
+    id?: string;
+    cookingScale?: number;
+    portionsEaten?: number;
+    /** Which meal of the day this is — „+ Dodaj" under a heading knows, the picker asks. */
+    slotId?: string;
+  } = {}
 ): PlannedMeal {
-  return {
+  const meal: PlannedMeal = {
     id: options.id ?? newId(),
     recipeId: recipe.id,
     cookingScale: options.cookingScale ?? 1,
     portionsEaten: options.portionsEaten ?? 1,
     macroSnapshot: recipePortionMacros(recipe, lookup)
   };
+  if (options.slotId !== undefined && options.slotId !== '') meal.slotId = options.slotId;
+  return meal;
 }
 
 /**
@@ -73,6 +81,10 @@ export function clonePlannedMeal(meal: PlannedMeal, id: string): PlannedMeal {
   // week-level copy all come through here.
   const layer = cloneAdjustments(meal.adjustments);
   if (layer.length > 0) copy.adjustments = layer;
+  // A duplicated supper is a supper, and a day copied onto another day keeps its shape
+  // (STATE.md decision 441). Enumerated by name for the same reason the layer is: every
+  // day- and week-level copy comes through here, and a field left out is dropped in silence.
+  if (meal.slotId !== undefined) copy.slotId = meal.slotId;
   return copy;
 }
 
@@ -138,6 +150,111 @@ export function orderMeals(day: Day, mealIds: readonly string[]): Day {
   meals.push(...remaining.values());
 
   return makeDay(day.date, meals, day.goalSnapshot);
+}
+
+/** Where one meal goes: its id, and the category it lands in (`undefined` = „Pozostałe"). */
+export interface MealPlacement {
+  id: string;
+  slotId?: string;
+}
+
+/** The heading „Pozostałe" carries — meals naming no category, or one that is gone. */
+export const UNFILED_LABEL = 'Pozostałe';
+
+/** One heading on the day screen, with the meals filed under it. */
+export interface MealGroup {
+  /** The template category, or `undefined` for „Pozostałe". */
+  slot?: MealSlot;
+  /** What the heading says: the category's own label, or „Pozostałe". */
+  label: string;
+  meals: PlannedMeal[];
+}
+
+/** Set, or take away, one meal's category without touching anything else about it. */
+function withSlot(meal: PlannedMeal, slotId: string | undefined): PlannedMeal {
+  const wanted = slotId === '' ? undefined : slotId;
+  if (wanted === meal.slotId) return meal;
+  const next: PlannedMeal = { ...meal };
+  // Taken away rather than written as `undefined`: a meal in „Pozostałe" is byte-for-byte a
+  // meal that was never filed, which is what keeps this field free of a migration.
+  if (wanted === undefined) delete next.slotId;
+  else next.slotId = wanted;
+  return next;
+}
+
+/**
+ * The day's meals in the order and the categories the screen now shows — one write for a drag
+ * that both reorders and recategorises, because two writes would be two renders and one
+ * visible jump.
+ *
+ * Groups are a **rendering** of the array, never a second ordering (STATE.md decision 442), so
+ * the caller hands in every meal in the order it is drawn — its categories in template order,
+ * the order within each, „Pozostałe" last — and the array is rewritten to match.
+ *
+ * Ids and strings only, for the reason `orderMeals` takes ids: nothing that has been through a
+ * Svelte `$state` proxy may reach IndexedDB (decisions 56 and 77). A placement naming a meal
+ * this day does not have is ignored, and a meal no placement names keeps the category it had
+ * and follows in its old relative order — so a drag that raced a sync cannot delete a meal.
+ */
+export function placeMeals(day: Day, placements: readonly MealPlacement[]): Day {
+  const remaining = new Map(day.meals.map((meal) => [meal.id, meal]));
+  const meals: PlannedMeal[] = [];
+
+  for (const placement of placements) {
+    const meal = remaining.get(placement.id);
+    if (meal === undefined) continue;
+    remaining.delete(placement.id);
+    meals.push(withSlot(meal, placement.slotId));
+  }
+  meals.push(...remaining.values());
+
+  return makeDay(day.date, meals, day.goalSnapshot);
+}
+
+/**
+ * The groups a screen draws: every category of the template, in its order, each with the meals
+ * filed under it — then „Pozostałe" when anything is left.
+ *
+ * Empty categories are returned too. The day screen draws them, because a day with three
+ * categories planned still has to show the two that are not; the menu export ignores them.
+ * A meal naming a category the template no longer has falls into „Pozostałe" **keeping its
+ * id**, so re-creating that category in Settings puts it back (decision 441).
+ */
+export function groupMeals(day: Day, template: MealPlanTemplate): MealGroup[] {
+  const groups = template.slots.map<MealGroup>((slot) => ({
+    slot,
+    label: slot.label,
+    meals: []
+  }));
+  const bySlot = new Map(groups.map((group) => [group.slot?.id, group]));
+  const unfiled: PlannedMeal[] = [];
+
+  for (const meal of day.meals) {
+    const group = meal.slotId === undefined ? undefined : bySlot.get(meal.slotId);
+    if (group === undefined) unfiled.push(meal);
+    else group.meals.push(meal);
+  }
+
+  if (unfiled.length > 0) groups.push({ label: UNFILED_LABEL, meals: unfiled });
+  return groups;
+}
+
+/**
+ * The day, stored in the order it is shown. Every write that places a meal ends here, which is
+ * the one invariant behind decision 442 — and the reason „Jadłospis" and the shopping list
+ * start printing a day in the order it is eaten without either of them being touched.
+ *
+ * A day whose meals name no category at all comes back untouched, so nothing written before
+ * this phase is reordered by it.
+ */
+export function normalizeDay(day: Day, template: MealPlanTemplate): Day {
+  if (!day.meals.some((meal) => meal.slotId !== undefined)) return day;
+  return placeMeals(
+    day,
+    groupMeals(day, template).flatMap((group) =>
+      group.meals.map((meal) => ({ id: meal.id, ...(meal.slotId === undefined ? {} : { slotId: meal.slotId }) }))
+    )
+  );
 }
 
 /** The fields of a planned meal the meal view is allowed to change. */

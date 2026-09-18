@@ -541,13 +541,13 @@ describe('recipesByIds', () => {
   });
 });
 
-describe('setMealOrder', () => {
+describe('setMealPlacement', () => {
   it('persists a new order across a re-read', async () => {
     const recipe = await seedRecipe();
     const first = await repo.addRecipeToDay(MONDAY, recipe.id);
     const second = await repo.addRecipeToDay(MONDAY, recipe.id);
 
-    await repo.setMealOrder(MONDAY, [second.id, first.id]);
+    await repo.setMealPlacement(MONDAY, [{ id: second.id }, { id: first.id }]);
 
     const day = await repo.getDay(MONDAY);
     expect(day.meals.map((meal) => meal.id)).toEqual([second.id, first.id]);
@@ -559,11 +559,74 @@ describe('setMealOrder', () => {
     const second = await repo.addRecipeToDay(MONDAY, recipe.id);
     const before = await repo.getDay(MONDAY);
 
-    await repo.setMealOrder(MONDAY, [second.id, first.id]);
+    await repo.setMealPlacement(MONDAY, [{ id: second.id }, { id: first.id }]);
 
     const after = await repo.getDay(MONDAY);
     expect(dayTotals(after)).toEqual(dayTotals(before));
     expect(after.goalSnapshot).toEqual(before.goalSnapshot);
+  });
+
+  it('moves a meal to another category and back, in one write each time', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id, { slotId: 'sniadanie' });
+
+    await repo.setMealPlacement(MONDAY, [{ id: meal.id, slotId: 'kolacja' }]);
+    expect((await repo.getDay(MONDAY)).meals[0]?.slotId).toBe('kolacja');
+
+    await repo.setMealPlacement(MONDAY, [{ id: meal.id }]);
+    expect((await repo.getDay(MONDAY)).meals[0]?.slotId).toBeUndefined();
+  });
+});
+
+describe('the category a meal carries', () => {
+  it('is written by „+ Dodaj" under a heading and survives a re-read', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id, { slotId: 'kolacja' });
+    expect((await repo.getDay(MONDAY)).meals[0]?.slotId).toBe('kolacja');
+  });
+
+  it('is absent for a meal added without one', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id);
+    expect((await repo.getDay(MONDAY)).meals[0]).not.toHaveProperty('slotId');
+  });
+
+  it('is the same recipe under two different categories on two days', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id, { slotId: 'sniadanie' });
+    await repo.addRecipeToDay(TUESDAY, recipe.id, { slotId: 'kolacja' });
+
+    expect((await repo.getDay(MONDAY)).meals[0]?.slotId).toBe('sniadanie');
+    expect((await repo.getDay(TUESDAY)).meals[0]?.slotId).toBe('kolacja');
+  });
+
+  it('travels with a duplicate and with a copy onto another day', async () => {
+    const recipe = await seedRecipe();
+    const meal = await repo.addRecipeToDay(MONDAY, recipe.id, { id: 'm1', slotId: 'kolacja' });
+
+    const day = await repo.duplicateMeal(MONDAY, meal.id, seqIds('copy'));
+    expect(day.meals.map((row) => row.slotId)).toEqual(['kolacja', 'kolacja']);
+
+    await repo.copyMealToDays(MONDAY, meal.id, [TUESDAY], seqIds('to'));
+    expect((await repo.getDay(TUESDAY)).meals[0]?.slotId).toBe('kolacja');
+  });
+
+  it('stores the day in the order it is shown, so „Jadłospis" prints breakfast first', async () => {
+    const recipe = await seedRecipe();
+    // Added supper first, breakfast second — the array comes back the other way round.
+    await repo.addRecipeToDay(MONDAY, recipe.id, { id: 'supper', slotId: 'kolacja' });
+    await repo.addRecipeToDay(MONDAY, recipe.id, { id: 'breakfast', slotId: 'sniadanie' });
+
+    const day = await repo.getDay(MONDAY);
+    expect(day.meals.map((meal) => meal.id)).toEqual(['breakfast', 'supper']);
+  });
+
+  it('leaves a day whose meals name no category in the order they were added', async () => {
+    const recipe = await seedRecipe();
+    await repo.addRecipeToDay(MONDAY, recipe.id, { id: 'first' });
+    await repo.addRecipeToDay(MONDAY, recipe.id, { id: 'second' });
+
+    expect((await repo.getDay(MONDAY)).meals.map((meal) => meal.id)).toEqual(['first', 'second']);
   });
 });
 

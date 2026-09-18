@@ -1,11 +1,11 @@
 <script lang="ts">
-  import type { Day, Macros, PlannedMeal, Recipe } from '../types';
+  import type { Day, Macros, MealPlanTemplate, PlannedMeal, Recipe } from '../types';
   import type { DaySummary } from '../calendar';
   import { isOverGoal, monthWeeks, summarizeDates, weekDates } from '../calendar';
   import { formatDayLong, formatDayMonth, isDateKey, relativeDayLabel } from '../dates';
-  import { emptyDay, type MealChanges } from '../day';
+  import { emptyDay, groupMeals, type MealChanges, type MealPlacement } from '../day';
   import { dayTotals } from '../macros';
-  import { plannerWeek } from '../planner';
+  import { plannerWeek, templateOf } from '../planner';
   import { repository } from '../repository';
   import { scheduleSync, syncState } from '../sync/state.svelte';
   import BottomSheet from './BottomSheet.svelte';
@@ -46,6 +46,7 @@
   let day = $state<Day>(emptyDay(date));
   let rangeDays = $state<Day[]>([]);
   let recipes = $state(new Map<string, Recipe>());
+  let template = $state<MealPlanTemplate>(templateOf(undefined));
   let loading = $state(true);
 
   let monthShown = $state(false);
@@ -53,6 +54,13 @@
   let monthAnchor = $state(date);
 
   let pickerOpen = $state(false);
+  /**
+   * Which category the open picker is adding into: a slot id, or `undefined` for „Pozostałe".
+   * „+ Dodaj" under a heading pre-sets its own; the floating button pre-sets „Pozostałe" and
+   * never guesses — which meal of the day it is at 22:00 is not something the app can know
+   * (STATE.md decision 450).
+   */
+  let pickerSlotId = $state<string | undefined>(undefined);
   /** Meal waiting for „Kopiuj do…"; `null` when the sheet is closed. */
   let copyMealId = $state<string | null>(null);
   let copyDayOpen = $state(false);
@@ -78,6 +86,8 @@
   // Read from the day itself, so the sheet shows what was just written once `refresh` lands.
   const portionsMeal = $derived(day.meals.find((meal) => meal.id === portionsMealId));
   const totals = $derived(dayTotals(day));
+  /** The headings the list draws: every category of the template, „Pozostałe" last. */
+  const groups = $derived(groupMeals(day, template));
   const week = $derived<DaySummary[]>(summarizeDates(weekDates(date), rangeDays, goals));
   const headerGoals = $derived(day.goalSnapshot ?? goals);
   const dayLabel = $derived(relativeDayLabel(date, today));
@@ -110,6 +120,7 @@
     ]);
 
     goals = profile.goals;
+    template = templateOf(profile.mealPlan);
     rangeDays = days;
     day = current;
     recipes = await repository.recipesByIds(current.meals.map((meal) => meal.recipeId));
@@ -166,14 +177,21 @@
     if (dayMenu !== undefined) dayMenu.open = false;
   }
 
-  async function addRecipe(recipeId: string): Promise<void> {
+  /** „+ Dodaj" under a heading, or the floating button: the picker opens knowing where. */
+  function openPicker(slotId: string | undefined): void {
+    pickerSlotId = slotId;
+    pickerOpen = true;
+  }
+
+  async function addRecipe(recipeId: string, slotId: string | undefined): Promise<void> {
     pickerOpen = false;
-    await repository.addRecipeToDay(date, recipeId);
+    await repository.addRecipeToDay(date, recipeId, slotId === undefined ? {} : { slotId });
     await refresh();
   }
 
-  async function reorder(mealIds: string[]): Promise<void> {
-    await repository.setMealOrder(date, mealIds);
+  /** One write for a drag that reorders and recategorises at once (decision 443). */
+  async function place(placements: MealPlacement[]): Promise<void> {
+    await repository.setMealPlacement(date, placements);
     await refresh();
   }
 
@@ -440,10 +458,11 @@
       </div>
 
       <MealList
-        meals={day.meals}
+        {groups}
         {date}
         {nameOf}
-        onreorder={(ids) => void reorder(ids)}
+        onplace={(placements) => void place(placements)}
+        onadd={(slotId) => openPicker(slotId)}
         onportions={(id) => (portionsMealId = id)}
         onduplicate={(id) => void duplicate(id)}
         oncopy={(id) => (copyMealId = id)}
@@ -462,7 +481,7 @@
   <button
     type="button"
     class="emw-press emw-btn-primary emw-btn-chip fixed right-[max(1rem,var(--safe-right))] bottom-[calc(var(--nav-h)+1.1875rem)] z-20 px-4 py-3 text-sm font-medium shadow-lg md:bottom-6"
-    onclick={() => (pickerOpen = true)}
+    onclick={() => openPicker(undefined)}
   >
     <NavIcon path={PLUS} class="size-5" />
     Dodaj posiłek
@@ -472,7 +491,9 @@
     open={pickerOpen}
     {totals}
     goals={headerGoals}
-    onpick={(recipeId) => void addRecipe(recipeId)}
+    slots={template.slots}
+    slotId={pickerSlotId}
+    onpick={(recipeId, slotId) => void addRecipe(recipeId, slotId)}
     onclose={() => (pickerOpen = false)}
   />
 

@@ -479,11 +479,15 @@
   }
 
   /*
-   * A recipe name in a decision — the planner's proposal, the „już zaplanowane" row above it
-   * and the meal card the plan becomes — wraps and never clips (STATE.md decision 433). Once,
-   * here, so the three places break the same long name the same way; the container still has
-   * to be allowed to shrink (`min-w-0`) for the wrap to have anywhere to happen. Hyphenation
-   * follows the document's `lang="pl"`.
+   * A name the user has to read wraps and is never clipped (STATE.md decisions 433 and 440).
+   * It started with the three places a plan is judged — the planner's proposal, the „już
+   * zaplanowane" row above it and the meal card the plan becomes — and covers the rest of
+   * them since Phase 24: the recipe library, the recipe picker, and the **ingredient** rows of
+   * the meal screen and the recipe editor, where the name is the reason the row exists. A day
+   * label, a macro label and a tag chip keep `truncate`: short by construction, one line by
+   * design. Once, here, so every one of them breaks the same long name the same way; the
+   * container still has to be allowed to shrink (`min-w-0`) for the wrap to have anywhere to
+   * happen. Hyphenation follows the document's `lang="pl"`.
    */
   .emw-recipe-name {
     overflow-wrap: break-word;

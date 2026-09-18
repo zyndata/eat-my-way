@@ -160,7 +160,7 @@
   <li class="rounded-xl border border-(--color-border) bg-(--color-surface-raised)">
     <a class="emw-press emw-row block rounded-xl p-3" href="#/recipes/{entry.recipe.id}/edit">
       <span class="flex items-baseline justify-between gap-3">
-        <span class="min-w-0 truncate font-medium">{entry.recipe.name}</span>
+        <span class="emw-recipe-name min-w-0 font-medium">{entry.recipe.name}</span>
         {#if portion}
           <span class="shrink-0 text-sm text-(--color-ink-muted)">
             {Math.round(portion.kcal)} kcal / porcja

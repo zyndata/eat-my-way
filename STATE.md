@@ -30,8 +30,29 @@ Any deviation from [PLAN.md](PLAN.md) must be recorded here before proceeding.
 | 21    | Pierwsze 24 sekundy         | done    | 2026-09-12 |
 | 22    | Przepis dla kogoś           | done    | 2026-09-13 |
 | 23    | Redukcja i masa             | done    | 2026-09-13 |
+| 24    | Kategorie posiłków w dniu   | done    | 2026-09-18 |
 
 Statuses: `pending` → `in-progress` → `done` (or `blocked` with a note).
+
+Phase 24 is **built** (2026-09-18, decisions 440–455), in the shape it was planned. A meal
+carries the category it belongs to — one optional `PlannedMeal.slotId`, the id of a `MealSlot`
+in `profile.mealPlan` — and because a meal is stored inside its day, the assignment is per day
+by construction: jajecznica is śniadanie on Monday and kolacja on Wednesday, and neither day
+knows about the other. The day screen groups by it: every category of the template in its own
+order, each with its total and its own „+ Dodaj", „Pozostałe" last, and a drag between two
+groups is what refiles a meal — with „Posiłek dnia" on the meal screen and in the picker as the
+same write by the routes a keyboard, a screen reader and an off-screen category need. The
+planner stops guessing the category from a meal's position in the array (`slotOverrides` and
+the sheet's per-meal select are gone), and each day card of the sheet now lists the template's
+categories: a planuj/pomiń toggle whose skipped share lands on the others by itself, an
+editable kcal that beats that share through one exported `slotTargetKcal` the solver and the
+sheet both call, and „Dołóż tu coś" for a category that already holds a meal. All three are
+sheet-local and cleared by `load`; Settings is untouched. A meal nobody filed is named on the
+card under „wliczone w kalorie, ale nie zajmują żadnej kategorii" rather than refiled behind the
+user's back. `truncate` gave way to `.emw-recipe-name` in the five places decision 433 missed.
+Five deviations, all recorded below as decisions 452–455 and none of them to the data model. No
+schema version, no migration, no dependency, no CSP or `Caddyfile` change — the whole suite is
+green under `npm run docker:up`.
 
 Phase 23 is **built** (2026-09-13, decisions 416–424). The goals calculator no longer stops at
 the energy that keeps a weight where it is. A „Cel" select — „Utrzymanie wagi", „Redukcja",
@@ -5781,6 +5802,184 @@ Android and one whole week's shopping list pasted in.
   157/157 on Chromium. A new `library.spec.ts` test replays the report (0,5/0,5 → eat 1 off the
   card → cooked 1 and the note, then + on the meal screen → 1,5). It fails with the rule
   switched off. `npm run build` passes. No new source of any kind, so the CSP is untouched.
+
+### 2026-09-18 — Phase 24 planned: kategorie posiłków w dniu
+
+Three things reported from a real week, on an Android screenshot of „Uzupełnij sobota,
+19 września". They look like three, and two of them are one: a meal does not know which meal of
+the day it is, so the planner guesses and the day screen cannot group.
+
+440. **A name the user has to read is never clipped — the rest of decision 433.** That decision
+     gave recipe names `.emw-recipe-name` in the three places a plan is judged, and two screens
+     were missed: the recipe library and the recipe picker still carry `truncate`. The same
+     argument covers **ingredient** names on the meal screen, its swap list and the recipe
+     editor's rows, which were never considered: a row whose text is the reason the row exists
+     must not end in an ellipsis on a phone. A day label, a macro label and a tag chip keep
+     `truncate` — short by construction, one line by design.
+
+441. **A meal carries its category; the assignment is per day, and that is free.** New optional
+     `PlannedMeal.slotId`, the id of a `MealSlot` in `profile.mealPlan`. Because the meal is
+     stored inside its day, „jajecznica na śniadanie w poniedziałek, na kolację w środę" needs
+     no extra structure at all — the requirement is satisfied by where the field lives.
+     - **Rejected: a category on the recipe.** It is global by nature, which is precisely what
+       was asked against, and it would make „jajecznica" a breakfast everywhere forever.
+     - Optional like `adjustments`, `mealPlan` and `prepMinutes`: no schema version, no
+       migration, an older build ignores it. `readDaysDocument` spreads the day it parsed and
+       `readBackup` validates meals rather than rebuilding them, so neither can drop it — the
+       same reason `adjustments` round-trips today.
+     - **An orphaned id is not repaired.** A category deleted in Settings leaves its meals under
+       „Pozostałe" with the id intact, so deleting it and putting it back does not scatter a
+       month of days.
+
+442. **Groups are a rendering of the array, not a second ordering.** Array order stays the one
+     display order (Phase 5's rule, and why there is no `order` field). Every placement write
+     normalises `day.meals` to what is on screen: template order of the category, then the order
+     within it, „Pozostałe" last. One invariant instead of two — and „Jadłospis" and the
+     shopping list start printing a day in the order it is eaten without either being touched.
+
+443. **Dragging a card into another group is how a category changes**, with a „Posiłek dnia"
+     select on the meal screen as the same write by another route. The select is not a fallback
+     for politeness: it is what works when the target category is off screen, and what a
+     keyboard and a screen reader can use. The handle-only drag rule (decision 69) is unchanged,
+     so a touch anywhere else still scrolls the list.
+
+444. **Each category heading gets its own „+ Dodaj" — a revision of decision 299.** That
+     decision removed an inline „Dodaj posiłek" because the floating button already was one.
+     That argument held while the day was one list; it does not hold now, because *where* a meal
+     lands has become a question the floating button cannot answer on its own. The floating
+     button stays; decision 450 is how it answers the question.
+
+445. **The planner reads the category instead of guessing from position.** `planDayInputs` maps
+     meals onto the template by array index today (`template.slots[index]?.id`), and the sheet's
+     per-meal select exists to correct that guess for one solve and then forget it. Both go. The
+     assignment now has a home, and correcting it in the day view is a correction that lasts.
+
+446. **A category holding anything is left alone; „Dołóż tu coś" is how more is asked for.**
+     Filling a category the user has already filled is the complaint that opened this phase, so
+     the default stays „don't touch it". The button is one line in the sheet, not a solver
+     change: a topped-up category is simply **left out** of `takenSlotIds`, `existing` already
+     counts what is there, and `existingRecipeIds` stops it proposing the same recipe again.
+     - Rejected: **top up to the share automatically.** It puts food where the user has already
+       decided, which is the same fault in the other direction.
+
+447. **„Pomiń" is `takenSlotIds` by another name, and the calories move on their own.** The
+     solver's `shares` map renormalises over the slots a day still has free, so a skipped
+     category's share lands on the others with no new code: the main course's target grows and
+     the search reaches the more calorific end of the library by itself. This is why „nie mogę
+     usunąć przekąski, żeby obiad był większy" costs a toggle rather than a feature.
+
+448. **A kcal typed on a category beats its share, for that solve only.** New optional
+     `PlanDayInput.slotKcal`; a category with a number takes it, and the rest split
+     `max(0, remaining − Σ overrides)` by their normalised shares. It lives in one exported pure
+     function, `slotTargetKcal`, which the solver's `blockTarget` calls **and the sheet shows**,
+     so the number on screen cannot drift from the number solved against — the rule the goals
+     derivation already follows.
+
+449. **Nothing the sheet is told is remembered.** Skips, typed kcal and top-ups are sheet state
+     like `locks` and `runLengths`: cleared by `load`, never written to `profile.mealPlan`. „Dziś
+     bez przekąski" is a sentence about today; a template that changed itself every time a day
+     was planned would be a template nobody could trust. Changing the plan for good is what
+     Settings is for.
+
+450. **The picker names the category it is adding into, and lets it be changed there.** Asked
+     while planning: after the floating button, can the user still say which meal of the day
+     this is? As decision 444 first stood, no — it landed in „Pozostałe" and had to be dragged
+     afterwards, which made the one control that is always on screen the one route that could
+     not file what it added. So `RecipePicker` takes a `slotId`, shows a „Posiłek dnia" select,
+     and `onpick` returns the category with the recipe.
+     - **„+ Dodaj" pre-sets its own heading**, so the path that already said where it was going
+       stays one tap.
+     - **The floating button pre-sets „Pozostałe", and does not guess.** „First empty category"
+       would pick „Śniadanie" for something added at ten at night — confidently, and wrong. An
+       honest „Pozostałe" with the select one tap away beats a guess the user has to notice and
+       undo („nie decydujemy za usera").
+     - Degrades to nothing: no template, or no `slotId`, and the select is not rendered.
+
+451. **„Pozostałe" is shown in the planner sheet, and says what it costs.** The consequence of
+     450's honest default, asked out loud while planning: a meal added with the floating button
+     and left unfiled counts in the day's calories but occupies no category, so „Uzupełnij"
+     will still offer a breakfast next to the eggs already on the day. That is correct — nothing
+     told it the eggs were breakfast — and it is also the exact surprise this phase exists to
+     remove. The sheet therefore **shows** those meals above the categories, under „wliczone w
+     kalorie, ale nie zajmują żadnej kategorii". Seeing it is the fix.
+     - **Rejected: file them automatically** (by position, by time of day, by the category whose
+       share the meal's kcal is nearest). Each is the guess decision 445 just removed, wearing a
+       different hat.
+
+**Not in this phase**: a category on the recipe; a per-day template differing from Settings;
+times of day or reminders; category headings in „Jadłospis" or the shopping list; remembering a
+skip between solves; dragging a meal onto another day.
+
+### 2026-09-18 — Phase 24 built
+
+Five calls the plan did not make, taken while building it. None of them touches the data model.
+
+452. **A day with no meals at all keeps the empty-day hint; the headings appear with the first
+     meal.** Decision 299's card — „Nic jeszcze nie zaplanowano", „Zaplanuj dzień", „Zaplanuj
+     tydzień" — is what an empty day is *for*, and five headings over five dashed boxes says
+     nothing and offers nothing that the floating button and „Zaplanuj dzień" do not. Empty
+     categories are drawn on a day that has meals, which is the case PLAN.md's rule is about: a
+     day with three categories planned still shows the two that are not.
+     - Consequence, and the reason it is written down: the **first** meal of a day cannot be
+       added through „+ Dodaj" under a heading, because there are no headings yet. It is added
+       from the floating button, where the picker's „Posiłek dnia" select files it in the same
+       tap (decision 450) — so nothing is unreachable, it is simply one control rather than two.
+
+453. **One write per drag, flushed after both zones have spoken.** A drag between two groups
+     finalizes both of them — the zone the card left, then the zone it landed in — one after the
+     other in the same task. Writing on each would be two writes and two renders for one move,
+     and the first of them would describe a day the card has left and not yet arrived on. So
+     `MealList` updates its zones as the events come and flushes `onplace` once, on a zero
+     timeout, which is what makes „one write for a drag that both reorders and recategorises"
+     (decision 443) true of a library that has no single event for it.
+
+454. **Every write that places a meal normalises the day, in one place.** Decision 442 says the
+     array is rewritten to what the screen draws; the repository does it in `storePlaced`, a
+     one-line wrapper over `storeDay` that every write putting a meal on a day goes through —
+     added to, duplicated, copied onto, planned. The pure half is `normalizeDay(day, template)`
+     in `day.ts`, which **returns the day it was given** when no meal names a category, so
+     nothing written before this phase is reordered by it and no test of the old order had to
+     change. One function rather than a rule each caller has to remember, and it is the reason
+     „Jadłospis" prints breakfast first without either it or the shopping list being touched.
+
+455. **The category suite drives the drag from the keyboard, and says so.** `e2e/kategorie.spec.ts`
+     moves a card between two groups with space-on-the-handle, a focus on the target zone and
+     space again — `svelte-dnd-action`'s own keyboard path, which dispatches the same two
+     finalize events a pointer drop does and therefore exercises decision 453's coalescing. A
+     synthesized pointer drag across two zones is the thing `e2e/swipe.spec.ts` already records
+     as unreliable enough to be worth a paragraph, and a test that cannot fail is worse than
+     none. The pointer path itself is unchanged from Phase 5 and stays covered by nothing but
+     the handle rule (decision 69) — noted here rather than implied.
+     - The same suite found the one visible cost of drawing empty categories: on a phone an
+       unfiled meal now sits below them, so `e2e/swipe.spec.ts` scrolls the card into view
+       before dispatching its touch, which used to land on an element that was always at the top.
+     - `scripts/screenshots.mjs` now **applies** the proposal before shooting the day, because a
+       day screen whose one meal is under „Pozostałe", below four empty headings, is a screenshot
+       of the feature failing to show.
+
+### 2026-09-18 — Reported from use
+
+456. **A number field never carries a `step` the user's own value can miss.** Reported against
+     the planner sheet: typing `901` into a category's kcal box — which had `step="10"` — made
+     the browser refuse it with „Please enter a valid value. The two nearest valid values are
+     900 and 910." That bubble is generated by the browser in the **browser's** language, not
+     the page's, so it is the one string in this app that no amount of Polish copy can reach,
+     and „wszystkie teksty po polsku" is not a rule this app gets to keep by writing better
+     copy. It keeps it by never triggering native validation.
+     - The fix is `step="any"` — the value of `step` was only ever there to make the spinner
+       arrows move in tens, which is a convenience worth exactly nothing next to a field that
+       rejects what was typed into it. `setSlotKcal` already rounds and already discards
+       anything unusable, so the constraint was not carrying any correctness either.
+     - `min="0"` stays: it keeps the spinner off negative numbers, and a *typed* negative kcal
+       is not an input anyone produces by accident. The rule is about values a user reasonably
+       types, not about every reachable state of the DOM.
+     - **Still outstanding, and deliberately not swept up in this fix:** `MealPlanSection`'s
+       „Udział" field has `step="5"`, so typing `33` there raises the same bubble — the same
+       defect, predating Phase 24. `GoalsForm` has `step="1"` on two integer fields and
+       `max="100"` on the macro percentages, which are reachable the same way but only by
+       typing a fraction or a number over a hundred. Fixing them is a change to screens this
+       report did not name; it is written down here so the next phase touching Settings does it
+       rather than rediscovers it.
 
 ## Open questions
 

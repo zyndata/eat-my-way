@@ -123,10 +123,16 @@ test('a half-planned day is completed, not replaced', async ({ device, drive }) 
   await connectWith(device, drive);
   await device.goto('#/');
 
-  // Two meals by hand first — this is „Uzupełnij dzień", the primary path.
-  for (const name of ['Owsianka', 'Gulasz']) {
+  // Two meals by hand first — this is „Uzupełnij dzień", the primary path. Each is filed as
+  // it is added, which is what stops the planner offering a second breakfast (decision 445).
+  for (const [name, slot] of [
+    ['Owsianka', 'Śniadanie'],
+    ['Gulasz', 'Obiad']
+  ]) {
     await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
-    await device.getByRole('dialog').getByText(name, { exact: true }).click();
+    const picker = device.getByRole('dialog');
+    await picker.getByLabel('Posiłek dnia').selectOption({ label: slot as string });
+    await picker.getByText(name as string, { exact: true }).click();
     await expect(device.getByRole('dialog')).toBeHidden(SHEET_CLOSES);
   }
   await expect(device.getByRole('link', { name: /Owsianka/ })).toBeVisible();
@@ -140,7 +146,7 @@ test('a half-planned day is completed, not replaced', async ({ device, drive }) 
   await sheet.getByRole('button', { name: 'Zastosuj', exact: true }).click();
 
   // The two survive, and the day gained the rest — one meal per template slot.
-  const meals = device.getByRole('list', { name: 'Posiłki dnia' }).getByRole('listitem');
+  const meals = device.getByRole('list', { name: /^Posiłki:/ }).getByRole('listitem');
   await expect(meals).toHaveCount(4);
   await expect(meals.filter({ hasText: 'Owsianka' })).toHaveCount(1);
   await expect(meals.filter({ hasText: 'Gulasz' })).toHaveCount(1);
@@ -211,7 +217,7 @@ test('a week is planned, applied, and its batch reads as a batch on the meal scr
 
   // The day the sheet was opened on now has meals, and so does the rest of the week.
   await expect(
-    device.getByRole('list', { name: 'Posiłki dnia' }).getByRole('listitem')
+    device.getByRole('list', { name: /^Posiłki:/ }).getByRole('listitem')
   ).not.toHaveCount(0);
 
   // The empty-day hint that carried the buttons is gone with the meals in place, so the row
@@ -633,4 +639,144 @@ test('a long recipe name is shown whole on a phone, not cut off with an ellipsis
     (element) => element.scrollWidth > element.clientWidth + 1
   );
   expect(clipped).toBe(false);
+});
+test('uzupełnij z pominiętą przekąską — the main course comes back bigger', async ({
+  device,
+  drive
+}) => {
+  /*
+   * „Nie mogę usunąć przekąski, żeby obiad był większy" (PLAN.md Phase 24). „Pomiń" adds the
+   * category to `takenSlotIds` for one solve; the solver's shares renormalise over what is
+   * left, so the lunch target grows and the search reaches the more calorific end of the
+   * library on its own (decision 447). No solver change, one toggle.
+   */
+  await connectWith(device, drive);
+  await device.goto('#/');
+
+  const sheet = device.getByRole('dialog');
+  const lunchKcal = async (): Promise<number> =>
+    Number(await sheet.getByLabel('Kalorie na Obiad').inputValue());
+
+  await device.getByRole('button', { name: 'Zaplanuj dzień', exact: true }).click();
+  const before = await lunchKcal();
+
+  await sheet.getByRole('button', { name: 'Pomiń Podwieczorek' }).click();
+
+  // The snack is gone from the proposal, and its share landed on what is left.
+  await expect(sheet.getByRole('button', { name: 'Planuj Podwieczorek' })).toBeVisible();
+  await expect(sheet.getByLabel('Kalorie na Podwieczorek')).toHaveCount(0);
+  expect(await lunchKcal()).toBeGreaterThan(before);
+
+  // Three cooks now, not four — and the day still lands inside its band.
+  await expect(sheet.getByRole('button', { name: /^Zablokuj / })).toHaveCount(3);
+  await sheet.getByRole('button', { name: 'Zastosuj', exact: true }).click();
+  await expect(sheet).toBeHidden(SHEET_CLOSES);
+
+  const header = device.locator('header').filter({ hasText: 'kcal' }).first();
+  const text = (await header.textContent()) ?? '';
+  const planned = Number(/(\d+)\s*\/\s*2000 kcal/.exec(text.replace(/\s+/g, ' '))?.[1] ?? 0);
+  expect(Math.abs(planned - DEFAULT_GOALS.kcal)).toBeLessThanOrEqual(0.15 * DEFAULT_GOALS.kcal);
+
+  // The plan landed in its categories, and the day screen shows it grouped with no further
+  // edit: three headings with a meal each, and the snack's heading empty.
+  await expect(
+    device.getByRole('list', { name: 'Posiłki: Obiad' }).getByRole('listitem')
+  ).toHaveCount(1);
+  await expect(
+    device.getByRole('list', { name: 'Posiłki: Podwieczorek' }).getByRole('listitem')
+  ).toHaveCount(0);
+
+  // And nothing was remembered: reopening the sheet plans the snack again (decision 449).
+  await device.getByRole('button', { name: 'Uzupełnij dzień' }).click();
+  await expect(sheet.getByRole('button', { name: 'Pomiń Podwieczorek' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Zamknij' }).click();
+
+  // Settings never heard about it: „dziś bez przekąski" is a sentence about today.
+  await device.goto('#/settings');
+  await expect(device.getByLabel('Podwieczorek: gotuję na 1 dzień')).toBeVisible();
+});
+
+test('a kcal typed on a category is what that category is solved against', async ({
+  device,
+  drive
+}) => {
+  await connectWith(device, drive);
+  await device.goto('#/');
+  await device.getByRole('button', { name: 'Zaplanuj dzień', exact: true }).click();
+
+  const sheet = device.getByRole('dialog');
+  const breakfast = sheet.getByLabel('Kalorie na Śniadanie');
+  const before = Number(await breakfast.inputValue());
+
+  const lunch = sheet.getByLabel('Kalorie na Obiad');
+  await lunch.fill('900');
+  await lunch.blur();
+
+  // The typed number stands, and the rest split what is left of the day (decision 448).
+  await expect(lunch).toHaveValue('900');
+  expect(Number(await breakfast.inputValue())).toBeLessThan(before);
+
+  /*
+   * And any number is typeable, not only a round one. A `step` the value misses makes the
+   * browser refuse the field with a validation bubble written in the browser's own language —
+   * „The two nearest valid values are 900 and 910." — which is the one string in this app no
+   * amount of Polish copy can reach (decision 456).
+   */
+  await lunch.fill('901');
+  await lunch.blur();
+  await expect(lunch).toHaveValue('901');
+  expect(await lunch.evaluate((input: HTMLInputElement) => input.checkValidity())).toBe(true);
+  expect(await lunch.evaluate((input: HTMLInputElement) => input.validationMessage)).toBe('');
+});
+
+test('a category that already holds a meal is left alone until „Dołóż tu coś"', async ({
+  device,
+  drive
+}) => {
+  await connectWith(device, drive);
+  await device.goto('#/');
+
+  await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
+  const picker = device.getByRole('dialog');
+  await picker.getByLabel('Posiłek dnia').selectOption({ label: 'Obiad' });
+  await picker.getByText('Gulasz', { exact: true }).click();
+  await expect(device.getByRole('dialog')).toBeHidden(SHEET_CLOSES);
+
+  await device.getByRole('button', { name: 'Uzupełnij dzień' }).click();
+  const sheet = device.getByRole('dialog');
+
+  // Three proposals, none of them for „Obiad" — the default is „don't touch it".
+  await expect(sheet.getByRole('button', { name: /^Zablokuj / })).toHaveCount(3);
+  await expect(sheet.getByText('· już zaplanowane')).toHaveCount(1);
+
+  await sheet.getByRole('button', { name: 'Dołóż tu coś' }).click();
+
+  // Now four, and the extra one is never the recipe already there.
+  await expect(sheet.getByRole('button', { name: /^Zablokuj / })).toHaveCount(4);
+  await expect(sheet.getByRole('button', { name: 'Zablokuj Gulasz' })).toHaveCount(0);
+});
+
+test('a meal nobody filed is named on the sheet, and says what it costs', async ({
+  device,
+  drive
+}) => {
+  /*
+   * The honest default of decision 450 has a consequence, and decision 451 is that the sheet
+   * shows it: a meal added with the floating button counts in the day's calories but occupies
+   * no category, so „Uzupełnij" will still offer a breakfast next to it. Seeing it is the fix.
+   */
+  await connectWith(device, drive);
+  await device.goto('#/');
+
+  await device.getByRole('button', { name: 'Dodaj posiłek' }).first().click();
+  await device.getByRole('dialog').getByText('Jajecznica', { exact: true }).click();
+  await expect(device.getByRole('dialog')).toBeHidden(SHEET_CLOSES);
+
+  await device.getByRole('button', { name: 'Uzupełnij dzień' }).click();
+  const sheet = device.getByRole('dialog');
+
+  await expect(sheet.getByText('wliczone w kalorie, ale nie zajmują żadnej kategorii')).toBeVisible();
+  await expect(sheet.getByText('Pozostałe', { exact: true })).toBeVisible();
+  // Every category is still free, so all four are proposed.
+  await expect(sheet.getByRole('button', { name: /^Zablokuj / })).toHaveCount(4);
 });

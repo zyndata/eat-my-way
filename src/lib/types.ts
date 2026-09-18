@@ -174,6 +174,24 @@ export interface PlannedMeal {
    * field is a meal exactly as it was before the phase existed.
    */
   adjustments?: MealAdjustment[];
+  /**
+   * Which meal of the day this is: the id of a `MealSlot` in `profile.mealPlan` (Phase 24).
+   * Absent, or naming a category that no longer exists, means „Pozostałe".
+   *
+   * Because a meal is stored inside its day, the assignment is **per day** by construction —
+   * jajecznica is śniadanie on Monday and kolacja on Wednesday, and neither day knows about
+   * the other. That is the whole reason the field is here rather than on the recipe, which
+   * would make a recipe breakfast everywhere forever (STATE.md decision 441).
+   *
+   * Optional for the same reason `adjustments` is: no schema version, no migration, and an
+   * older build ignores the key instead of breaking on it. It round-trips through Drive and a
+   * backup for the same reason too — neither `readDaysDocument` nor `readBackup` enumerates
+   * the fields of a meal.
+   *
+   * An orphaned id is **not** repaired: deleting a category in Settings and putting it back
+   * must not scatter a month of days.
+   */
+  slotId?: string;
 }
 
 export interface Day {

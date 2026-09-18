@@ -1,11 +1,12 @@
 <script lang="ts">
-  import type { Macros, Tag } from '../types';
+  import type { Macros, MealSlot, Tag } from '../types';
   import type { BudgetEntry, RecipeListEntry } from '../recipes';
   import { budgetFit, fitToBudget, searchRecipes } from '../recipes';
   import { dayBudget, remainingGoals } from '../calendar';
   import { todayDate } from '../dates';
   import { ingredientIndex } from '../ingredients';
   import { repository } from '../repository';
+  import { UNFILED_LABEL } from '../day';
   import BottomSheet from './BottomSheet.svelte';
 
   /**
@@ -25,12 +26,20 @@
    * 46 order and the app never claims to know which recipe closes a protein gap. And a recipe
    * that does not fit whole but fits at half a portion is offered as exactly that — half is
    * the only fraction, because a rule with one fraction cannot be misread.
+   *
+   * Phase 24 adds the question „which meal of the day is this?" (STATE.md decision 450). The
+   * sheet is told where it is adding into and says so, and the select changes it before the
+   * pick — so „+ Dodaj" under „Kolacja" is still one tap, and the floating button, which opens
+   * on „Pozostałe" because it cannot honestly guess, is no longer the one route that could not
+   * file what it added. With no template, or nothing to file into, the select is not rendered.
    */
 
   let {
     open = false,
     totals,
     goals,
+    slots = [],
+    slotId,
     onpick,
     onclose
   }: {
@@ -39,7 +48,11 @@
     totals: Macros;
     /** The day's goals — its `goalSnapshot` when it has one. */
     goals: Macros;
-    onpick: (recipeId: string) => void;
+    /** The template's categories, in order. Empty means there is nothing to file into. */
+    slots?: readonly MealSlot[];
+    /** The category the caller is adding into; `undefined` is „Pozostałe". */
+    slotId?: string | undefined;
+    onpick: (recipeId: string, slotId: string | undefined) => void;
     onclose: () => void;
   } = $props();
 
@@ -53,6 +66,8 @@
   let query = $state('');
   let selected = $state<string[]>([]);
   let budgetOnly = $state(false);
+  /** The category the meal will land in. Seeded from the caller every time the sheet opens. */
+  let chosenSlotId = $state<string | undefined>(undefined);
 
   const budget = $derived(dayBudget(totals, goals));
   const left = $derived(remainingGoals(totals, goals));
@@ -101,6 +116,7 @@
     query = '';
     selected = [];
     budgetOnly = false;
+    chosenSlotId = slotId;
     void load();
   });
 
@@ -141,6 +157,25 @@
         Zmieści się w limicie
       </label>
     </div>
+  {/if}
+
+  <!-- Where the meal is going, and the one tap that changes it. Rendered next to the budget
+       row above, and on its own when the day has no goal to state one. -->
+  {#if slots.length > 0}
+    <label class="flex items-center justify-between gap-2 pb-3 text-sm">
+      Posiłek dnia
+      <select
+        class="min-w-0 rounded-lg border border-(--color-border) bg-(--color-surface-raised) px-2 py-1 text-sm"
+        value={chosenSlotId ?? ''}
+        onchange={(event) =>
+          (chosenSlotId = event.currentTarget.value === '' ? undefined : event.currentTarget.value)}
+      >
+        {#each slots as slot (slot.id)}
+          <option value={slot.id}>{slot.label}</option>
+        {/each}
+        <option value="">{UNFILED_LABEL}</option>
+      </select>
+    </label>
   {/if}
 
   <label class="block text-sm font-medium">
@@ -196,10 +231,10 @@
           <button
             type="button"
             class="emw-press emw-row block w-full rounded-xl border border-(--color-border) p-3"
-            onclick={() => onpick(entry.recipe.id)}
+            onclick={() => onpick(entry.recipe.id, chosenSlotId)}
           >
             <span class="flex items-baseline justify-between gap-3">
-              <span class="min-w-0 truncate font-medium">{entry.recipe.name}</span>
+              <span class="emw-recipe-name min-w-0 font-medium">{entry.recipe.name}</span>
               {#if portion}
                 <span class="shrink-0 text-sm text-(--color-ink-muted)">
                   {Math.round(portion.kcal)} kcal / porcja

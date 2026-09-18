@@ -129,7 +129,7 @@
   {:else}
     <div class="flex items-start justify-between gap-2">
       <div class="min-w-0">
-        <p class="truncate text-sm font-medium">{ingredient?.name ?? 'Nieznany składnik'}</p>
+        <p class="emw-recipe-name text-sm font-medium">{ingredient?.name ?? 'Nieznany składnik'}</p>
         <p class="text-xs text-(--color-ink-muted)">
           {#if ingredient}
             {Math.round(ingredient.per100g.kcal)} kcal / 100 g ·
